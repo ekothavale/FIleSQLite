@@ -1,25 +1,23 @@
+// NOTE: function scanNumber assumes max length of number literal is 255 characters
+// NOTE: function parse assumes max length of query is 2048 tokens
+
 #include "parser.h"
 
-typedef struct parser {
+typedef struct scanner {
     char query[2048];
     int querylen;
     int cursor;
-} parser;
+} scanner;
 
-parser p;
+scanner s;
 
 void initParser() {
-    p.cursor = 0;
+    s.cursor = 0;
 }
 
 // checks if at end of string
 bool atEnd() {
-    return p.query[p.cursor] == '\0' || p.cursor == p.querylen;
-}
-
-// gets next token in input
-token getNextToken(char* input) {
-    ;
+    return s.query[s.cursor] == '\0' || s.cursor == s.querylen;
 }
 
 // is letter or underscore
@@ -35,23 +33,23 @@ static bool isDigit(char c) {
 }
 
 static char nextChar() {
-  p.cursor++;
-  return p.query[p.cursor-1];
+  s.cursor++;
+  return s.query[s.cursor-1];
 }
 
 static char peek() {
-  return p.query[p.cursor];
+  return s.query[s.cursor];
 }
 
 static char peekNext() {
   if (atEnd()) return '\0';
-  return p.query[p.cursor+1];
+  return s.query[s.cursor+1];
 }
 
 static bool match(char expected) {
   if (atEnd()) return false;
-  if (p.query[p.cursor] != expected) return false;
-  p.cursor++;
+  if (s.query[s.cursor] != expected) return false;
+  s.cursor++;
   return true;
 }
 
@@ -62,46 +60,90 @@ bool isWhitespace(char c) {
     return false;
 }
 
-// returns literal token with number type and package
-bool processNumber(char c) {
-    if (48 <= c && c <= 57) {
-
-        return true;
+// returns literal token with number type and payload
+Token scanNumber() {
+    char buffer[256];
+    int i = 0;
+    while((isDigit(peek()) || peek() == '.') && i < 255) {
+        buffer[i++] = nextChar();
     }
-    return false;
+    buffer[i] = '\0';
+    Token token = {.type = TOKEN_NUMBER, .payload = malloc(i+1)};
+    strncpy(token.payload, buffer, i+1);
+    return token;
 }
 
 static TokenType checkKeyword(int start, int length,
     const char* rest, TokenType type) {
-  if (p.query[p.cursor] - p.query[0] == start + length &&
-      memcmp(p.query[0] + start, rest, length) == 0) {
+  if (s.query[s.cursor] - s.query[0] == start + length &&
+      memcmp(s.query[0] + start, rest, length) == 0) {
     return type;
   }
 
   return TOKEN_IDENTIFIER;
 }
 
-static keywordType() {
-    switch(p.query[p.cursor]) {
-        case 'S': return checkKeyword(1, 5, "ELECT", TOKEN_SELECT);
+char* scanKeyword(int length) {
+    char buffer[length + 2];
+    for (int i = 0; i < length + 1; i++) {
+        buffer[i] = nextChar();
     }
+    buffer[length+1] = '\0';
+    return strdup(buffer);
 }
 
-token scanToken() {
-
+char* scanIdentifier() {
+    char buffer[256];
+    int i = 0;
+    while(isAlpha(peek()) || isDigit(peek())) {
+        buffer[i++] = nextChar();
+    }
+    buffer[i] = '\0';
+    return strdup(buffer);
 }
 
-token* parse(char* input) {
+static Token scanAlpha() {
+    Token out;
+    switch(s.query[s.cursor]) {
+        case 'S': {
+            out.type = checkKeyword(1, 5, "ELECT", TOKEN_SELECT);
+            out.payload = scanKeyword(5);
+            break;
+        }
+        default: {
+            out.type = TOKEN_IDENTIFIER;
+            out.payload = scanIdentifier();
+        }
+    }
+    return out;
+}
+
+Token* parse(char* input) {
+    Token* tokens = malloc(2048 * sizeof(Token));
+    int tokenCount = 0;
     initParser();
-    while (p.cursor < p.querylen) {
-        char i = p.query[p.cursor];
+    while (s.cursor < s.querylen) {
+        char i = s.query[s.cursor];
         if (isWhitespace(i)) {
+            s.cursor++;
             continue;
-            p.cursor++;
         }
-        if (processNumber(i)) {
-            continue;
-            p.cursor++;
+        if (isDigit(i)) {
+            tokens[tokenCount++] = scanNumber();
+        }
+        if (isAlpha(i)) {
+            tokens[tokenCount++] = scanAlpha();
         }
     }
 }
+
+// parse:
+/*
+loop through the string input until reaching end
+skip whitespace
+if alpha:
+    create a token if keyword
+    if not recognized - literal
+if numeric:
+    numeric literal
+*/
