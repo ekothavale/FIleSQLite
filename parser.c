@@ -11,8 +11,11 @@ typedef struct scanner {
 
 scanner s;
 
-void initParser() {
+void initParser(int querylen, char* query) {
     s.cursor = 0;
+    s.querylen = querylen;
+    strncpy(s.query, query, querylen);
+    s.query[querylen] = '\0';
 }
 
 // checks if at end of string
@@ -22,9 +25,9 @@ bool atEnd() {
 
 // is letter or underscore
 static bool isAlpha(char c) {
-  return (c >= 'a' && c <= 'z') ||
-         (c >= 'A' && c <= 'Z') ||
-          c == '_';
+    return (c >= 'a' && c <= 'z') ||
+        (c >= 'A' && c <= 'Z') || 
+        c == '_';
 }
 
 // is number
@@ -55,9 +58,15 @@ static bool match(char expected) {
 
 // checks if character is whitespace
 bool isWhitespace(char c) {
-    char* skipped = "\n\t ";
-    if (strstr(skipped, c) == NULL) return true;
-    return false;
+    switch(c) {
+        case ' ':
+        case '\r':
+        case '\t':
+        case '\n':
+            return true;
+        default:
+            return false;
+    }
 }
 
 // returns literal token with number type and payload
@@ -75,8 +84,7 @@ Token scanNumber() {
 
 static TokenType checkKeyword(int start, int length,
     const char* rest, TokenType type) {
-  if (s.query[s.cursor] - s.query[0] == start + length &&
-      memcmp(s.query[0] + start, rest, length) == 0) {
+  if (memcmp(s.query + s.cursor + start, rest, length) == 0) {
     return type;
   }
 
@@ -107,7 +115,8 @@ static Token scanAlpha() {
     switch(s.query[s.cursor]) {
         case 'S': {
             out.type = checkKeyword(1, 5, "ELECT", TOKEN_SELECT);
-            out.payload = scanKeyword(5);
+            out.payload = NULL;
+            s.cursor += 6;
             break;
         }
         default: {
@@ -118,23 +127,112 @@ static Token scanAlpha() {
     return out;
 }
 
+static Token scanSymbol() {
+    Token out;
+    switch(s.query[s.cursor]) {
+        case '+':
+            out.type = TOKEN_PLUS;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '-':
+            out.type = TOKEN_MINUS;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '*':
+            out.type = TOKEN_STAR;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '!':
+            out.type = TOKEN_BANG;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '(':
+            out.type = TOKEN_LEFT_PAREN;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case ')':
+            out.type = TOKEN_RIGHT_PAREN;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '/':
+            out.type = TOKEN_SLASH;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '=':
+            out.type = TOKEN_EQUALS;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '?':
+            out.type = TOKEN_QUESTION;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case ',':
+            out.type = TOKEN_COMMA;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '.':
+            out.type = TOKEN_DOT;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '&':
+            out.type = TOKEN_AND;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        case '|':
+            out.type = TOKEN_PIPE;
+            out.payload = NULL;
+            s.cursor++;
+            break;
+        default:
+            printf("Unrecognized symbol: %c\n", s.query[s.cursor]);
+            out.type = TOKEN_UNKNOWN;
+            out.payload = malloc(2);
+            out.payload[0] = s.query[s.cursor];
+            out.payload[1] = '\0';
+            s.cursor++;
+    }
+    return out;
+}
+
 Token* parse(char* input) {
+
     Token* tokens = malloc(2048 * sizeof(Token));
+    bzero(tokens, 2048 * sizeof(Token));
     int tokenCount = 0;
-    initParser();
+    initParser(strlen(input), input);
+
     while (s.cursor < s.querylen) {
         char i = s.query[s.cursor];
+        printf("Current char: %d at cursor %d\n", i, s.cursor);
         if (isWhitespace(i)) {
+            printf("WHITE SPACE TRIGGERED\n");
             s.cursor++;
             continue;
         }
-        if (isDigit(i)) {
+        else if (isDigit(i)) {
             tokens[tokenCount++] = scanNumber();
         }
-        if (isAlpha(i)) {
+        else if (isAlpha(i)) {
             tokens[tokenCount++] = scanAlpha();
+            printf("ALPHA TRIGGERED\n");
+        }
+        else {
+            tokens[tokenCount++] = scanSymbol();
         }
     }
+    return tokens;
 }
 
 // parse:
