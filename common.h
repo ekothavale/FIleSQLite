@@ -34,6 +34,12 @@ typedef struct Token {
     char* payload;
 }Token;
 
+typedef struct TokenizedQuery {
+    Token* tokens;
+    int length;
+    int capacity;
+} TokenizedQuery;
+
 // bytecode
 typedef enum opcode {
     OP_SELECT

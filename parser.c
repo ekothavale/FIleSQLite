@@ -207,12 +207,12 @@ static Token scanSymbol() {
 }
 
 Token* parse(char* input) {
-
-    Token* tokens = malloc(2048 * sizeof(Token));
-    bzero(tokens, 2048 * sizeof(Token));
+    TokenizedQuery* tokens = malloc(sizeof(TokenizedQuery));
+    tokens->tokens = allocTokens(2048);
+    tokens->capacity = 2048;
+    tokens->length = 0;
     int tokenCount = 0;
     initParser(strlen(input), input);
-
     while (s.cursor < s.querylen) {
         char i = s.query[s.cursor];
         printf("Current char: %d at cursor %d\n", i, s.cursor);
@@ -222,16 +222,17 @@ Token* parse(char* input) {
             continue;
         }
         else if (isDigit(i)) {
-            tokens[tokenCount++] = scanNumber();
+            tokens->tokens[tokenCount++] = scanNumber();
         }
         else if (isAlpha(i)) {
-            tokens[tokenCount++] = scanAlpha();
+            tokens->tokens[tokenCount++] = scanAlpha();
             printf("ALPHA TRIGGERED\n");
         }
         else {
-            tokens[tokenCount++] = scanSymbol();
+            tokens->tokens[tokenCount++] = scanSymbol();
         }
     }
+    tokens->length = tokenCount;
     return tokens;
 }
 

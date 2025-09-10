@@ -8,10 +8,10 @@ void printTokens(Token* tokens) {
 }
 
 void execute(char* input) {
-    Token* tokens = parse(input);
-    printf("MADE IT TO HERE\n");
-    printTokens(tokens);
-    free(tokens);
+    TokenizedQuery* tquery = parse(input);
+    printTokens(tquery->tokens);
+    freeTokenizedQuery(tquery);
+
     //opcode* bytecode = compile(tokens);
     //run(bytecode);
 }

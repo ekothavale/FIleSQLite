@@ -1,6 +1,6 @@
 
 main: main.o parser.o
-	gcc main.o parser.o -o main
+	gcc -fsanitize=address main.o parser.o -o main
 	rm *.o
 
 parser.o: parser.c parser.h

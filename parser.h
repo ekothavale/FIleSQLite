@@ -2,6 +2,7 @@
 #define PARSER_H
 
 #include "common.h"
+#include "memory.h"
 
 Token* parse(char* input);
 
