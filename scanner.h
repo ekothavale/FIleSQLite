@@ -4,6 +4,6 @@
 #include "common.h"
 #include "memory.h"
 
-Token* scan(char* input);
+TokenizedQuery* scan(char* input);
 
 #endif // SCANNER_H

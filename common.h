@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+
 typedef enum TokenType {
     TOKEN_SELECT,
     TOKEN_IDENTIFIER,
@@ -36,7 +37,7 @@ typedef struct Token {
 
 typedef struct TokenizedQuery {
     Token* tokens;
-    int length;
+    int count;
     int capacity;
 } TokenizedQuery;
 

@@ -11,14 +11,13 @@ Token* allocTokens(int numTokens) {
 
 static void freeToken(Token* token) {
     free(token->payload);
-    free(token);
 }
 
-void freeTokenizedQuery(TokenizedQuery* tokens) {
-    for (int i = 0; i < tokens->length; i++) {
-        freeToken(&tokens->tokens[i]);
+void freeTokenizedQuery(TokenizedQuery* tquery) {
+    for (int i = 0; i < tquery->count; i++) {
+        freeToken(&(tquery->tokens[i]));
     }
-    free(tokens);
+    free(tquery);
 }
 
 void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
