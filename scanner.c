@@ -1,7 +1,7 @@
 // NOTE: function scanNumber assumes max length of number literal is 255 characters
 // NOTE: function parse assumes max length of query is 2048 tokens
 
-#include "parser.h"
+#include "scanner.h"
 
 typedef struct scanner {
     char query[2048];
@@ -206,7 +206,7 @@ static Token scanSymbol() {
     return out;
 }
 
-Token* parse(char* input) {
+Token* scan(char* input) {
     TokenizedQuery* tokens = malloc(sizeof(TokenizedQuery));
     tokens->tokens = allocTokens(2048);
     tokens->capacity = 2048;
