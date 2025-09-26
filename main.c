@@ -1,6 +1,7 @@
 #include "common.h"
 #include "scanner.h"
 #include "debug.h"
+#include "chunk.h"
 
 void execute(char* input) {
     TokenizedQuery* tquery = scan(input);
@@ -12,6 +13,13 @@ void execute(char* input) {
 }
 
 int main(int argc, char** argv) {
+    Chunk chunk;
+    initChunk(&chunk);
+    for (uint8_t i = 0; i < 160; i++){
+        writeChunk(&chunk, i);
+    }
+    printChunk(&chunk);
+    freeChunk(&chunk);
     const int ARRLEN = 2048;
     char* ex = ".quit";
     char input[2048];
