@@ -43,6 +43,7 @@ const int PAGE_CAPACITY = NUM_VALS * 4; // memory capacity of page storage (righ
 
 
 typedef struct page{
+	int pageNum;
 	int usedSlots;
 	int usedMem; // amount of mem taking in bytes by values stored in the page
 	int* slotarr[NUM_SLOTS];
@@ -119,6 +120,7 @@ bool isFull(page* p){
 	return p->usedSlots >= NUM_SLOTS || p->usedMem >= PAGE_CAPACITY;
 }
 
+// UNTESTED
 bool writeVal(page* p, int val) {
 	if (isFull(p)) return false;
 	p->stackTop--;
@@ -126,10 +128,9 @@ bool writeVal(page* p, int val) {
 	p->usedMem += sizeof(val);
 }
 
+// splits a page in two, copies metadata and moves half of the stored data over
 // UNTESTED
-// so far have implemented splitting pages and copying over data
-// need to add the new tuple and recursively split ancestor nodes
-void splitAndInsert(page* p, int pageOffs, int tuple) {
+page* splitPage(page* p) {
 	page* new = malloc(sizeof(page));
 	for (int i = p->usedSlots/2; i < p->usedSlots; i++) {
 		new->slotarr[i - p->usedSlots/2] = p->slotarr[i];
@@ -139,15 +140,39 @@ void splitAndInsert(page* p, int pageOffs, int tuple) {
 	for (int i = 0; i < new->usedSlots; i++) {
 		writeVal(new, *(new->slotarr[i]));
 	}
+	return new;
+}
 
+// UNTESTED
+void addInternalAndBalance(node* n, node* newChild) {
+	// add new internal node and its page number ranges as appropriate to respective arrays in n
+	// if this would exceed n's capacity, split n and recursively call algorithm
+	// add base case for root node
+	;
+}
 
+// UNTESTED
+// adds a page to an internal node and balances the tree recursively
+void addPageAndBalance(node* n, page* newPage) {
+	// add new page number and pointer to respective arrays in n
+	// if this would exceed n's capacity, split n and call addInternalAndBalance
+	;
+}
+
+// UNTESTED
+// so far have implemented splitting pages and copying over data
+// need to add the new tuple and recursively split ancestor nodes
+void splitAndInsert(page* p, int tuple) {
+	page* new = splitPage(p);
+	writeVal(p, tuple);
+	addPageAndBalance(p->parent, new)
 }
 
 // UNTESTED
 void insertTuple(int tuple, int pageNum, int pageOffs, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
 	if (isFull(p)) {
-		splitAndInsert(p, pageOffs, tuple); // recursively splits ancestors up to root node
+		splitAndInsert(p, tuple); // recursively splits ancestors up to root node
 	}
 }
 
