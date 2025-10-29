@@ -65,6 +65,19 @@ typedef struct node{
 	bool isLeaf; // if the node is a leaf node
 }node;
 
+node* root;
+
+node* newRoot(void* child, int childCount) {
+	node* new = malloc(sizeof(node));
+	new->childCount = childCount;
+	new->children[0] = child;
+	new->parent = NULL;
+	new->prev = NULL;
+	new->next = NULL;
+	new->isLeaf = false;
+	return new;
+}
+
 // creates a new b+ tree starting with just one leaf node
 node* newTree() {
 	node* new = malloc(sizeof(node));
@@ -79,6 +92,12 @@ node* newTree() {
 // shifts the elements of an array right by 1 starting at the given index
 // assumes there is a free space in the array
 void shiftIntArray(int* array, int start, int len) {
+	for (int i = len-1; i > start; i--) {
+		array[i] = array[i-1];
+	}
+}
+
+void shiftPageArray(page* array, int start, int len) {
 	for (int i = len-1; i > start; i--) {
 		array[i] = array[i-1];
 	}
@@ -116,8 +135,12 @@ page* findPage(int key, node* tree) {
 }
 
 // UNTESTED
-bool isFull(page* p){
+bool isFull(page* p) {
 	return p->usedSlots >= NUM_SLOTS || p->usedMem >= PAGE_CAPACITY;
+}
+
+bool isFull(node* n) {
+	return n->childCount >= M;
 }
 
 // UNTESTED
@@ -126,6 +149,10 @@ bool writeVal(page* p, int val) {
 	p->stackTop--;
 	*(p->stackTop) = val;
 	p->usedMem += sizeof(val);
+}
+
+bool addPage(node* n, page* p) {
+	;
 }
 
 // splits a page in two, copies metadata and moves half of the stored data over
@@ -144,6 +171,37 @@ page* splitPage(page* p) {
 }
 
 // UNTESTED
+node* splitNode(node* n) {
+	node* new = malloc(sizeof(node));
+
+	new->parent = n->parent;
+	// Inserting into linked list of leaves
+	if (n->isLeaf) {
+		node* tmp = n->next;
+		n->next = new;
+		new->prev = n;
+		new->next = tmp;
+		tmp->prev = new;
+	}
+	new->isLeaf = n->isLeaf;
+
+	// copying over children and pointers
+	for (int i = 0; i < n->childCount/2; i++) {
+		new->children[i] = n->children[i + n->childCount/2];
+		n->children[i + n->childCount/2] = NULL;
+	}
+	for (int i = 0; i < new->childCount - 1; i++) {
+		new->keys[new->childCount - 2] = n->keys[n->childCount - 2 - i];
+		n->keys[n->childCount - 2 - i] = 0;
+	}
+	new->childCount = n->childCount/2;
+	n->childCount -= n->childCount/2;
+
+
+	return new;
+}
+
+// UNTESTED
 void addInternalAndBalance(node* n, node* newChild) {
 	// add new internal node and its page number ranges as appropriate to respective arrays in n
 	// if this would exceed n's capacity, split n and recursively call algorithm
@@ -156,16 +214,38 @@ void addInternalAndBalance(node* n, node* newChild) {
 void addPageAndBalance(node* n, page* newPage) {
 	// add new page number and pointer to respective arrays in n
 	// if this would exceed n's capacity, split n and call addInternalAndBalance
-	;
+	for (int i = 0; i < n->childCount; i++) {
+		if (newPage->pageNum < ((page*) n->children[i])->pageNum) {
+			// if node is full
+			if (n->childCount == M) {
+				node* new = splitNode(n);
+				if (i > M/2) addPage(new, newPage);
+				else addPage(n, newPage);
+				// If this current node is the root node
+				if (n->parent == NULL) {
+					node* r = newRoot(n, 1);
+					n->parent = r;
+					addInternalAndBalance(n->parent, new);
+				} else {
+					addInternalAndBalance(n->parent, new);
+				}
+				return;
+			} else {
+				// adjust keys too
+				shiftNodeArray(n->children, i, M);
+				n->children[i] = newPage;
+				return;
+			}
+			break;
+		}
+	}
 }
 
 // UNTESTED
-// so far have implemented splitting pages and copying over data
-// need to add the new tuple and recursively split ancestor nodes
 void splitAndInsert(page* p, int tuple) {
 	page* new = splitPage(p);
 	writeVal(p, tuple);
-	addPageAndBalance(p->parent, new)
+	addPageAndBalance(p->parent, new);
 }
 
 // UNTESTED
