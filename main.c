@@ -2,6 +2,7 @@
 #include "scanner.h"
 #include "debug.h"
 #include "chunk.h"
+#include "bplus.h"
 
 void execute(char* input) {
     TokenizedQuery* tquery = scan(input);
@@ -13,6 +14,11 @@ void execute(char* input) {
 }
 
 int main(int argc, char** argv) {
+    // B+ Tree Testing
+    
+
+    // VM Testing
+    /*
     Chunk chunk;
     initChunk(&chunk);
     for (uint8_t i = 0; i < 160; i++){
@@ -30,4 +36,5 @@ int main(int argc, char** argv) {
         memset(&input, 0, ARRLEN);  // reset buffer
     }
     return 0;
+    */
 }

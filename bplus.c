@@ -27,45 +27,13 @@ which is implemented in another file.
  - How big are pages
 */
 
-
 #include "bplus.h"
-#include "common.h"
-
-const int M = 3; // order (number of children a node can have) of the tree
-
-int height = 0; // FOR DEBUGGING PURPOSES: height of the tree
-
-const int PAGE_SIZE = 4096; // size in bytes of each page
-const int NUM_SLOTS = 64; // Size of slot array within each page (each page can hold 72 tuples)
-				   // numSlots should be power of 2 since it's represented by log(numSlots) bits in key
-const int NUM_VALS = 700; // in reality this will be the size of the page minus the slot array and the header
-const int PAGE_CAPACITY = NUM_VALS * 4; // memory capacity of page storage (right now assuming all values are ints)
-
-typedef struct page{
-	int pageNum;
-	int usedSlots;
-	int usedMem; // amount of mem taking in bytes by values stored in the page
-	int* slotarr[NUM_SLOTS];
-	int vals[NUM_VALS];
-	int* stackTop; // starts at end of page and gets decremented
-	node* parent;
-}page;
-
-typedef struct node{
-	void* children[M];
-	// keys = [3, 5] means 1, 2, 3 - left child, 4, 5 - middle child, 6+ - right child
-	int keys[M-1];
-	node* parent;
-	node* next;
-	node* prev; // remove if two way scanning not necessary
-
-	int childCount;
-	int maxPageNumber;
-
-	bool isLeaf; // if the node is a leaf node
-}node;
 
 node* root;
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// TREE CREATION FUNCTIONS
 
 node* newRoot(node* child, int childCount) {
 	node* new = malloc(sizeof(node));
@@ -81,16 +49,30 @@ node* newRoot(node* child, int childCount) {
 	return new;
 }
 
-// creates a new b+ tree starting with just one leaf node
-node* newTree() {
+// creates a new b+ tree starting with just one leaf node and one page
+node* newTree(int pageNum) {
 	node* new = malloc(sizeof(node));
-	new->childCount = 0;
+	new->childCount = 1;
 	new->isLeaf = true;
 	new->parent = NULL;
 	new->prev = NULL;
 	new->next = NULL;
+
+	page* p = malloc(sizeof(page));
+	new->children[0] = p;
+
+	p->pageNum = pageNum;
+	p->parent = new;
+	p->stackTop = 0;
+	p->usedMem = 0;
+	p->usedSlots = 0;
+
 	return new;
 }
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// GENERAL HELPER FUNCTIONS
 
 // shifts the elements of an array right by 1 starting at the given index
 // assumes there is a free space in the array
@@ -161,6 +143,10 @@ bool isFull(node* n) {
 bool isRoot(node* n) {
 	return n->parent == NULL && n->childCount > 0;
 }
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// INSERTION FUNCTIONS
 
 // UNTESTED
 bool writeVal(page* p, int val) {
@@ -364,13 +350,35 @@ void addTupleAndBalance(page* p, int tuple) {
 }
 
 // UNTESTED
-void insertTuple(int tuple, int pageNum, int pageOffs, node* tree) {
+void insertTuple(int tuple, int pageNum, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
 	if (isFull(p)) {
 		addTupleAndBalance(p, tuple);
+	} else {
+		if (!writeVal(p, tuple)) printf("Error flagged while illegally writing tuple\n");
 	}
 }
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// DEBUGGING FUNCTIONS
+// These are here not in debug.c because I'm not sure which of these will be kept when this is reimplemented on disk
 
+void freePage(page* p) {
+	free(p);
+}
+
+void freeTree(node* r) {
+	if (r->isLeaf) {
+		for (int i = 0; i < r->childCount; i++) {
+			freePage(r->children[i]);
+		}
+		return;
+	}
+	for (int i = 0; i < r->childCount; i++) {
+		freeTree(r->children[i]);
+	}
+	free(r);
+}
 
 /*
 TODO:
