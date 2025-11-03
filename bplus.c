@@ -41,7 +41,6 @@ const int NUM_SLOTS = 64; // Size of slot array within each page (each page can 
 const int NUM_VALS = 700; // in reality this will be the size of the page minus the slot array and the header
 const int PAGE_CAPACITY = NUM_VALS * 4; // memory capacity of page storage (right now assuming all values are ints)
 
-
 typedef struct page{
 	int pageNum;
 	int usedSlots;
@@ -61,13 +60,14 @@ typedef struct node{
 	node* prev; // remove if two way scanning not necessary
 
 	int childCount;
+	int maxPageNumber;
 
 	bool isLeaf; // if the node is a leaf node
 }node;
 
 node* root;
 
-node* newRoot(void* child, int childCount) {
+node* newRoot(node* child, int childCount) {
 	node* new = malloc(sizeof(node));
 	new->childCount = childCount;
 	new->children[0] = child;
@@ -75,6 +75,9 @@ node* newRoot(void* child, int childCount) {
 	new->prev = NULL;
 	new->next = NULL;
 	new->isLeaf = false;
+
+	new->maxPageNumber = child->maxPageNumber;
+	child->parent = new;
 	return new;
 }
 
@@ -91,13 +94,23 @@ node* newTree() {
 
 // shifts the elements of an array right by 1 starting at the given index
 // assumes there is a free space in the array
+// len is the total length of the array
+// start is the free space to be created
 void shiftIntArray(int* array, int start, int len) {
 	for (int i = len-1; i > start; i--) {
 		array[i] = array[i-1];
 	}
 }
 
-void shiftPageArray(page* array, int start, int len) {
+// UNTESTED
+void shiftPageArray(page** array, int start, int len) {
+	for (int i = len-1; i > start; i--) {
+		array[i] = array[i-1];
+	}
+}
+
+// UNTESTED
+void shiftNodeArray(node** array, int start, int len) {
 	for (int i = len-1; i > start; i--) {
 		array[i] = array[i-1];
 	}
@@ -139,8 +152,14 @@ bool isFull(page* p) {
 	return p->usedSlots >= NUM_SLOTS || p->usedMem >= PAGE_CAPACITY;
 }
 
+// UNTESTED
 bool isFull(node* n) {
 	return n->childCount >= M;
+}
+
+// UNTESTED
+bool isRoot(node* n) {
+	return n->parent == NULL && n->childCount > 0;
 }
 
 // UNTESTED
@@ -149,16 +168,78 @@ bool writeVal(page* p, int val) {
 	p->stackTop--;
 	*(p->stackTop) = val;
 	p->usedMem += sizeof(val);
+	return true;
 }
 
-bool addPage(node* n, page* p) {
-	;
-}
-
-// splits a page in two, copies metadata and moves half of the stored data over
 // UNTESTED
+// adds a page to a node
+// assumes node is not full
+// if true, operation was successful
+// if false, operation was not performed because conditions were not right
+bool addPage(node* n, page* p) {
+	if (isFull(n) || !n->isLeaf) {
+		printf("Error Flagged while illegally adding page\n");
+		return false; // shouldn't run in these conditions
+	}
+	p->parent = n;
+	for (int i = 0; i < n->childCount - 1; i++) {
+		if (p->pageNum < n->keys[i]) {
+			// We've found the correct spot for the page
+			shiftIntArray(n->keys, i, n->childCount-1);
+			n->keys[i] = p->pageNum;
+			shiftPageArray((page*) n->children, i, n->childCount);
+			n->children[i] = p;
+			n->childCount++;
+			return true;
+		}
+	}
+	// if here, new page should go last
+	n->keys[n->childCount - 1] = ((page*) n->children[n->childCount-1])->pageNum;
+	n->children[n->childCount] = p;
+	n->childCount++;
+	n->maxPageNumber = p->pageNum;
+	return true;
+}
+
+// UNTESTED
+// adds a child node to another node
+// assumes node is not full and node is not a leaf
+// if true, operation was successful
+// if false, operation was not performed since the conditions weren't right
+bool addNode(node* parent, node* child) {
+	if (isFull(parent) || parent->isLeaf) {
+		printf("Error flagged while illegally adding node\n");
+		return false; // shouldn't run in these conditions
+	}
+	// set child->parent as parent
+	child->parent = parent;
+	for (int i = 0; i < parent->childCount - 1; i++) {
+		if (MIN_KEY(child) > parent->keys[i]) {
+			// We've found the right spot to insert the child
+			shiftIntArray(parent->keys, i, parent->childCount-1);
+			parent->keys[i] = child->maxPageNumber;
+			shiftNodeArray(parent->keys, i, parent->childCount);
+			parent->children[i] = child;
+			parent->childCount++;
+			return true;
+		}
+	}
+	// if here, new node should go last
+	// new key is the maximum of the previous node
+	parent->keys[parent->childCount - 1] = ((node*) parent->children[parent->childCount - 1])->maxPageNumber;
+	parent->children[parent->childCount] = child;
+	parent->childCount++;
+	parent->maxPageNumber = child->maxPageNumber;
+	return true;
+
+}
+
+// UNTESTED
+// splits a page in two, copies metadata and moves half of the stored data over
 page* splitPage(page* p) {
+	// allocate new page
 	page* new = malloc(sizeof(page));
+	// move over stored data
 	for (int i = p->usedSlots/2; i < p->usedSlots; i++) {
 		new->slotarr[i - p->usedSlots/2] = p->slotarr[i];
 	}
@@ -171,18 +252,12 @@ page* splitPage(page* p) {
 }
 
 // UNTESTED
+// splits a node
 node* splitNode(node* n) {
 	node* new = malloc(sizeof(node));
 
 	new->parent = n->parent;
-	// Inserting into linked list of leaves
-	if (n->isLeaf) {
-		node* tmp = n->next;
-		n->next = new;
-		new->prev = n;
-		new->next = tmp;
-		tmp->prev = new;
-	}
+	
 	new->isLeaf = n->isLeaf;
 
 	// copying over children and pointers
@@ -197,52 +272,92 @@ node* splitNode(node* n) {
 	new->childCount = n->childCount/2;
 	n->childCount -= n->childCount/2;
 
+	if (n->isLeaf) {
+		// Inserting into linked list of leaves
+		node* tmp = n->next;
+		n->next = new;
+		new->prev = n;
+		new->next = tmp;
+		tmp->prev = new;
+
+		// Updating and setting maxPageNumber
+		n->maxPageNumber = ((page*) n->children[n->childCount-1])->pageNum;
+		new->maxPageNumber = ((page*) new->children[new->childCount-1])->pageNum;
+	}
+
+	// Updating and setting maxPageNumber if nodes are not leaves
+	n->maxPageNumber = ((node*) n->children[n->childCount-1])->maxPageNumber;
+	new->maxPageNumber = ((node*) new->children[new->childCount-1])->maxPageNumber;
 
 	return new;
 }
 
 // UNTESTED
-void addInternalAndBalance(node* n, node* newChild) {
-	// add new internal node and its page number ranges as appropriate to respective arrays in n
+// adds a new node to a node and balances the tree recursively
+void addNodeAndBalance(node* n, node* newChild) {
+	// add new node and its page number ranges as appropriate to respective arrays in n
 	// if this would exceed n's capacity, split n and recursively call algorithm
-	// add base case for root node
-	;
+	if (isFull(n)) {
+		node* new = splitNode(n);
+		// if current node is root node then create a new root
+		if (isRoot(n)) {
+			node* r = newRoot(n, 1);
+		}
+	
+		// decide which node to add the new node to and add it
+		for (int i = 0; i < n->parent->childCount; i++) {
+			if (n->parent->children[i] == n) {
+				if (newChild->maxPageNumber > n->parent->keys[i]) {
+					addNode(new, newChild);
+				} else {
+					addNode(n, newChild);
+				}
+				break;
+			}
+		}
+		// add new node to parent and balance if necessary
+		addNodeAndBalance(n->parent, new);
+		return;
+	}
+	// otherwise just add the node
+	addNode(n, newChild);
 }
 
 // UNTESTED
-// adds a page to an internal node and balances the tree recursively
+// adds a page to a node and balances the tree recursively
 void addPageAndBalance(node* n, page* newPage) {
 	// add new page number and pointer to respective arrays in n
-	// if this would exceed n's capacity, split n and call addInternalAndBalance
-	for (int i = 0; i < n->childCount; i++) {
-		if (newPage->pageNum < ((page*) n->children[i])->pageNum) {
-			// if node is full
-			if (n->childCount == M) {
-				node* new = splitNode(n);
-				if (i > M/2) addPage(new, newPage);
-				else addPage(n, newPage);
-				// If this current node is the root node
-				if (n->parent == NULL) {
-					node* r = newRoot(n, 1);
-					n->parent = r;
-					addInternalAndBalance(n->parent, new);
-				} else {
-					addInternalAndBalance(n->parent, new);
-				}
-				return;
-			} else {
-				// adjust keys too
-				shiftNodeArray(n->children, i, M);
-				n->children[i] = newPage;
-				return;
-			}
-			break;
+	// if this would exceed n's capacity, split n and call addNodeAndBalance()
+	if (isFull(n)) {
+		// split the node
+		node* new = splitNode(n);
+		// if current node is root node then create a new root
+		if (isRoot(n)) {
+			node* r = newRoot(n, 1);
 		}
+
+		// decide which node to add the page to and add it
+		for (int i = 0; i < n->parent->childCount; i++) {
+			if (n->parent->children[i] == n) {
+				if (newPage->pageNum > n->parent->keys[i]) {
+					addPage(new, newPage);
+				} else {
+					addPage(n, newPage);
+				}
+				break;
+			}
+		}
+		// add the new node to parent and balance if necessary
+		addNodeAndBalance(n->parent, new);
+		return;
 	}
+	// else just add the new page to the node
+	addPage(n, newPage);
 }
 
 // UNTESTED
-void splitAndInsert(page* p, int tuple) {
+// adds new tuple to page and recursively balances tree
+void addTupleAndBalance(page* p, int tuple) {
 	page* new = splitPage(p);
 	writeVal(p, tuple);
 	addPageAndBalance(p->parent, new);
@@ -252,7 +367,7 @@ void splitAndInsert(page* p, int tuple) {
 void insertTuple(int tuple, int pageNum, int pageOffs, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
 	if (isFull(p)) {
-		splitAndInsert(p, tuple); // recursively splits ancestors up to root node
+		addTupleAndBalance(p, tuple);
 	}
 }
 
