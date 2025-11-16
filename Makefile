@@ -1,7 +1,10 @@
 
-main: main.o scanner.o debug.o chunk.o memory.o
-	gcc -fsanitize=address main.o scanner.o debug.o chunk.o memory.o -o main
+main: main.o bplus.o scanner.o debug.o chunk.o memory.o
+	gcc -fsanitize=address main.o bplus.o scanner.o debug.o chunk.o memory.o -o main
 	rm *.o
+
+bplus.o: bplus.c bplus.h common.h
+	gcc -c bplus.c -o bplus.o
 
 chunk.o: chunk.c chunk.h common.h
 	gcc -c chunk.c -o chunk.o

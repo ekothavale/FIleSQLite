@@ -63,7 +63,7 @@ node* newTree(int pageNum) {
 
 	p->pageNum = pageNum;
 	p->parent = new;
-	p->stackTop = 0;
+	p->stackTop = p->vals + NUM_VALS - 1; // points to the first unused spot in vals (grows down from end of arr)
 	p->usedMem = 0;
 	p->usedSlots = 0;
 
@@ -78,39 +78,64 @@ node* newTree(int pageNum) {
 // assumes there is a free space in the array
 // len is the total length of the array
 // start is the free space to be created
-void shiftIntArray(int* array, int start, int len) {
+int shiftIntArray(int* array, int start, int len) {
+	if (start > len-1) {
+		printf("Start index %d beyond length %d of array in shiftIntArray\n", start, len);
+		return -1;
+	}
 	for (int i = len-1; i > start; i--) {
 		array[i] = array[i-1];
 	}
+	array[start] = 0;
+	return 0;
 }
 
-// UNTESTED
-void shiftPageArray(page** array, int start, int len) {
+int shiftPageArray(page** array, int start, int len) {
+	if (start > len-1) {
+		printf("Start index %d beyond length %d of array in shiftPageArray\n", start, len);
+		return -1;
+	}
 	for (int i = len-1; i > start; i--) {
 		array[i] = array[i-1];
 	}
+	array[start] = NULL;
+	return 0;
 }
 
-// UNTESTED
-void shiftNodeArray(node** array, int start, int len) {
+int shiftNodeArray(node** array, int start, int len) {
+	if (start > len-1) {
+		printf("Start index %d beyond length %d of array in shiftPageArray\n", start, len);
+		return -1;
+	}
 	for (int i = len-1; i > start; i--) {
 		array[i] = array[i-1];
 	}
+	array[start] = NULL;
+	return 0;
 }
 
 // UNTESTED
-// finds a page in a tree by page key
-page* findPage(int key, node* tree) {
-	int pageNum = key & (2147483647 - NUM_SLOTS + 1);
+// finds a page in a tree by page number
+// returns null if page is not in tree
+page* findPage(int pageNum, node* tree) {
+	if (pageNum > tree->maxPageNumber) return NULL;
 	// check if new tree
-	if (tree->isLeaf && tree->childCount == 0) { // likely want to abstract this out of the function for small performance upgrade
-		return tree; 
+	if (tree->isLeaf) { 
+		if (tree->childCount == 0) {
+			printf("Attempted to find page in invalid tree\n");
+			return NULL; // input was an invalid tree
+		}
+		for (int i = 0; i < tree->childCount; i++) {
+			if (((page*) tree->children[i])->pageNum == pageNum) return tree->children[i];
+		}
+
 	}
+	printf("Gets through here\n");
 	// compare pageNum against keys in node
 	while(!tree->isLeaf) {
-		for (int i = 0; i < tree->childCount-2; i++) {
+		for (int i = 0; i < tree->childCount-1; i++) {
 			// searching for correct key position
-			if ((i == 0 && pageNum <= tree->keys[i]) || (pageNum <= tree->keys[i] && pageNum > tree->keys[i-1])) {
+			if (pageNum <= tree->keys[i]) {
 				tree = tree->children[i];
 				break;
 			}
@@ -121,21 +146,21 @@ page* findPage(int key, node* tree) {
 	// we have found the correct leaf
 	for (int i = 0; i < tree->childCount; i++) {
 		// search for correct page
-		if (i == 0 && pageNum <= tree->keys[i] || pageNum <= tree->keys[i] && pageNum > tree->keys[i-1]) {
+		if (pageNum == tree->keys[i]) {
 			return tree->children[i];
 		}
 	}
-	return tree->children[tree->childCount-1];
+	return NULL;
 
 }
 
 // UNTESTED
-bool isFull(page* p) {
+bool isPageFull(page* p) {
 	return p->usedSlots >= NUM_SLOTS || p->usedMem >= PAGE_CAPACITY;
 }
 
 // UNTESTED
-bool isFull(node* n) {
+bool isNodeFull(node* n) {
 	return n->childCount >= M;
 }
 
@@ -150,10 +175,10 @@ bool isRoot(node* n) {
 
 // UNTESTED
 bool writeVal(page* p, int val) {
-	if (isFull(p)) return false;
-	p->stackTop--;
+	if (isPageFull(p)) return false;
 	*(p->stackTop) = val;
 	p->usedMem += sizeof(val);
+	p->stackTop--;
 	return true;
 }
 
@@ -163,7 +188,7 @@ bool writeVal(page* p, int val) {
 // if true, operation was successful
 // if false, operation was not performed because conditions were not right
 bool addPage(node* n, page* p) {
-	if (isFull(n) || !n->isLeaf) {
+	if (isNodeFull(n) || !n->isLeaf) {
 		printf("Error Flagged while illegally adding page\n");
 		return false; // shouldn't run in these conditions
 	}
@@ -173,15 +198,17 @@ bool addPage(node* n, page* p) {
 			// We've found the correct spot for the page
 			shiftIntArray(n->keys, i, n->childCount-1);
 			n->keys[i] = p->pageNum;
-			shiftPageArray((page*) n->children, i, n->childCount);
+			shiftPageArray((page**) n->children, i, n->childCount);
 			n->children[i] = p;
 			n->childCount++;
 			return true;
 		}
 	}
+	printf("Problem occurs here\n");
 	// if here, new page should go last
 	n->keys[n->childCount - 1] = ((page*) n->children[n->childCount-1])->pageNum;
 	n->children[n->childCount] = p;
+	printf("ChildCount: %d\n", n->childCount);
 	n->childCount++;
 	n->maxPageNumber = p->pageNum;
 	return true;
@@ -193,7 +220,7 @@ bool addPage(node* n, page* p) {
 // if true, operation was successful
 // if false, operation was not performed since the conditions weren't right
 bool addNode(node* parent, node* child) {
-	if (isFull(parent) || parent->isLeaf) {
+	if (isNodeFull(parent) || parent->isLeaf) {
 		printf("Error flagged while illegally adding node\n");
 		return false; // shouldn't run in these conditions
 	}
@@ -204,7 +231,7 @@ bool addNode(node* parent, node* child) {
 			// We've found the right spot to insert the child
 			shiftIntArray(parent->keys, i, parent->childCount-1);
 			parent->keys[i] = child->maxPageNumber;
-			shiftNodeArray(parent->keys, i, parent->childCount);
+			shiftNodeArray(((node**)parent->children), i, parent->childCount);
 			parent->children[i] = child;
 			parent->childCount++;
 			return true;
@@ -283,7 +310,7 @@ node* splitNode(node* n) {
 void addNodeAndBalance(node* n, node* newChild) {
 	// add new node and its page number ranges as appropriate to respective arrays in n
 	// if this would exceed n's capacity, split n and recursively call algorithm
-	if (isFull(n)) {
+	if (isNodeFull(n)) {
 		node* new = splitNode(n);
 		// if current node is root node then create a new root
 		if (isRoot(n)) {
@@ -314,7 +341,7 @@ void addNodeAndBalance(node* n, node* newChild) {
 void addPageAndBalance(node* n, page* newPage) {
 	// add new page number and pointer to respective arrays in n
 	// if this would exceed n's capacity, split n and call addNodeAndBalance()
-	if (isFull(n)) {
+	if (isNodeFull(n)) {
 		// split the node
 		node* new = splitNode(n);
 		// if current node is root node then create a new root
@@ -352,7 +379,7 @@ void addTupleAndBalance(page* p, int tuple) {
 // UNTESTED
 void insertTuple(int tuple, int pageNum, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
-	if (isFull(p)) {
+	if (isPageFull(p)) {
 		addTupleAndBalance(p, tuple);
 	} else {
 		if (!writeVal(p, tuple)) printf("Error flagged while illegally writing tuple\n");
