@@ -403,6 +403,7 @@ void freePage(page* p) {
 }
 
 void freeTree(node* r) {
+	if (r == NULL) return;
 	if (r->isLeaf) {
 		for (int i = 0; i < r->childCount; i++) {
 			freePage(r->children[i]);
