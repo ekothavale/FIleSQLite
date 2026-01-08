@@ -18,6 +18,90 @@ void printChunk(Chunk* chunk) {
 	printf("Total chunks: %d\n", chunk->count);
 }
 
+node* generateTestBPlusTree() {
+    // Create the root node
+    node* root = malloc(sizeof(node));
+    root->isLeaf = false;
+    root->parent = NULL;
+    root->prev = NULL;
+    root->next = NULL;
+    root->childCount = 3; // Root has 3 children
+
+    // Create internal nodes
+    node* internalNodes[3];
+    for (int i = 0; i < 3; i++) {
+        internalNodes[i] = malloc(sizeof(node));
+        internalNodes[i]->isLeaf = false;
+        internalNodes[i]->parent = root;
+        internalNodes[i]->prev = (i > 0) ? internalNodes[i - 1] : NULL;
+        internalNodes[i]->next = NULL;
+        if (i > 0) internalNodes[i - 1]->next = internalNodes[i];
+        root->children[i] = internalNodes[i];
+    }
+
+    // Fibonacci sequence initialization
+    int fib1 = 1, fib2 = 1;
+
+    // Create leaf nodes
+    int leafNodeCounts[3] = {2, 2, 2}; // Number of leaf nodes per internal node
+    node* prevLeaf = NULL;
+    for (int i = 0; i < 3; i++) {
+        internalNodes[i]->childCount = leafNodeCounts[i];
+        int maxPageNumber = 0; // Track max page number for internal node
+        for (int j = 0; j < leafNodeCounts[i]; j++) {
+            node* leaf = malloc(sizeof(node));
+            leaf->isLeaf = true;
+            leaf->parent = internalNodes[i];
+            leaf->prev = prevLeaf;
+            leaf->next = NULL;
+            if (prevLeaf) prevLeaf->next = leaf;
+            prevLeaf = leaf;
+            internalNodes[i]->children[j] = leaf;
+
+            // Create pages for the leaf node
+            int pageCount = (j % 2) + 1; // Variable, nonzero number of pages
+            leaf->childCount = pageCount;
+            for (int k = 0; k < pageCount; k++) {
+                page* p = malloc(sizeof(page));
+                p->pageNum = fib2; // Assign Fibonacci number as page number
+                int nextFib = fib1 + fib2;
+                fib1 = fib2;
+                fib2 = nextFib;
+
+                p->usedSlots = 0;
+                p->usedMem = 0;
+                p->valsOffset = 0;
+                p->parent = leaf;
+                leaf->children[k] = p;
+
+                // Update maxPageNumber for the leaf node
+                if (p->pageNum > maxPageNumber) {
+                    maxPageNumber = p->pageNum;
+                }
+            }
+
+            // Set the key range for the leaf node
+            leaf->keys[0] = ((page*)leaf->children[0])->pageNum;
+            leaf->keys[1] = ((page*)leaf->children[leaf->childCount - 1])->pageNum;
+            leaf->maxPageNumber = maxPageNumber; // Update maxPageNumber for the leaf
+        }
+
+        // Set the keys and maxPageNumber for the internal node
+        internalNodes[i]->keys[0] = ((node*)internalNodes[i]->children[0])->keys[1];
+        if (internalNodes[i]->childCount > 1) {
+            internalNodes[i]->keys[1] = ((node*)internalNodes[i]->children[1])->keys[1];
+        }
+        internalNodes[i]->maxPageNumber = maxPageNumber;
+    }
+
+    // Set keys and maxPageNumber for the root node
+    root->keys[0] = internalNodes[0]->keys[1]; // Pages <= key in the left subtree
+    root->keys[1] = internalNodes[1]->keys[1]; // Pages <= key in the middle subtree
+    root->maxPageNumber = internalNodes[2]->maxPageNumber; // Max page number in the entire tree
+
+    return root;
+}
+
 void printPage(page* p) {
 	printf("Page %d\n", p->pageNum);
 	printf("Parent node: %p\n", p->parent);
@@ -35,4 +119,48 @@ void printPage(page* p) {
 	printf("%d\n", p->vals[NUM_VALS-1]);
 	printf("\n");
 
+}
+
+void prettyPrintTree(node* root, int level) {
+    if (root == NULL) {
+        printf("Tree is empty.\n");
+        return;
+    }
+
+    // Indentation for the current level
+    for (int i = 0; i < level; i++) {
+        printf("    ");
+    }
+
+    // Print the current node
+    printf("Node at level %d: ", level);
+    if (root->isLeaf) {
+        printf("[Leaf Node] Keys: ");
+        for (int i = 0; i < root->childCount; i++) {
+            printf("%d ", root->keys[i]);
+        }
+        printf("\n");
+
+        // Print the pages this leaf node points to
+        for (int i = 0; i < root->childCount; i++) {
+            page* p = (page*)root->children[i];
+            if (p != NULL) {
+                for (int j = 0; j < level + 1; j++) {
+                    printf("    ");
+                }
+                printf("Page %d\n", p->pageNum);
+            }
+        }
+    } else {
+        printf("[Internal Node] Keys: ");
+        for (int i = 0; i < root->childCount - 1; i++) {
+            printf("%d ", root->keys[i]);
+        }
+        printf("\n");
+
+        // Recursively print child nodes
+        for (int i = 0; i < root->childCount; i++) {
+            prettyPrintTree((node*)root->children[i], level + 1);
+        }
+    }
 }

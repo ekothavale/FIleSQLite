@@ -74,6 +74,11 @@ node* newTree(int pageNum) {
 // ##########################################################################################################################################
 // GENERAL HELPER FUNCTIONS
 
+// this should eventually be moved to a file containing general helper functions for the entire project
+int max(int a, int b) {
+	return a >= b ? a : b;
+}
+
 // shifts the elements of an array right by 1 starting at the given index
 // assumes there is a free space in the array
 // len is the total length of the array
@@ -118,40 +123,37 @@ int shiftNodeArray(node** array, int start, int len) {
 // finds a page in a tree by page number
 // returns null if page is not in tree
 page* findPage(int pageNum, node* tree) {
+    if (tree == NULL || tree->childCount == 0) {
+        printf("Attempted to find page in invalid tree\n");
+        return NULL; // input was an invalid tree
+    }
 	if (pageNum > tree->maxPageNumber) return NULL;
-	// check if new tree
-	if (tree->isLeaf) { 
-		if (tree->childCount == 0) {
-			printf("Attempted to find page in invalid tree\n");
-			return NULL; // input was an invalid tree
-		}
-		for (int i = 0; i < tree->childCount; i++) {
-			if (((page*) tree->children[i])->pageNum == pageNum) return tree->children[i];
-		}
+    // Compare pageNum against keys in node
+    while (!tree->isLeaf) {
+        int found = 0;
+        for (int i = 0; i < tree->childCount - 1; i++) {
+            // Searching for the correct key position
+            if (pageNum <= tree->keys[i]) {
+                tree = tree->children[i];
+                found = 1;
+                break;
+            }
+        }
+        // If key wasn't less than any indices, the last child is the correct path
+        if (!found) {
+            tree = tree->children[tree->childCount - 1];
+        }
+    }
 
-	}
-	printf("Gets through here\n");
-	// compare pageNum against keys in node
-	while(!tree->isLeaf) {
-		for (int i = 0; i < tree->childCount-1; i++) {
-			// searching for correct key position
-			if (pageNum <= tree->keys[i]) {
-				tree = tree->children[i];
-				break;
-			}
-		// if key wasn't less than any inidices then the last child is the correct path
-		tree = tree->children[tree->childCount-1];
-		}
-	}
-	// we have found the correct leaf
-	for (int i = 0; i < tree->childCount; i++) {
-		// search for correct page
-		if (pageNum == tree->keys[i]) {
-			return tree->children[i];
-		}
-	}
-	return NULL;
+    // We have found the correct leaf
+    for (int i = 0; i < tree->childCount; i++) {
+        page* p = (page*)tree->children[i];
+        if (p->pageNum == pageNum) {
+            return p;
+        }
+    }
 
+    return NULL;
 }
 
 // UNTESTED
@@ -216,7 +218,7 @@ bool addPage(node* n, page* p) {
 	n->children[n->childCount] = p;
 	printf("ChildCount: %d\n", n->childCount);
 	n->childCount++;
-	n->maxPageNumber = p->pageNum;
+	n->maxPageNumber = max(n->maxPageNumber, p->pageNum);
 	return true;
 }
 
@@ -248,7 +250,7 @@ bool addNode(node* parent, node* child) {
 	parent->keys[parent->childCount - 1] = ((node*) parent->children[parent->childCount - 1])->maxPageNumber;
 	parent->children[parent->childCount] = child;
 	parent->childCount++;
-	parent->maxPageNumber = child->maxPageNumber;
+	parent->maxPageNumber = max(parent->maxPageNumber, child->maxPageNumber);
 	return true;
 
 }
