@@ -52,5 +52,5 @@ bool writeVal(page* p, int val);
 page* findPage(int pageNum, node* tree);
 
 bool addPage(node* n, page* p);
-
+page* newPage(int pageNum, node* parent);
 #endif // BPLUS_H

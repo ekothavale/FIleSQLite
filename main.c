@@ -40,9 +40,14 @@ void test(int n) {
 
 int main(int argc, char** argv) {
     // B+ Tree Testing
+    page* p = newPage(7, NULL);
+    printPage(p);
+
     node* q = generateTestBPlusTree();
-    page* p = malloc(sizeof(page));
-    testn(1, q, p);
+    node* n = findPage(34, q)->parent;
+
+
+    //testn(1, q, p);
     freeTree(q);
     
 

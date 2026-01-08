@@ -70,6 +70,18 @@ node* newTree(int pageNum) {
 	return new;
 }
 
+// creates a blank page and fills in the parent and page number
+page* newPage(int pageNum, node* parent) {
+	if (parent && !parent->isLeaf) {
+		printf("Error: tried to add page to non leaf node\n");
+		return NULL;
+	}
+	page* p = calloc(1, sizeof(page));
+	p->pageNum = pageNum;
+	p->parent = parent;
+	return p;
+}
+
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // GENERAL HELPER FUNCTIONS
