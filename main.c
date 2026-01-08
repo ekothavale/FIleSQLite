@@ -13,12 +13,19 @@ void execute(char* input) {
     //run(bytecode);
 }
 
-void testn(int n, node* t) {
+void testn(int n, node* t, page* p) {
+    printPage(p);
     prettyPrintTree(t, 0);
-    page* p = findPage(n, t);
+    page* l = findPage(n, t);
     if (p == NULL) printf("Page %d NOT FOUND in tree\n", n);
     else printf("Page %d FOUND in tree\n", p->pageNum);
+
     printf("\n");
+
+    addPage(l->parent, p);
+
+    printPage(p);
+    prettyPrintTree(t, 0);
 }
 
 void test(int n) {
@@ -34,9 +41,8 @@ void test(int n) {
 int main(int argc, char** argv) {
     // B+ Tree Testing
     node* q = generateTestBPlusTree();
-    q = NULL;
-    testn(301, q);
-    testn(34, q);
+    page* p = malloc(sizeof(page));
+    testn(1, q, p);
     freeTree(q);
     
 

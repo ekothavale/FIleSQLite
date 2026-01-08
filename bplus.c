@@ -119,7 +119,6 @@ int shiftNodeArray(node** array, int start, int len) {
 	return 0;
 }
 
-// UNTESTED
 // finds a page in a tree by page number
 // returns null if page is not in tree
 page* findPage(int pageNum, node* tree) {
@@ -144,7 +143,6 @@ page* findPage(int pageNum, node* tree) {
             tree = tree->children[tree->childCount - 1];
         }
     }
-
     // We have found the correct leaf
     for (int i = 0; i < tree->childCount; i++) {
         page* p = (page*)tree->children[i];
@@ -152,7 +150,6 @@ page* findPage(int pageNum, node* tree) {
             return p;
         }
     }
-
     return NULL;
 }
 
@@ -196,8 +193,11 @@ bool writeVal(page* p, int val) {
 // if true, operation was successful
 // if false, operation was not performed because conditions were not right
 bool addPage(node* n, page* p) {
+	if (p == NULL) {
+		printf("Error: tried to add page to NULL address\n");
+	}
 	if (isNodeFull(n) || !n->isLeaf) {
-		printf("Error Flagged while illegally adding page\n");
+		printf("Error: tried to add page to incompatible node\n");
 		return false; // shouldn't run in these conditions
 	}
 	p->parent = n;
@@ -390,7 +390,7 @@ void insertTuple(int tuple, int pageNum, node* tree) {
 	if (isPageFull(p)) {
 		addTupleAndBalance(p, tuple);
 	} else {
-		if (!writeVal(p, tuple)) printf("Error flagged while illegally writing tuple\n");
+		if (!writeVal(p, tuple)) printf("Error: tried to write tuple to incompatible page\n");
 	}
 }
 // ##########################################################################################################################################
