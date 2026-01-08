@@ -22,9 +22,9 @@ typedef struct page {
 	int pageNum;
 	int usedSlots;
 	int usedMem; // amount of mem taking in bytes by values stored in the page
-	int* slotarr[NUM_SLOTS];
+	int slotarr[NUM_SLOTS];
 	int vals[NUM_VALS];
-	int* stackTop; // starts at end of page and gets decremented
+	int valsOffset; // offset from end of page
 	struct node* parent;
 }page;
 

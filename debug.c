@@ -20,19 +20,19 @@ void printChunk(Chunk* chunk) {
 
 void printPage(page* p) {
 	printf("Page %d\n", p->pageNum);
-	printf("Parent node: %a", p->parent);
+	printf("Parent node: %p\n", p->parent);
 	printf("Used slots: %d\nUsed memory: %dB\n", p->usedSlots, p->usedMem);
 	printf("Slot array:\n");
-	for (int i = 0; i < p->usedSlots - 1; p++) {
+	for (int i = 0; i < p->usedSlots - 1; i++) {
 		printf("%d | ", p->slotarr[i]);
 	}
 	printf("%d\n", p->slotarr[p->usedSlots-1]);
-	printf("Stack Top: %a\n", p->stackTop);
+	printf("Stack Top: %d\n", p->valsOffset);
 	printf("Memory:\n");
-	for (int* l = p->stackTop; l < NUM_VALS - 1; l++) {
-		printf("%d | ", *l);
+	for (int l = p->valsOffset; l > 0; l--) {
+		printf("%d | ", p->vals[NUM_VALS - 1 - l]);
 	}
 	printf("%d\n", p->vals[NUM_VALS-1]);
-	print("\n");
+	printf("\n");
 
 }

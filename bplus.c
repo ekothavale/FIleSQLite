@@ -63,7 +63,7 @@ node* newTree(int pageNum) {
 
 	p->pageNum = pageNum;
 	p->parent = new;
-	p->stackTop = p->vals + NUM_VALS - 1; // points to the first unused spot in vals (grows down from end of arr)
+	p->valsOffset = 0; // points to the first unused spot in vals (offset from end of values array)
 	p->usedMem = 0;
 	p->usedSlots = 0;
 
@@ -173,12 +173,18 @@ bool isRoot(node* n) {
 // ##########################################################################################################################################
 // INSERTION FUNCTIONS
 
-// UNTESTED
+/* writes a value (currently of type int) to a page
+@param p: pointer to a page
+@param val: value to be written
+@return: boolean if write was successful or not
+*/
 bool writeVal(page* p, int val) {
 	if (isPageFull(p)) return false;
-	*(p->stackTop) = val;
+	p->vals[NUM_VALS - 1 - p->valsOffset] = val;
 	p->usedMem += sizeof(val);
-	p->stackTop--;
+	p->slotarr[p->usedSlots] = p->valsOffset;
+	p->usedSlots++;
+	p->valsOffset++;
 	return true;
 }
 
@@ -259,7 +265,7 @@ page* splitPage(page* p) {
 	new->usedSlots = p->usedSlots - p->usedSlots/2;
 	new->parent = p->parent;
 	for (int i = 0; i < new->usedSlots; i++) {
-		writeVal(new, *(new->slotarr[i]));
+		writeVal(new, new->slotarr[i]);
 	}
 	return new;
 }

@@ -82,19 +82,17 @@ void testn(int n) {
 
 void test(int n) {
     page p;
-    p.pageNum = 10;
+    p.pageNum = n;
     p.parent = NULL;
     for (int i = 0; i < n; i++) {
-        writeVal(&p, i);
+        printf("%d\n", (writeVal(&p, i)));
     }
-    
+    printPage(&p);
 }
 
 int main(int argc, char** argv) {
     // B+ Tree Testing
-    for (int i = 0; i < 30; i++) {
-        test(i);
-    }
+    test(10000000);
     
 
     // VM Testing
