@@ -11,6 +11,6 @@ void printChunk(Chunk* chunk);
 
 node* generateTestBPlusTree();
 void printPage(page* p);
-void prettyPrintTree(node* root, int level);
+void printTree(node* root, int level);
 
 #endif // DEBUG_H

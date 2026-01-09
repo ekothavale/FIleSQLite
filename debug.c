@@ -121,7 +121,7 @@ void printPage(page* p) {
 
 }
 
-void prettyPrintTree(node* root, int level) {
+void printTree(node* root, int level) {
     if (root == NULL) {
         printf("Tree is empty.\n");
         return;
@@ -160,7 +160,7 @@ void prettyPrintTree(node* root, int level) {
 
         // Recursively print child nodes
         for (int i = 0; i < root->childCount; i++) {
-            prettyPrintTree((node*)root->children[i], level + 1);
+            printTree((node*)root->children[i], level + 1);
         }
     }
 }

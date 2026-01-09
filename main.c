@@ -15,7 +15,7 @@ void execute(char* input) {
 
 void testn(int n, node* t, page* p) {
     printPage(p);
-    prettyPrintTree(t, 0);
+    printTree(t, 0);
     page* l = findPage(n, t);
     if (p == NULL) printf("Page %d NOT FOUND in tree\n", n);
     else printf("Page %d FOUND in tree\n", p->pageNum);
@@ -25,7 +25,7 @@ void testn(int n, node* t, page* p) {
     addPage(l->parent, p);
 
     printPage(p);
-    prettyPrintTree(t, 0);
+    printTree(t, 0);
 }
 
 void test(int n) {
@@ -42,13 +42,12 @@ int main(int argc, char** argv) {
     // B+ Tree Testing
 
     node* q = generateTestBPlusTree();
-    prettyPrintTree(q, 0);
-    page* p = findPage(34, q);
-    int a = findNextPageNum(p);
-    int b = findNextPageNum(findPage(3, q));
-    int c = findNextPageNum(findPage(1, q));
-    int d = findNextPageNum(findPage(100, q));
-    printf("%d, %d, %d, %d\n", a, b, c, d);
+    printTree(q, 0);
+    node* n = findPage(5, q)->parent;
+    page* p = newPage(100, NULL);
+    addPage(NULL, NULL);
+    printPage(p);
+    printTree(q, 0);
 
 
     //testn(1, q, p);

@@ -219,14 +219,19 @@ bool writeVal(page* p, int val) {
 	return true;
 }
 
-// UNTESTED
-// adds a page to a node
-// assumes node is not full
-// if true, operation was successful
-// if false, operation was not performed because conditions were not right
+/* adds a page to a node
+assumes node is not full
+@return true, operation was successful
+@return false, operation was not performed because conditions were not right
+*/
 bool addPage(node* n, page* p) {
 	if (p == NULL) {
+		printf("Error: tried to add page but page was NULL\n");
+		return false;
+	}
+	if (n == NULL) {
 		printf("Error: tried to add page to NULL address\n");
+		return false;
 	}
 	if (isNodeFull(n) || !n->isLeaf) {
 		printf("Error: tried to add page to incompatible node\n");
@@ -244,7 +249,6 @@ bool addPage(node* n, page* p) {
 			return true;
 		}
 	}
-	printf("Problem occurs here\n");
 	// if here, new page should go last
 	n->keys[n->childCount - 1] = ((page*) n->children[n->childCount-1])->pageNum;
 	n->children[n->childCount] = p;
