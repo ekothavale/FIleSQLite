@@ -19,7 +19,7 @@
 
 
 typedef struct page {
-	int pageNum;
+	int pageNum; // unsigned int greater than 0
 	int usedSlots;
 	int usedMem; // amount of mem taking in bytes by values stored in the page
 	int slotarr[NUM_SLOTS];
@@ -50,7 +50,9 @@ node* newTree(int pageNum);
 // Unit Testing
 bool writeVal(page* p, int val);
 page* findPage(int pageNum, node* tree);
+page* newPage(int pageNum, node* parent);
 
 bool addPage(node* n, page* p);
-page* newPage(int pageNum, node* parent);
+int findNextPageNum(page* p);
+
 #endif // BPLUS_H

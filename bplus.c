@@ -139,6 +139,7 @@ page* findPage(int pageNum, node* tree) {
         return NULL; // input was an invalid tree
     }
 	if (pageNum > tree->maxPageNumber) return NULL;
+	if (pageNum <= 0) return NULL;
     // Compare pageNum against keys in node
     while (!tree->isLeaf) {
         int found = 0;
@@ -163,6 +164,25 @@ page* findPage(int pageNum, node* tree) {
         }
     }
     return NULL;
+}
+
+/*
+CHANGE ALL PAGENUMS TO UNSIGNED INTS IN ALL FUNCTIONS
+Given a page, find the next available page number
+@return 0 for failure
+This function requires reading a lot of nodes/pages which will probably be slow.
+Probably a good target for refactoring after the first draft of the database.
+*/
+int findNextPageNum(page* p) {
+	if (!p || !p->parent) return 0;
+	int try = p->pageNum + 1;
+	for (node* n = p->parent; n != NULL; n = n->next){
+		for (int i = 0; i < n->childCount; i++) {
+			if (((page*) n->children[i])->pageNum > try) return try;
+			if (((page*) n->children[i])->pageNum == try) try++;
+		}
+	}
+	return 0; // if unable to find page return failure
 }
 
 // UNTESTED
@@ -269,15 +289,14 @@ bool addNode(node* parent, node* child) {
 
 // UNTESTED
 // splits a page in two, copies metadata and moves half of the stored data over
-page* splitPage(page* p) {
+page* splitPage(page* p, int pageNum) {
 	// allocate new page
-	page* new = malloc(sizeof(page));
+	page* new = newPage(pageNum, p->parent);
 	// move over stored data
 	for (int i = p->usedSlots/2; i < p->usedSlots; i++) {
 		new->slotarr[i - p->usedSlots/2] = p->slotarr[i];
 	}
 	new->usedSlots = p->usedSlots - p->usedSlots/2;
-	new->parent = p->parent;
 	for (int i = 0; i < new->usedSlots; i++) {
 		writeVal(new, new->slotarr[i]);
 	}
@@ -391,7 +410,7 @@ void addPageAndBalance(node* n, page* newPage) {
 // UNTESTED
 // adds new tuple to page and recursively balances tree
 void addTupleAndBalance(page* p, int tuple) {
-	page* new = splitPage(p);
+	page* new = splitPage(p, findNextPageNum(p));
 	writeVal(p, tuple);
 	addPageAndBalance(p->parent, new);
 }

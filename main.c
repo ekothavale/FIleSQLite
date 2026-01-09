@@ -40,11 +40,15 @@ void test(int n) {
 
 int main(int argc, char** argv) {
     // B+ Tree Testing
-    page* p = newPage(7, NULL);
-    printPage(p);
 
     node* q = generateTestBPlusTree();
-    node* n = findPage(34, q)->parent;
+    prettyPrintTree(q, 0);
+    page* p = findPage(34, q);
+    int a = findNextPageNum(p);
+    int b = findNextPageNum(findPage(3, q));
+    int c = findNextPageNum(findPage(1, q));
+    int d = findNextPageNum(findPage(100, q));
+    printf("%d, %d, %d, %d\n", a, b, c, d);
 
 
     //testn(1, q, p);
