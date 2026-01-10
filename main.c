@@ -43,11 +43,10 @@ int main(int argc, char** argv) {
 
     node* q = generateTestBPlusTree();
     printTree(q, 0);
-    node* n = findPage(5, q)->parent;
-    page* p = newPage(100, NULL);
-    addPage(NULL, NULL);
-    printPage(p);
-    printTree(q, 0);
+    for (int i = 0; i < 3; i++) {
+        printNode(q);
+        q = q->children[0];
+    }
 
 
     //testn(1, q, p);

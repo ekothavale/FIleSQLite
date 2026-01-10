@@ -59,7 +59,7 @@ node* generateTestBPlusTree() {
             internalNodes[i]->children[j] = leaf;
 
             // Create pages for the leaf node
-            int pageCount = (j % 2) + 1; // Variable, nonzero number of pages
+            int pageCount = (j % 3) + 1; // Variable, nonzero number of pages
             leaf->childCount = pageCount;
             for (int k = 0; k < pageCount; k++) {
                 page* p = malloc(sizeof(page));
@@ -119,6 +119,25 @@ void printPage(page* p) {
 	printf("%d\n", p->vals[NUM_VALS-1]);
 	printf("\n");
 
+}
+
+/* UNTESTED
+incomplete
+*/
+void printNode(node* n) {
+    printf(n->isLeaf ? "Leaf" : "Internal");
+    printf(" node with\nKeys:");
+    for (int i = 0; i < n->childCount-1; i++) {
+        printf(" %d", n->keys[i]);
+    }
+    printf("\n%d Children:", n->childCount);
+    for (int i = 0; i < n->childCount; i++) {
+        printf(" %p", n->children[i]);
+    }
+    printf("\nMaximum Page Number: %d\n", n->maxPageNumber);
+    printf("Parent: %p\n", n->parent);
+    printf("Previous: %p\n", n->prev);
+    printf("Next: %p\n\n", n->next);
 }
 
 void printTree(node* root, int level) {

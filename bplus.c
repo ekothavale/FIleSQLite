@@ -219,6 +219,7 @@ bool writeVal(page* p, int val) {
 	return true;
 }
 
+// STILL NEED TO CHECK THAT THIS PUTS THE PAGE IN THE CORRECT SPOT IN CHILDREN
 /* adds a page to a node
 assumes node is not full
 @return true, operation was successful
@@ -252,20 +253,20 @@ bool addPage(node* n, page* p) {
 	// if here, new page should go last
 	n->keys[n->childCount - 1] = ((page*) n->children[n->childCount-1])->pageNum;
 	n->children[n->childCount] = p;
-	printf("ChildCount: %d\n", n->childCount);
 	n->childCount++;
 	n->maxPageNumber = max(n->maxPageNumber, p->pageNum);
 	return true;
 }
 
-// UNTESTED
-// adds a child node to another node
-// assumes node is not full and node is not a leaf
-// if true, operation was successful
-// if false, operation was not performed since the conditions weren't right
+/* UNTESTED
+adds a child node to another node
+assumes node is not full and node is not a leaf
+@return true, operation was successful
+@return false, operation was not performed since the conditions weren't right
+*/
 bool addNode(node* parent, node* child) {
 	if (isNodeFull(parent) || parent->isLeaf) {
-		printf("Error flagged while illegally adding node\n");
+		printf("Error: tried to add node to incompatible parent node\n");
 		return false; // shouldn't run in these conditions
 	}
 	// set child->parent as parent
