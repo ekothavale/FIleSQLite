@@ -102,6 +102,19 @@ node* generateTestBPlusTree() {
     return root;
 }
 
+void printIntArray(int* arr, int length) {
+    if(arr == NULL) {
+        printf("Array is NULL\n");
+        return;
+    }
+    printf("[%d", arr[0]);
+    if (length == 1) return;
+    for (int i = 1; i < length; i++) {
+        printf(", %d", arr[i]);
+    }
+    printf("]\n");
+}
+
 void printPage(page* p) {
 	printf("Page %d\n", p->pageNum);
 	printf("Parent node: %p\n", p->parent);

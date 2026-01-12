@@ -131,6 +131,21 @@ int shiftNodeArray(node** array, int start, int len) {
 	return 0;
 }
 
+// UNTESTED
+bool isPageFull(page* p) {
+	return p->usedSlots >= NUM_SLOTS || p->usedMem >= PAGE_CAPACITY;
+}
+
+// UNTESTED
+bool isNodeFull(node* n) {
+	return n->childCount >= M;
+}
+
+// UNTESTED
+bool isRoot(node* n) {
+	return n->parent == NULL && n->childCount > 0;
+}
+
 // finds a page in a tree by page number
 // returns null if page is not in tree
 page* findPage(int pageNum, node* tree) {
@@ -185,19 +200,9 @@ int findNextPageNum(page* p) {
 	return 0; // if unable to find page return failure
 }
 
-// UNTESTED
-bool isPageFull(page* p) {
-	return p->usedSlots >= NUM_SLOTS || p->usedMem >= PAGE_CAPACITY;
-}
-
-// UNTESTED
-bool isNodeFull(node* n) {
-	return n->childCount >= M;
-}
-
-// UNTESTED
-bool isRoot(node* n) {
-	return n->parent == NULL && n->childCount > 0;
+int updateMaxPageNum(node* n) {
+	if (n->isLeaf) return ((page*) n->children[n->childCount-1])->pageNum;
+	return ((node*) n->children[n->childCount-1])->maxPageNumber;
 }
 
 // ##########################################################################################################################################
@@ -219,7 +224,6 @@ bool writeVal(page* p, int val) {
 	return true;
 }
 
-// STILL NEED TO CHECK THAT THIS PUTS THE PAGE IN THE CORRECT SPOT IN CHILDREN
 /* adds a page to a node
 assumes node is not full
 @return true, operation was successful
@@ -239,19 +243,20 @@ bool addPage(node* n, page* p) {
 		return false; // shouldn't run in these conditions
 	}
 	p->parent = n;
-	for (int i = 0; i < n->childCount - 1; i++) {
+	for (int i = 0; i < n->childCount; i++) {
 		if (p->pageNum < n->keys[i]) {
 			// We've found the correct spot for the page
-			shiftIntArray(n->keys, i, n->childCount-1);
+			n->childCount++;
+			shiftIntArray(n->keys, i, n->childCount);
 			n->keys[i] = p->pageNum;
 			shiftPageArray((page**) n->children, i, n->childCount);
 			n->children[i] = p;
-			n->childCount++;
+			n->maxPageNumber = max(n->maxPageNumber, p->pageNum);
 			return true;
 		}
 	}
 	// if here, new page should go last
-	n->keys[n->childCount - 1] = ((page*) n->children[n->childCount-1])->pageNum;
+	n->keys[n->childCount] = p->pageNum;
 	n->children[n->childCount] = p;
 	n->childCount++;
 	n->maxPageNumber = max(n->maxPageNumber, p->pageNum);
@@ -265,6 +270,13 @@ assumes node is not full and node is not a leaf
 @return false, operation was not performed since the conditions weren't right
 */
 bool addNode(node* parent, node* child) {
+	if (child == NULL) {
+		printf("Error: tried to add node but node was NULL\n");
+		return false;
+	}
+	if (parent == NULL) {
+		printf("Error: tried to add node but parent node was NULL\n");
+	}
 	if (isNodeFull(parent) || parent->isLeaf) {
 		printf("Error: tried to add node to incompatible parent node\n");
 		return false; // shouldn't run in these conditions
@@ -279,12 +291,13 @@ bool addNode(node* parent, node* child) {
 			shiftNodeArray(((node**)parent->children), i, parent->childCount);
 			parent->children[i] = child;
 			parent->childCount++;
+			parent->maxPageNumber = max(parent->maxPageNumber, child->maxPageNumber);
 			return true;
 		}
 	}
 	// if here, new node should go last
 	// new key is the maximum of the previous node
-	parent->keys[parent->childCount - 1] = ((node*) parent->children[parent->childCount - 1])->maxPageNumber;
+	parent->keys[parent->childCount] = ((node*) parent->children[parent->childCount - 1])->maxPageNumber;
 	parent->children[parent->childCount] = child;
 	parent->childCount++;
 	parent->maxPageNumber = max(parent->maxPageNumber, child->maxPageNumber);
@@ -336,15 +349,11 @@ node* splitNode(node* n) {
 		new->prev = n;
 		new->next = tmp;
 		tmp->prev = new;
-
-		// Updating and setting maxPageNumber
-		n->maxPageNumber = ((page*) n->children[n->childCount-1])->pageNum;
-		new->maxPageNumber = ((page*) new->children[new->childCount-1])->pageNum;
 	}
 
-	// Updating and setting maxPageNumber if nodes are not leaves
-	n->maxPageNumber = ((node*) n->children[n->childCount-1])->maxPageNumber;
-	new->maxPageNumber = ((node*) new->children[new->childCount-1])->maxPageNumber;
+	// Updating and setting maxPageNumber
+	updateMaxPageNum(n);
+	updateMaxPageNum(new);
 
 	return new;
 }
