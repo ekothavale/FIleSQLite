@@ -269,7 +269,7 @@ bool addPage(node* n, page* p) {
 	return true;
 }
 
-/* UNTESTED
+/*
 adds a child node to another node
 assumes node is not full and node is not a leaf
 @return true, operation was successful
