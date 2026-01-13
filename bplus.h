@@ -22,8 +22,10 @@ node* newTree(int pageNum);
 bool writeVal(page* p, int val);
 page* findPage(int pageNum, node* tree);
 page* newPage(int pageNum, node* parent);
+node* newNode(bool isLeaf, node* parent);
 bool addPage(node* n, page* p);
 int findNextPageNum(page* p);
+bool addNode(node* parent, node* child);
 
 
 #endif // BPLUS_H
