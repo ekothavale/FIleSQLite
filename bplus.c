@@ -197,11 +197,10 @@ Probably a good target for refactoring after the first draft of the database.
 int findNextPageNum(page* p) {
 	if (!p || !p->parent) return 0;
 	int try = p->pageNum + 1;
-	for (node* n = p->parent; n != NULL; n = n->next){
-		for (int i = 0; i < n->childCount; i++) {
-			if (((page*) n->children[i])->pageNum > try) return try;
-			if (((page*) n->children[i])->pageNum == try) try++;
-		}
+	node* parent = p->parent;
+	for (int i = 0; i < parent->childCount; i++) {
+		if (((page*) parent->children[i])->pageNum > try) return try;
+		if (((page*) parent->children[i])->pageNum == try) try++;
 	}
 	return 0; // if unable to find page return failure
 }
@@ -432,7 +431,12 @@ void addPageAndBalance(node* n, page* newPage) {
 // UNTESTED
 // adds new tuple to page and recursively balances tree
 void addTupleAndBalance(page* p, int tuple) {
-	page* new = splitPage(p, findNextPageNum(p));
+	int num = findNextPageNum(p);
+	if (!num) {
+		printf("Error: findNextPageNum returned 0 and this error isn't supported yet\n");
+		num = p->pageNum - 1;
+	}
+	page* new = splitPage(p, num);
 	writeVal(p, tuple);
 	addPageAndBalance(p->parent, new);
 }
