@@ -191,8 +191,8 @@ page* findPage(int pageNum, node* tree) {
 CHANGE ALL PAGENUMS TO UNSIGNED INTS IN ALL FUNCTIONS
 Given a page, find the next available page number
 @return 0 for failure
-This function requires reading a lot of nodes/pages which will probably be slow.
-Probably a good target for refactoring after the first draft of the database.
+There is no guarantee this function will return a page number that is legal by the properties of a search tree.
+Probably a good target for refactoring after the first draft of the tree.
 */
 int findNextPageNum(page* p) {
 	if (!p || !p->parent) return 0;
