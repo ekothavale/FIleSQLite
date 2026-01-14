@@ -27,5 +27,5 @@ bool addPage(node* n, page* p);
 int findNextPageNum(page* p);
 bool addNode(node* parent, node* child);
 
-
+page* splitPage(page* p, int pageNum);
 #endif // BPLUS_H

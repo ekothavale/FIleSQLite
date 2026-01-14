@@ -42,14 +42,15 @@ int main(int argc, char** argv) {
     // B+ Tree Testing
 
     node* q = generateTestBPlusTree();
-    printTree(q, 0);
-    page* p = newPage(22, NULL);
-    page* g = newPage(23, NULL);
-    node* parent = findPage(34, q)->parent;
-    printTree(q, 0);
-    addPage(parent, p);
-    addPage(parent, g);
-    printTree(q, 0);
+    //printTree(q, 0);
+    page* parent = findPage(34, q);
+    int i = 0;
+    while (writeVal(parent, i * i) && i < 10) i++;
+    printPage(parent);
+    page* new = splitPage(parent, 35);
+    printPage(parent);
+    printPage(new);
+    //printTree(q, 0);
 
 
     //testn(1, q, p);

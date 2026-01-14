@@ -324,12 +324,8 @@ page* splitPage(page* p, int pageNum) {
 	// allocate new page
 	page* new = newPage(pageNum, p->parent);
 	// move over stored data
-	for (int i = p->usedSlots/2; i < p->usedSlots; i++) {
-		new->slotarr[i - p->usedSlots/2] = p->slotarr[i];
-	}
-	new->usedSlots = p->usedSlots - p->usedSlots/2;
-	for (int i = 0; i < new->usedSlots; i++) {
-		writeVal(new, new->slotarr[i]);
+	if (pageNum > p->pageNum) {
+		
 	}
 	return new;
 }
@@ -472,11 +468,3 @@ void freeTree(node* r) {
 	}
 	free(r);
 }
-
-/*
-TODO:
- - Implement insertion
- - Implement deletion
- - make sure tree is balanced for both
- - Test all algorithms
-*/
