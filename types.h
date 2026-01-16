@@ -9,6 +9,23 @@
 #define NUM_VALS 700 		// in reality this will be the size of the page minus the slot array and the header
 #define PAGE_CAPACITY (NUM_VALS * 4) // memory capacity of page storage (right now assuming all values are ints)
 
+/*
+each record is a row of data in a table
+each element of the record is proceeded by an escape character representing its c type
+\s - string
+\i - int
+\u - u_int32
+\l - long
+\d - double
+\b - bool
+\! - NULL
+'\ - intentional backslash as a part of a string
+*/ 
+typedef struct record {
+	char* data;
+	uint32_t primary_key;
+}record;
+
 typedef struct page {
 	int pageNum; // unsigned int greater than 0
 	int usedSlots;

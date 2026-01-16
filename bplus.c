@@ -426,6 +426,9 @@ void addTupleAndBalance(page* p, int tuple) {
 }
 
 // UNTESTED
+/*
+inserts a new tuple into the b+tree
+*/
 void insertTuple(int tuple, int pageNum, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
 	if (isPageFull(p)) {
@@ -450,6 +453,10 @@ page* splitPage(page* p, int pageNum) {
 		
 	}
 	return new;
+}
+
+bool addRecord(page* p, ) {
+	
 }
 
 // ##########################################################################################################################################
