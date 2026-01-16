@@ -127,9 +127,9 @@ void printPage(page* p) {
 	printf("Stack Top: %d\n", p->valsOffset);
 	printf("Memory:\n");
 	for (int l = p->valsOffset; l > 0; l--) {
-		printf("%d | ", p->vals[NUM_VALS - 1 - l]);
+		printf("%d | ", p->cells[NUM_VALS - 1 - l]);
 	}
-	printf("%d\n", p->vals[NUM_VALS-1]);
+	printf("%d\n", p->cells[NUM_VALS-1]);
 	printf("\n");
 
 }

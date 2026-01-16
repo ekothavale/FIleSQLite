@@ -214,21 +214,6 @@ uint32_t updateMaxPageNum(node* n) {
 // ##########################################################################################################################################
 // INSERTION FUNCTIONS
 
-/* writes a value (currently of type int) to a page
-@param p: pointer to a page
-@param val: value to be written
-@return: boolean if write was successful or not
-*/
-bool writeVal(page* p, int val) {
-	if (isPageFull(p)) return false;
-	p->vals[NUM_VALS - 1 - p->valsOffset] = val;
-	p->usedMem += sizeof(val);
-	p->slotarr[p->usedSlots] = p->valsOffset;
-	p->usedSlots++;
-	p->valsOffset++;
-	return true;
-}
-
 /* adds a page to a node
 assumes node is not full
 @return true, operation was successful
@@ -453,6 +438,21 @@ page* splitPage(page* p, uint32_t pageNum) {
 		
 	}
 	return new;
+}
+
+/* writes a value (currently of type int) to a page
+@param p: pointer to a page
+@param val: value to be written
+@return: boolean if write was successful or not
+*/
+bool writeVal(page* p, int val) {
+	if (isPageFull(p)) return false;
+	p->cells[NUM_VALS - 1 - p->valsOffset] = val;
+	p->usedMem += sizeof(val);
+	p->slotarr[p->usedSlots] = p->valsOffset;
+	p->usedSlots++;
+	p->valsOffset++;
+	return true;
 }
 
 bool addRecord(page* p, record r) {

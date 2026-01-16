@@ -32,7 +32,7 @@ typedef struct page {
 	int usedSlots;
 	int usedMem; // amount of mem taking in bytes by values stored in the page
 	int slotarr[NUM_SLOTS];
-	int vals[NUM_VALS];
+	record cells[NUM_VALS];
 	int valsOffset; // offset from end of page
 	struct node* parent;
 }page;
