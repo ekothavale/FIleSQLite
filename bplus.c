@@ -50,7 +50,7 @@ node* newRoot(node* child, int childCount) {
 }
 
 // creates a new b+ tree starting with just one leaf node and one page
-node* newTree(int pageNum) {
+node* newTree(uint32_t pageNum) {
 	node* new = malloc(sizeof(node));
 	new->childCount = 1;
 	new->isLeaf = true;
@@ -71,7 +71,7 @@ node* newTree(int pageNum) {
 }
 
 // creates a blank page and fills in the page number and parent
-page* newPage(int pageNum, node* parent) {
+page* newPage(uint32_t pageNum, node* parent) {
 	page* p = calloc(1, sizeof(page));
 	p->pageNum = pageNum;
 	p->parent = parent;
@@ -154,7 +154,7 @@ bool isRoot(node* n) {
 
 // finds a page in a tree by page number
 // returns null if page is not in tree
-page* findPage(int pageNum, node* tree) {
+page* findPage(uint32_t pageNum, node* tree) {
     if (tree == NULL || tree->childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
         return NULL; // input was an invalid tree
@@ -194,9 +194,9 @@ Given a page, find the next available page number
 There is no guarantee this function will return a page number that is legal by the properties of a search tree.
 Probably a good target for refactoring after the first draft of the tree.
 */
-int findNextPageNum(page* p) {
+uint32_t findNextPageNum(page* p) {
 	if (!p || !p->parent) return 0;
-	int try = p->pageNum + 1;
+	uint32_t try = p->pageNum + 1;
 	node* parent = p->parent;
 	for (int i = 0; i < parent->childCount; i++) {
 		if (((page*) parent->children[i])->pageNum > try) return try;
@@ -205,7 +205,7 @@ int findNextPageNum(page* p) {
 	return 0; // if unable to find page return failure
 }
 
-int updateMaxPageNum(node* n) {
+uint32_t updateMaxPageNum(node* n) {
 	if (n->isLeaf) return ((page*) n->children[n->childCount-1])->pageNum;
 	return ((node*) n->children[n->childCount-1])->maxPageNumber;
 }
@@ -429,7 +429,7 @@ void addTupleAndBalance(page* p, int tuple) {
 /*
 inserts a new tuple into the b+tree
 */
-void insertTuple(int tuple, int pageNum, node* tree) {
+void insertTuple(int tuple, u_int32_t pageNum, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
 	if (isPageFull(p)) {
 		addTupleAndBalance(p, tuple);
@@ -445,7 +445,7 @@ void insertTuple(int tuple, int pageNum, node* tree) {
 
 // UNTESTED
 // splits a page in two, copies metadata and moves half of the stored data over
-page* splitPage(page* p, int pageNum) {
+page* splitPage(page* p, uint32_t pageNum) {
 	// allocate new page
 	page* new = newPage(pageNum, p->parent);
 	// move over stored data
@@ -456,7 +456,7 @@ page* splitPage(page* p, int pageNum) {
 }
 
 bool addRecord(page* p, ) {
-	
+
 }
 
 // ##########################################################################################################################################

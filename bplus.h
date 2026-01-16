@@ -15,17 +15,17 @@
 
 
 void freeTree(node* r);
-void insertTuple(int tuple, int pageNum, node* tree);
-node* newTree(int pageNum);
+void insertTuple(int tuple, uint32_t pageNum, node* tree);
+node* newTree(uint32_t pageNum);
 
 // Unit Testing
 bool writeVal(page* p, int val);
-page* findPage(int pageNum, node* tree);
-page* newPage(int pageNum, node* parent);
+page* findPage(uint32_t pageNum, node* tree);
+page* newPage(uint32_t pageNum, node* parent);
 node* newNode(bool isLeaf, node* parent);
 bool addPage(node* n, page* p);
-int findNextPageNum(page* p);
+uint32_t findNextPageNum(page* p);
 bool addNode(node* parent, node* child);
 
-page* splitPage(page* p, int pageNum);
+page* splitPage(page* p, uint32_t pageNum);
 #endif // BPLUS_H

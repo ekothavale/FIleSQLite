@@ -27,7 +27,7 @@ typedef struct record {
 }record;
 
 typedef struct page {
-	int pageNum; // unsigned int greater than 0
+	uint32_t pageNum; // unsigned int greater than 0
 	int usedSlots;
 	int usedMem; // amount of mem taking in bytes by values stored in the page
 	int slotarr[NUM_SLOTS];
@@ -46,7 +46,7 @@ typedef struct node {
 	struct node* prev; // remove if two way scanning not necessary
 
 	int childCount;
-	int maxPageNumber;
+	uint32_t maxPageNumber;
 
 	bool isLeaf; // if the node is a leaf node
 }node;
