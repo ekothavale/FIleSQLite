@@ -319,18 +319,6 @@ bool addNode(node* parent, node* child) {
 }
 
 // UNTESTED
-// splits a page in two, copies metadata and moves half of the stored data over
-page* splitPage(page* p, int pageNum) {
-	// allocate new page
-	page* new = newPage(pageNum, p->parent);
-	// move over stored data
-	if (pageNum > p->pageNum) {
-		
-	}
-	return new;
-}
-
-// UNTESTED
 // splits a node
 node* splitNode(node* n) {
 	node* new = newNode(n->isLeaf, n->parent);
@@ -446,6 +434,24 @@ void insertTuple(int tuple, int pageNum, node* tree) {
 		if (!writeVal(p, tuple)) printf("Error: tried to write tuple to incompatible page\n");
 	}
 }
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// PAGE FUNCTIONS
+// These may at some point be abstracted to a different file
+
+// UNTESTED
+// splits a page in two, copies metadata and moves half of the stored data over
+page* splitPage(page* p, int pageNum) {
+	// allocate new page
+	page* new = newPage(pageNum, p->parent);
+	// move over stored data
+	if (pageNum > p->pageNum) {
+		
+	}
+	return new;
+}
+
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // DEBUGGING FUNCTIONS
