@@ -19,7 +19,7 @@ void insertTuple(int tuple, uint32_t pageNum, node* tree);
 node* newTree(uint32_t pageNum);
 
 // Unit Testing
-bool writeVal(page* p, int val);
+bool writeVal(page* p, record r);
 page* findPage(uint32_t pageNum, node* tree);
 page* newPage(uint32_t pageNum, node* parent);
 node* newNode(bool isLeaf, node* parent);

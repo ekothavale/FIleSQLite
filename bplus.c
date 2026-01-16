@@ -49,27 +49,6 @@ node* newRoot(node* child, int childCount) {
 	return new;
 }
 
-// creates a new b+ tree starting with just one leaf node and one page
-node* newTree(uint32_t pageNum) {
-	node* new = malloc(sizeof(node));
-	new->childCount = 1;
-	new->isLeaf = true;
-	new->parent = NULL;
-	new->prev = NULL;
-	new->next = NULL;
-
-	page* p = malloc(sizeof(page));
-	new->children[0] = p;
-
-	p->pageNum = pageNum;
-	p->parent = new;
-	p->valsOffset = 0; // points to the first unused spot in vals (offset from end of values array)
-	p->usedMem = 0;
-	p->usedSlots = 0;
-
-	return new;
-}
-
 // creates a blank page and fills in the page number and parent
 page* newPage(uint32_t pageNum, node* parent) {
 	page* p = calloc(1, sizeof(page));
@@ -86,6 +65,17 @@ node* newNode(bool isLeaf, node* parent) {
 	n->isLeaf = isLeaf;
 	n->parent = parent;
 	return n;
+}
+
+// creates a new b+ tree starting with just one leaf node and one page
+node* newTree(uint32_t pageNum) {
+	node* new = newNode(true, NULL);
+	new->childCount = 1;
+
+	page* p = newPage(pageNum, new);
+	new->children[0] = p;
+
+	return new;
 }
 
 // ##########################################################################################################################################
@@ -139,7 +129,7 @@ int shiftNodeArray(node** array, int start, int len) {
 
 // UNTESTED
 bool isPageFull(page* p) {
-	return p->usedSlots >= NUM_SLOTS || p->usedMem >= PAGE_CAPACITY;
+	return p->cleanSlots >= NUM_SLOTS;
 }
 
 // UNTESTED
@@ -399,14 +389,14 @@ void addPageAndBalance(node* n, page* newPage) {
 
 // UNTESTED
 // adds new tuple to page and recursively balances tree
-void addTupleAndBalance(page* p, int tuple) {
+void addTupleAndBalance(page* p, record r) {
 	int num = findNextPageNum(p);
 	if (!num) {
 		printf("Error: findNextPageNum returned 0 and this error isn't supported yet\n");
 		num = p->pageNum - 1;
 	}
 	page* new = splitPage(p, num);
-	writeVal(p, tuple);
+	writeVal(p, r);
 	addPageAndBalance(p->parent, new);
 }
 
@@ -414,12 +404,12 @@ void addTupleAndBalance(page* p, int tuple) {
 /*
 inserts a new tuple into the b+tree
 */
-void insertTuple(int tuple, u_int32_t pageNum, node* tree) {
+void insertTuple(record r, u_int32_t pageNum, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
 	if (isPageFull(p)) {
-		addTupleAndBalance(p, tuple);
+		addTupleAndBalance(p, r);
 	} else {
-		if (!writeVal(p, tuple)) printf("Error: tried to write tuple to incompatible page\n");
+		if (!writeVal(p, r)) printf("Error: tried to write tuple to incompatible page\n");
 	}
 }
 
@@ -445,18 +435,19 @@ page* splitPage(page* p, uint32_t pageNum) {
 @param val: value to be written
 @return: boolean if write was successful or not
 */
-bool writeVal(page* p, int val) {
+bool writeVal(page* p, record r) {
 	if (isPageFull(p)) return false;
-	p->cells[NUM_VALS - 1 - p->valsOffset] = val;
-	p->usedMem += sizeof(val);
-	p->slotarr[p->usedSlots] = p->valsOffset;
-	p->usedSlots++;
+	p->cells[NUM_VALS - 1 - p->valsOffset] = r;
+	p->usedMem += sizeof(r);
+	p->slotarr[p->cleanSlots] = p->valsOffset;
+	p->cleanSlots++;
 	p->valsOffset++;
 	return true;
 }
 
 bool addRecord(page* p, record r) {
-	;
+	if (isPageFull(p)) return false;
+	p->cells[]
 }
 
 bool deleteRecord(page* p, record r) {

@@ -7,7 +7,12 @@
 #define PAGE_SIZE 4096 		// size in bytes of each page
 #define NUM_SLOTS 64 		// Size of slot array within each page (each page can hold 72 tuples)
 #define NUM_VALS 700 		// in reality this will be the size of the page minus the slot array and the header
-#define PAGE_CAPACITY (NUM_VALS * 4) // memory capacity of page storage (right now assuming all values are ints)
+
+typedef struct slot {
+	uint16_t slotnum; // identifier of each record
+	uint16_t offset; // offset within the cell array of each record
+	uint16_t size;
+}slot;
 
 /*
 each record is a row of data in a table
@@ -28,10 +33,11 @@ typedef struct record {
 }record;
 
 typedef struct page {
-	uint32_t pageNum; // unsigned int greater than 0
-	int usedSlots;
+	uint32_t pageNum;
+	int cleanSlots; // the number of non-deleted slots in use
+	int deletedSlots; // the number of deleted slots in use
 	int usedMem; // amount of mem taking in bytes by values stored in the page
-	int slotarr[NUM_SLOTS];
+	slot slotarr[NUM_SLOTS];
 	record cells[NUM_VALS];
 	int valsOffset; // offset from end of page
 	struct node* parent;
