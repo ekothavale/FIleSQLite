@@ -23,7 +23,8 @@ each element of the record is proceeded by an escape character representing its 
 */ 
 typedef struct record {
 	char* data;
-	uint32_t primary_key;
+	uint32_t pageNum;
+	uint16_t slotNum;
 }record;
 
 typedef struct page {

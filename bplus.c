@@ -19,12 +19,12 @@ which is implemented in another file.
 */
 
 /* Keys:
- - Each key is a 32bit int
+ - Each key is a 32bit unsigned int
  - Last n bits represent the slot number within a page
  - Remaining bits represent the page number
  - n = number of slots per page
  - How many slots should be in a page?
- - How big are pages
+ - How big are pages?
 */
 
 #include "bplus.h"
@@ -455,8 +455,24 @@ page* splitPage(page* p, uint32_t pageNum) {
 	return new;
 }
 
-bool addRecord(page* p, ) {
+bool addRecord(page* p, record r) {
+	;
+}
 
+bool deleteRecord(page* p, record r) {
+	;
+}
+
+bool updateRecord(page* p, record r) {
+	;
+}
+
+bool readRecord(page* p, record r) {
+	;
+}
+
+void sortSlotArray(page* p) {
+	;
 }
 
 // ##########################################################################################################################################
