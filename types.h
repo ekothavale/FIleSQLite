@@ -37,6 +37,7 @@ typedef struct page {
 	int cleanSlots; // the number of non-deleted slots in use
 	int deletedSlots; // the number of deleted slots in use
 	int usedMem; // amount of mem taking in bytes by values stored in the page
+	uint16_t wastedBytes;
 	slot slotarr[NUM_SLOTS];
 	record cells[NUM_VALS];
 	int valsOffset; // offset from end of page

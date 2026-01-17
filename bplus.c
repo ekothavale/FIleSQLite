@@ -446,8 +446,28 @@ bool writeVal(page* p, record r) {
 }
 
 bool addRecord(page* p, record r) {
-	if (isPageFull(p)) return false;
-	p->cells[]
+	// if page is full:
+	// 	if the size of the record plus the size of the slot is less than the page's wasted bytes:
+	//	  compact the cells and proceed
+	//  else:
+	// 	  return false
+	// find spot in slot array for record
+	// shift slots down and put the slot there
+	// iterate through deleted slots
+	// if there is a deleted slot that is at least twice the size of the record:
+	// 	shift all cells down 1
+	// 	put record in that cell
+	//	decrease size of deleted slot by the size of that record
+	//	... | DELETED | ... -> ... | R | DELETED' | ... size(DELETED) = size(R) + size(DELETED)
+	//	if the new size of the deleted cell is 4 bytes or less:
+	//	  add the new size of the deleted cell to p->wastedBytes
+	//	  remove the slot pointing to the cell
+	//	  shift any other deleted slots down
+	// else:
+	// 	add the record to the end of the next open cell
+	// return true
+	;
+
 }
 
 bool deleteRecord(page* p, record r) {
