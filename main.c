@@ -28,16 +28,6 @@ void testn(int n, node* t, page* p) {
     printTree(t, 0);
 }
 
-void test(int n) {
-    page p;
-    p.pageNum = n;
-    p.parent = NULL;
-    for (int i = 0; i < n; i++) {
-        printf("%d\n", (writeVal(&p, i)));
-    }
-    printPage(&p);
-}
-
 int main(int argc, char** argv) {
     // B+ Tree Testing
 
@@ -45,7 +35,6 @@ int main(int argc, char** argv) {
     //printTree(q, 0);
     page* parent = findPage(34, q);
     int i = 0;
-    while (writeVal(parent, i * i) && i < 10) i++;
     printPage(parent);
     page* new = splitPage(parent, 35);
     printPage(parent);

@@ -129,7 +129,7 @@ int shiftNodeArray(node** array, int start, int len) {
 
 // UNTESTED
 bool isPageFull(page* p) {
-	return p->cleanSlots >= NUM_SLOTS;
+	return p->numRecords >= NUM_SLOTS;
 }
 
 // UNTESTED
@@ -428,21 +428,6 @@ page* splitPage(page* p, uint32_t pageNum) {
 		
 	}
 	return new;
-}
-
-/* writes a value (currently of type int) to a page
-@param p: pointer to a page
-@param val: value to be written
-@return: boolean if write was successful or not
-*/
-bool writeVal(page* p, record r) {
-	if (isPageFull(p)) return false;
-	p->cells[NUM_VALS - 1 - p->valsOffset] = r;
-	p->usedMem += sizeof(r);
-	p->slotarr[p->cleanSlots] = p->valsOffset;
-	p->cleanSlots++;
-	p->valsOffset++;
-	return true;
 }
 
 bool addRecord(page* p, record r) {

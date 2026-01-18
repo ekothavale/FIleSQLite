@@ -68,9 +68,7 @@ node* generateTestBPlusTree() {
                 fib1 = fib2;
                 fib2 = nextFib;
 
-                p->totalUsedSlots = 0;
-                p->usedMem = 0;
-                p->valsOffset = 0;
+                p->numRecords = 0;
                 p->parent = leaf;
                 leaf->children[k] = p;
 
@@ -114,7 +112,7 @@ void printIntArray(int* arr, int length) {
     }
     printf("]\n");
 }
-
+/*
 void printPage(page* p) {
 	printf("Page %d\n", p->pageNum);
 	printf("Parent node: %p\n", p->parent);
@@ -131,7 +129,17 @@ void printPage(page* p) {
 	}
 	printf("%d\n", p->cells[NUM_VALS-1]);
 	printf("\n");
+}*/
 
+void printPage(page* p) {
+    printf("Page %d\n", p->pageNum);
+	printf("Parent node: %p\n", p->parent);
+	printf("Used slots: %d\n", p->numRecords);
+	printf("Slot array:\n");
+	for (int i = 0; i < p->numRecords - 1; i++) {
+		printf("%d | ", p->records[i]);
+	}
+    printf("%d\n", p->records[p->numRecords-1]);
 }
 
 /* UNTESTED

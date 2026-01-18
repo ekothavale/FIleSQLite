@@ -15,7 +15,7 @@
 
 
 void freeTree(node* r);
-void insertTuple(int tuple, uint32_t pageNum, node* tree);
+void insertTuple(record r, uint32_t pageNum, node* tree);
 node* newTree(uint32_t pageNum);
 
 // Unit Testing
