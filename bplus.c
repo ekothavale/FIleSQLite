@@ -8,15 +8,15 @@ This file implements the B+ tree. The data in each node will be stored as a slot
 which is implemented in another file.
 */
 
-// Optimize
+// Optimize 
 //     first for algorithmic time complexity
 //     second for smallest possible nodes
 
-/* TODO:
+/* TODO: 
  - Finish implementing b tree algorithms in this file
  - Build file IO API
  - Reimplement the b tree algorithms on disk
-*/
+*/ 
 
 /* Keys:
  - Each key is a 32bit unsigned int
@@ -25,7 +25,7 @@ which is implemented in another file.
  - n = number of slots per page
  - How many slots should be in a page?
  - How big are pages?
-*/
+*/ 
 
 #include "bplus.h"
 
@@ -35,6 +35,9 @@ node* root;
 // ##########################################################################################################################################
 // TREE CREATION FUNCTIONS
 
+/*
+creates a new root node
+*/
 node* newRoot(node* child, int childCount) {
 	node* new = malloc(sizeof(node));
 	new->childCount = childCount;
@@ -49,7 +52,9 @@ node* newRoot(node* child, int childCount) {
 	return new;
 }
 
-// creates a blank page and fills in the page number and parent
+/*
+creates a blank page and fills in the page number and parent
+*/
 page* newPage(uint32_t pageNum, node* parent) {
 	page* p = calloc(1, sizeof(page));
 	p->pageNum = pageNum;
@@ -292,6 +297,7 @@ bool addNode(node* parent, node* child) {
 	}
 	return true;
 }
+
 
 // UNTESTED
 // splits a node
