@@ -15,17 +15,20 @@
 
 
 void freeTree(node* r);
-void insertTuple(record r, uint32_t pageNum, node* tree);
 node* newTree(uint32_t pageNum);
 
 // Unit Testing
-bool writeVal(page* p, record r);
 page* findPage(uint32_t pageNum, node* tree);
 page* newPage(uint32_t pageNum, node* parent);
 node* newNode(bool isLeaf, node* parent);
-bool addPage(node* n, page* p);
 uint32_t findNextPageNum(page* p);
-bool addNode(node* parent, node* child);
 
-page* splitPage(page* p, uint32_t pageNum);
+// Insertion functions
+void insertPageIntoChildren(node* n, page* p);
+node* splitNode(node* n);
+void addPage(node* n, page* newPage);
+node* balanceTree(node* n);
+void insertTuple(int tuple, u_int32_t pageNum, node* tree);
+bool writeVal(page* p, int tuple);
+
 #endif // BPLUS_H

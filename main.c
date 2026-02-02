@@ -3,6 +3,7 @@
 #include "debug.h"
 #include "chunk.h"
 #include "bplus.h"
+#include "testing.h"
 
 void execute(char* input) {
     TokenizedQuery* tquery = scan(input);

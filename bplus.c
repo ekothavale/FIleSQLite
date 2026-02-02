@@ -29,8 +29,6 @@ which is implemented in another file.
 
 #include "bplus.h"
 
-node* root;
-
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // TREE CREATION FUNCTIONS
@@ -92,10 +90,11 @@ int max(int a, int b) {
 	return a >= b ? a : b;
 }
 
-// shifts the elements of an array right by 1 starting at the given index
-// assumes there is a free space in the array
-// len is the total length of the array
-// start is the free space to be created
+/* shifts the elements of an array right by 1 starting at the given index
+assumes there is a free space in the array
+len is the total length of the array
+start is the free space to be created
+*/
 int shiftIntArray(int* array, int start, int len) {
 	if (start > len-1) {
 		printf("Start index %d beyond length %d of array in shiftIntArray\n", start, len);
@@ -183,7 +182,6 @@ page* findPage(uint32_t pageNum, node* tree) {
 }
 
 /*
-CHANGE ALL PAGENUMS TO UNSIGNED INTS IN ALL FUNCTIONS
 Given a page, find the next available page number
 @return 0 for failure
 There is no guarantee this function will return a page number that is legal by the properties of a search tree.
@@ -209,101 +207,39 @@ uint32_t updateMaxPageNum(node* n) {
 // ##########################################################################################################################################
 // INSERTION FUNCTIONS
 
-/* adds a page to a node
-assumes node is not full
-@return true, operation was successful
-@return false, operation was not performed because conditions were not right
-*/
-bool addPage(node* n, page* p) {
-	if (p == NULL) {
-		printf("Error: tried to add page but page was NULL\n");
-		return false;
-	}
-	if (n == NULL) {
-		printf("Error: tried to add page to NULL address\n");
-		return false;
-	}
-	if (isNodeFull(n) || !n->isLeaf) {
-		printf("Error: tried to add page to incompatible node\n");
-		return false; // shouldn't run in these conditions
-	}
-	p->parent = n;
+// UNTESTED
+// puts a page into a parent node's children and keys arrays
+void insertPageIntoChildren(node* n, page* p) {
 	for (int i = 0; i < n->childCount; i++) {
-		if (p->pageNum < n->keys[i]) {
-			// We've found the correct spot for the page
-			n->childCount++;
+		if (n->keys[i] > p->pageNum) {
 			shiftIntArray(n->keys, i, n->childCount);
 			n->keys[i] = p->pageNum;
-			shiftPageArray((page**) n->children, i, n->childCount);
+			shiftPageArray(n->children, i, n->childCount);
 			n->children[i] = p;
-			n->maxPageNumber = max(n->maxPageNumber, p->pageNum);
-			return true;
 		}
 	}
-	// if here, new page should go last
-	n->keys[n->childCount] = p->pageNum;
-	n->children[n->childCount] = p;
-	n->childCount++;
-	n->maxPageNumber = max(n->maxPageNumber, p->pageNum);
-	return true;
-}
-
-/*
-adds a child node to another node
-assumes node is not full and node is not a leaf
-@return true, operation was successful
-@return false, operation was not performed since the conditions weren't right
-*/
-bool addNode(node* parent, node* child) {
-	if (child == NULL) {
-		printf("Error: tried to add node but node was NULL\n");
-		return false;
-	}
-	if (parent == NULL) {
-		printf("Error: tried to add node but parent node was NULL\n");
-	}
-	if (isNodeFull(parent) || parent->isLeaf) {
-		printf("Error: tried to add node to incompatible parent node\n");
-		return false; // shouldn't run in these conditions
-	}
-
-	child->parent = parent;
-
-	for (int i = 0; i < parent->childCount - 1; i++) {
-		if (child->maxPageNumber < parent->keys[i]) {
-			// We've found the right spot to insert the child
-			printIntArray(parent->keys, M);
-			shiftIntArray(parent->keys, i, parent->childCount);
-			parent->keys[i] = child->maxPageNumber;
-			printIntArray(parent->keys, M);
-			shiftNodeArray(((node**)parent->children), i, parent->childCount + 1);
-			parent->children[i] = child;
-			parent->childCount++;
-			return true;
-		}
-	}
-	// if function reaches this point, new node is either last or second last
-	if (child->maxPageNumber > parent->maxPageNumber) {
-		// new key is the maximum of the previous node
-		parent->keys[parent->childCount - 1] = ((node*) parent->children[parent->childCount - 1])->maxPageNumber;
-		parent->children[parent->childCount] = child;
-		parent->childCount++;
-		parent->maxPageNumber = child->maxPageNumber;
-	} else {
-		parent->keys[parent->childCount - 1] = child->maxPageNumber;
-		parent->children[parent->childCount] = parent->children[parent->childCount-1]; // shift last node forwards one space
-		parent->children[parent->childCount-1] = child;
-		parent->childCount++;
-	}
-	return true;
+	
 }
 
 
 // UNTESTED
-// splits a node
+// splits a node, making sure the new node is properly connected to the b+tree
+// assumes the parent node is not full
 node* splitNode(node* n) {
+	if (isNodeFull(n->parent)) printf("Error: tried to split a node with a full parent");
 	node* new = newNode(n->isLeaf, n->parent);
 
+	int halfwayPoint = n->childCount/2;
+	// inserting new node into parent's keys and pointers
+	for (int i = 0; i < n->parent->childCount; i++) {
+		if (n->parent->children[i] == n){
+			shiftIntArray(n->parent->keys, i, n->parent->childCount-1);
+			shiftNodeArray(n->parent->children, i+1, n->parent->childCount);
+			n->parent->keys[i] = n->children[halfwayPoint];
+			n->parent->children[i+1] = new;
+			break;
+		}
+	}
 	// copying over children and pointers
 	for (int i = 0; i < n->childCount/2; i++) {
 		new->children[i] = n->children[i + n->childCount/2];
@@ -315,9 +251,8 @@ node* splitNode(node* n) {
 	}
 	new->childCount = n->childCount/2;
 	n->childCount -= n->childCount/2;
-
+	// Inserting into linked list of leaves
 	if (n->isLeaf) {
-		// Inserting into linked list of leaves
 		node* tmp = n->next;
 		n->next = new;
 		new->prev = n;
@@ -333,108 +268,66 @@ node* splitNode(node* n) {
 }
 
 // UNTESTED
-// adds a child node to a parent node and balances the tree recursively
-void addNodeAndBalance(node* n, node* newChild) {
-	if (isNodeFull(n)) {
-		node* new = splitNode(n);
-		// if parent node is root node then create a new root
-		if (isRoot(n)) {
-			node* r = newRoot(n, 1);
-		}
-	
-		// decide which node to add the new node to and add it
-		for (int i = 0; i < n->parent->childCount; i++) {
-			if (n->parent->children[i] == n) {
-				if (newChild->maxPageNumber > n->parent->keys[i]) {
-					addNode(new, newChild);
-				} else {
-					addNode(n, newChild);
-				}
-				break;
-			}
-		}
-		// add new node to parent and balance if necessary
-		addNodeAndBalance(n->parent, new);
-		return;
-	}
-	// otherwise just add the node
-	addNode(n, newChild);
-}
-
-// UNTESTED
 // adds a page to a node and balances the tree recursively
-void addPageAndBalance(node* n, page* newPage) {
-	// add new page number and pointer to respective arrays in n
-	// if this would exceed n's capacity, split n and call addNodeAndBalance()
+void addPage(node* n, page* newPage) {
 	if (isNodeFull(n)) {
-		// split the node
-		node* new = splitNode(n);
-		// if current node is root node then create a new root
-		if (isRoot(n)) {
-			node* r = newRoot(n, 1);
-		}
-
+		node* new = balanceTree(n);
 		// decide which node to add the page to and add it
-		for (int i = 0; i < n->parent->childCount; i++) {
-			if (n->parent->children[i] == n) {
-				if (newPage->pageNum > n->parent->keys[i]) {
-					addPage(new, newPage);
-				} else {
-					addPage(n, newPage);
-				}
-				break;
-			}
+		if (newPage->pageNum > n->maxPageNumber) {
+			insertPageIntoChildren(new, newPage);
+			return;
 		}
-		// add the new node to parent and balance if necessary
-		addNodeAndBalance(n->parent, new);
-		return;
 	}
 	// else just add the new page to the node
-	addPage(n, newPage);
+	insertPageIntoChildren(n, newPage);
 }
 
 // UNTESTED
-// adds new tuple to page and recursively balances tree
-void addTupleAndBalance(page* p, record r) {
-	int num = findNextPageNum(p);
-	if (!num) {
-		printf("Error: findNextPageNum returned 0 and this error isn't supported yet\n");
-		num = p->pageNum - 1;
+/*
+@param n = the node to be split
+*/
+node* balanceTree(node* n) {
+	if (!isNodeFull(n)) {
+		printf("Error: called balance() on a node that wasn't full\n");
+		return;
 	}
-	page* new = splitPage(p, num);
-	writeVal(p, r);
-	addPageAndBalance(p->parent, new);
+	if (isRoot(n)) {
+		node* r = newRoot(n, 1);
+	}
+	// recursive step
+	if (isNodeFull(n->parent)) balanceTree(n->parent);
+	node* new = splitNode(n);
+	return new;
 }
 
 // UNTESTED
 /*
 inserts a new tuple into the b+tree
 */
-void insertTuple(record r, u_int32_t pageNum, node* tree) {
+void insertTuple(int tuple, u_int32_t pageNum, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
 	if (isPageFull(p)) {
-		addTupleAndBalance(p, r);
+		page* newP = newPage(findNextPageNum(p), p->parent);
+		addPage(p->parent, newP);
+		if (!writeVal(newP, tuple)) printf("Error: failed to write tuple to a page created in the insertTuple() function\n");
 	} else {
-		if (!writeVal(p, r)) printf("Error: tried to write tuple to incompatible page\n");
+		if (!writeVal(p, tuple)) printf("Error: tried to write tuple to incompatible page\n");
 	}
+}
+
+// UNTESTED
+/*
+Writes a value into a slotted page
+*/
+bool writeVal(page* p, int tuple) {
+	p->records[p->numRecords] = tuple;
+	p->numRecords++;
 }
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // PAGE FUNCTIONS
 // These may at some point be abstracted to a different file
-
-// UNTESTED
-// splits a page in two, copies metadata and moves half of the stored data over
-page* splitPage(page* p, uint32_t pageNum) {
-	// allocate new page
-	page* new = newPage(pageNum, p->parent);
-	// move over stored data
-	if (pageNum > p->pageNum) {
-		
-	}
-	return new;
-}
 
 bool addRecord(page* p, record r) {
 	// if page is full:
