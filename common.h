@@ -41,10 +41,5 @@ typedef struct TokenizedQuery {
     int capacity;
 } TokenizedQuery;
 
-// bytecode
-typedef enum opcode {
-    OP_SELECT
-}opcode;
-
 #endif // COMMON_H
 

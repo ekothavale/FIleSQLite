@@ -67,6 +67,8 @@ node* newNode(bool isLeaf, node* parent) {
 	node* n = calloc(1, sizeof(node));
 	n->isLeaf = isLeaf;
 	n->parent = parent;
+	n->childCount = 0;
+	n->maxPageNumber = 0;
 	return n;
 }
 
@@ -188,14 +190,7 @@ There is no guarantee this function will return a page number that is legal by t
 Probably a good target for refactoring after the first draft of the tree.
 */
 uint32_t findNextPageNum(page* p) {
-	if (!p || !p->parent) return 0;
-	uint32_t try = p->pageNum + 1;
-	node* parent = p->parent;
-	for (int i = 0; i < parent->childCount; i++) {
-		if (((page*) parent->children[i])->pageNum > try) return try;
-		if (((page*) parent->children[i])->pageNum == try) try++;
-	}
-	return 0; // if unable to find page return failure
+	return p->pageNum + 1;
 }
 
 uint32_t updateMaxPageNum(node* n) {
@@ -208,17 +203,27 @@ uint32_t updateMaxPageNum(node* n) {
 // INSERTION FUNCTIONS
 
 // UNTESTED
-// puts a page into a parent node's children and keys arrays
+/*
+puts a page into a parent node's children and keys arrays
+assumes node is not full
+*/
 void insertPageIntoChildren(node* n, page* p) {
+	// check if page should be inserted into the middle of the children
 	for (int i = 0; i < n->childCount; i++) {
 		if (n->keys[i] > p->pageNum) {
-			shiftIntArray(n->keys, i, n->childCount);
+			shiftIntArray(n->keys, i, M);
 			n->keys[i] = p->pageNum;
-			shiftPageArray(n->children, i, n->childCount);
+			shiftPageArray((page**) n->children, i, M);
 			n->children[i] = p;
+			n->childCount++;
+			return;
 		}
 	}
-	
+	// otherwise, the correct spot must be at the end
+	n->keys[n->childCount] = p->pageNum;
+	n->children[n->childCount] = p;
+	n->childCount++;
+	return;
 }
 
 
@@ -233,9 +238,13 @@ node* splitNode(node* n) {
 	// inserting new node into parent's keys and pointers
 	for (int i = 0; i < n->parent->childCount; i++) {
 		if (n->parent->children[i] == n){
-			shiftIntArray(n->parent->keys, i, n->parent->childCount-1);
-			shiftNodeArray(n->parent->children, i+1, n->parent->childCount);
-			n->parent->keys[i] = n->children[halfwayPoint];
+			shiftIntArray(n->parent->keys, i, M);
+			shiftNodeArray((node**) n->parent->children, i+1, M);
+			if (n->isLeaf) {
+				n->parent->keys[i] = ((page*) n->children[halfwayPoint])->pageNum;
+			} else {
+				n->parent->keys[i] = ((node*) n->children[halfwayPoint])->maxPageNumber;
+			}
 			n->parent->children[i+1] = new;
 			break;
 		}
@@ -268,6 +277,24 @@ node* splitNode(node* n) {
 }
 
 // UNTESTED
+/*
+@param n = the node to be split
+*/
+node* balanceTree(node* n) {
+	if (!isNodeFull(n)) {
+		printf("Error: called balance() on a node that wasn't full\n");
+		return NULL;
+	}
+	if (isRoot(n)) {
+		node* r = newRoot(n, 1);
+	}
+	// recursive step
+	if (isNodeFull(n->parent)) balanceTree(n->parent);
+	node* new = splitNode(n);
+	return new;
+}
+
+// UNTESTED
 // adds a page to a node and balances the tree recursively
 void addPage(node* n, page* newPage) {
 	if (isNodeFull(n)) {
@@ -284,44 +311,43 @@ void addPage(node* n, page* newPage) {
 
 // UNTESTED
 /*
-@param n = the node to be split
+Writes a value into a slotted page
 */
-node* balanceTree(node* n) {
-	if (!isNodeFull(n)) {
-		printf("Error: called balance() on a node that wasn't full\n");
-		return;
+bool writeVal(page* p, int tuple) {
+	if (p == NULL) return false;
+	if (isPageFull(p)) {
+		printf("Tried to write to page %d which was full\n", p->pageNum);
+		return false;
 	}
-	if (isRoot(n)) {
-		node* r = newRoot(n, 1);
-	}
-	// recursive step
-	if (isNodeFull(n->parent)) balanceTree(n->parent);
-	node* new = splitNode(n);
-	return new;
+	p->records[p->numRecords] = tuple;
+	p->numRecords++;
+	return true;
 }
 
 // UNTESTED
 /*
 inserts a new tuple into the b+tree
+@return - the page number of the page into which the tuple was written
 */
-void insertTuple(int tuple, u_int32_t pageNum, node* tree) {
+uint32_t insertTuple(int tuple, u_int32_t pageNum, node* tree) {
 	page* p = findPage(pageNum, tree); // find page
+	if (p == NULL) {
+		printf("Tried to insert into page %d which doesn't exist\n", pageNum);
+		return pageNum;
+	}
 	if (isPageFull(p)) {
-		page* newP = newPage(findNextPageNum(p), p->parent);
+		printf("Making new page\n");
+		uint32_t newNum = findNextPageNum(p);
+		printf("New Page Num: %u\n", newNum);
+		page* newP = newPage(newNum, p->parent);
+		printf("Adding new page\n");
 		addPage(p->parent, newP);
 		if (!writeVal(newP, tuple)) printf("Error: failed to write tuple to a page created in the insertTuple() function\n");
+		return newNum;
 	} else {
 		if (!writeVal(p, tuple)) printf("Error: tried to write tuple to incompatible page\n");
+		return p->pageNum;
 	}
-}
-
-// UNTESTED
-/*
-Writes a value into a slotted page
-*/
-bool writeVal(page* p, int tuple) {
-	p->records[p->numRecords] = tuple;
-	p->numRecords++;
 }
 
 // ##########################################################################################################################################
@@ -329,7 +355,7 @@ bool writeVal(page* p, int tuple) {
 // PAGE FUNCTIONS
 // These may at some point be abstracted to a different file
 
-bool addRecord(page* p, record r) {
+void addRecord(page* p, record r) {
 	// if page is full:
 	// 	if the size of the record plus the size of the slot is less than the page's wasted bytes:
 	//	  compact the cells and proceed
@@ -354,15 +380,15 @@ bool addRecord(page* p, record r) {
 
 }
 
-bool deleteRecord(page* p, record r) {
+void deleteRecord(page* p, record r) {
 	;
 }
 
-bool updateRecord(page* p, record r) {
+void updateRecord(page* p, record r) {
 	;
 }
 
-bool readRecord(page* p, record r) {
+void readRecord(page* p, record r) {
 	;
 }
 

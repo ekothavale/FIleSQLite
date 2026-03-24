@@ -40,7 +40,7 @@ node* generateTestBPlusTree() {
     }
 
     // Fibonacci sequence initialization
-    int fib1 = 1, fib2 = 1;
+    uint32_t num = 1;
 
     // Create leaf nodes
     int leafNodeCounts[3] = {2, 2, 2}; // Number of leaf nodes per internal node
@@ -63,10 +63,8 @@ node* generateTestBPlusTree() {
             leaf->childCount = pageCount;
             for (int k = 0; k < pageCount; k++) {
                 page* p = malloc(sizeof(page));
-                p->pageNum = fib2; // Assign Fibonacci number as page number
-                int nextFib = fib1 + fib2;
-                fib1 = fib2;
-                fib2 = nextFib;
+                p->pageNum = num;
+                num += 50; // increment pageNums by 50
 
                 p->numRecords = 0;
                 p->parent = leaf;

@@ -28,7 +28,7 @@ void insertPageIntoChildren(node* n, page* p);
 node* splitNode(node* n);
 void addPage(node* n, page* newPage);
 node* balanceTree(node* n);
-void insertTuple(int tuple, u_int32_t pageNum, node* tree);
+uint32_t insertTuple(int tuple, u_int32_t pageNum, node* tree);
 bool writeVal(page* p, int tuple);
 
 #endif // BPLUS_H

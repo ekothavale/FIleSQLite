@@ -10,6 +10,12 @@ typedef struct Chunk {
     int count;
 } Chunk;
 
+// bytecode
+typedef enum opcode {
+    OP_SELECT,
+    OP_INSERT // OP_INSERT <page_num, int> <record, int>
+}opcode;
+
 void initChunk(Chunk* chunk);
 void writeChunk(Chunk* chunk, uint8_t byte);
 void freeChunk(Chunk* chunk);
