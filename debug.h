@@ -14,5 +14,6 @@ void printIntArray(int* arr, int length);
 void printPage(page* p);
 void printNode(node* n);
 void printTree(node* root, int level);
+bool checkTreePointers(node* root);
 
 #endif // DEBUG_H

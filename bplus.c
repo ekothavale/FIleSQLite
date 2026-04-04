@@ -36,9 +36,9 @@ which is implemented in another file.
 /*
 creates a new root node
 */
-node* newRoot(node* child, int childCount) {
+node* newRoot(node* child) {
 	node* new = malloc(sizeof(node));
-	new->childCount = childCount;
+	new->childCount = 1;
 	new->children[0] = child;
 	new->parent = NULL;
 	new->prev = NULL;
@@ -79,6 +79,7 @@ node* newTree(uint32_t pageNum) {
 
 	page* p = newPage(pageNum, new);
 	new->children[0] = p;
+	new->keys[0] = pageNum;
 
 	return new;
 }
@@ -156,7 +157,6 @@ page* findPage(uint32_t pageNum, node* tree) {
         return NULL; // input was an invalid tree
     }
 	if (pageNum > tree->maxPageNumber) return NULL;
-	if (pageNum <= 0) return NULL;
     // Compare pageNum against keys in node
     while (!tree->isLeaf) {
         int found = 0;
@@ -180,7 +180,49 @@ page* findPage(uint32_t pageNum, node* tree) {
             return p;
         }
     }
-    return NULL;
+	return NULL;
+}
+
+/*
+UNTESTED
+finds a page in a tree by page number and returns it
+if the page does not exist, creates a page in the right spot and returns it
+*/
+page* findAndInsert(uint32_t pageNum, node* tree) {
+    if (tree == NULL || tree->childCount == 0) {
+        printf("Attempted to find page in invalid tree\n");
+        return NULL; // input was an invalid tree
+    }
+    // Compare pageNum against keys in node
+    while (!tree->isLeaf) {
+        int found = 0;
+        for (int i = 0; i < tree->childCount - 1; i++) {
+            // Searching for the correct key position
+            if (pageNum <= tree->keys[i]) {
+                tree = tree->children[i];
+                found = 1;
+                break;
+            }
+        }
+        // If key wasn't less than any indices, the last child is the correct path
+        if (!found) {
+            tree = tree->children[tree->childCount - 1];
+        }
+    }
+    // We have found the correct leaf
+    for (int i = 0; i < tree->childCount; i++) {
+        uint32_t key = tree->keys[i];
+        if (key == pageNum) {
+            return (page*) tree->children[i];
+        } else if (key > pageNum) { // optimization so that we don't have to unnecessarily finish a loop
+			page* p = newPage(pageNum, tree);
+			addPage(tree, p);
+			return p;
+		}
+    }
+	page* p = newPage(pageNum, tree);
+    addPage(tree, p);
+	return p;
 }
 
 /*
@@ -208,6 +250,7 @@ puts a page into a parent node's children and keys arrays
 assumes node is not full
 */
 void insertPageIntoChildren(node* n, page* p) {
+	p->parent = n;
 	// check if page should be inserted into the middle of the children
 	for (int i = 0; i < n->childCount; i++) {
 		if (n->keys[i] > p->pageNum) {
@@ -223,9 +266,43 @@ void insertPageIntoChildren(node* n, page* p) {
 	n->keys[n->childCount] = p->pageNum;
 	n->children[n->childCount] = p;
 	n->childCount++;
+	n->maxPageNumber = p->pageNum;
 	return;
 }
 
+// UNTESTED
+/*
+puts a node into a parent node's children and keys arrays
+assumes node is not full
+*/
+void splitUpdateParent(node* parent, node* child, int newKey) {
+	if (isNodeFull(parent)) {
+		printf("Balancing parent from splitUpdateParent()\n");
+		balanceTree(parent);
+	}
+	// look for correct spot in parent's keys
+	printf("New key: %d\n", newKey);
+	printIntArray(parent->keys, M);
+	for (int i = 0; i < parent->childCount-1; i++) {
+		if (parent->keys[i] > newKey) {
+			shiftIntArray(parent->keys, i, M);
+			parent->keys[i] = newKey;
+			shiftNodeArray((node**) parent->children, i+1, M);
+			/*parent->children[i+1] = parent->children[i+2];
+			parent->children[i+2] = child;*/
+			parent->children[i+1] = child;
+			parent->childCount++;
+			printIntArray(parent->keys, M);
+			return;
+		}
+	}
+	// otherwise, the correct spot must be at the end
+	parent->keys[parent->childCount-1] = newKey; // no previous key to replace
+	parent->children[parent->childCount] = child;
+	parent->childCount++;
+	printIntArray(parent->keys, M);
+	return;
+}
 
 // UNTESTED
 // splits a node, making sure the new node is properly connected to the b+tree
@@ -233,46 +310,40 @@ void insertPageIntoChildren(node* n, page* p) {
 node* splitNode(node* n) {
 	if (isNodeFull(n->parent)) printf("Error: tried to split a node with a full parent");
 	node* new = newNode(n->isLeaf, n->parent);
+	int middleKid = n->childCount/2;
+	// copying over children and keys
+	for (int i = 0; i < middleKid; i++) {
+		new->children[i] = n->children[i + middleKid];
+		if (n->isLeaf) ((page*) new->children[i])->parent = new;
+		else ((node*) new->children[i])->parent = new;
+		n->children[i + middleKid] = NULL;
+	}
 
-	int halfwayPoint = n->childCount/2;
-	// inserting new node into parent's keys and pointers
-	for (int i = 0; i < n->parent->childCount; i++) {
-		if (n->parent->children[i] == n){
-			shiftIntArray(n->parent->keys, i, M);
-			shiftNodeArray((node**) n->parent->children, i+1, M);
-			if (n->isLeaf) {
-				n->parent->keys[i] = ((page*) n->children[halfwayPoint])->pageNum;
-			} else {
-				n->parent->keys[i] = ((node*) n->children[halfwayPoint])->maxPageNumber;
-			}
-			n->parent->children[i+1] = new;
-			break;
-		}
+	for (int i = 0; i < middleKid; i++) {
+		new->keys[i] = n->keys[i + middleKid];
+		n->keys[i + middleKid] = 0;
 	}
-	// copying over children and pointers
-	for (int i = 0; i < n->childCount/2; i++) {
-		new->children[i] = n->children[i + n->childCount/2];
-		n->children[i + n->childCount/2] = NULL;
-	}
-	for (int i = 0; i < new->childCount - 1; i++) {
-		new->keys[new->childCount - 2] = n->keys[n->childCount - 2 - i];
-		n->keys[n->childCount - 2 - i] = 0;
-	}
-	new->childCount = n->childCount/2;
-	n->childCount -= n->childCount/2;
+	new->childCount = middleKid;
+	n->childCount -= middleKid;
 	// Inserting into linked list of leaves
 	if (n->isLeaf) {
-		node* tmp = n->next;
-		n->next = new;
-		new->prev = n;
-		new->next = tmp;
-		tmp->prev = new;
+		if (n->next) {
+			node* tmp = n->next;
+			n->next = new;
+			new->prev = n;
+			new->next = tmp;
+			tmp->prev = new;
+		} else {
+			n->next = new;
+			new->prev = n;
+		}
 	}
 
 	// Updating and setting maxPageNumber
-	updateMaxPageNum(n);
-	updateMaxPageNum(new);
-
+	new->maxPageNumber = n->maxPageNumber;
+	n->maxPageNumber = n->keys[n->childCount-1];
+	// inserting new node into parent's keys and pointers
+	splitUpdateParent(n->parent, new, n->maxPageNumber);
 	return new;
 }
 
@@ -286,10 +357,13 @@ node* balanceTree(node* n) {
 		return NULL;
 	}
 	if (isRoot(n)) {
-		node* r = newRoot(n, 1);
+		node* r = newRoot(n);
 	}
 	// recursive step
-	if (isNodeFull(n->parent)) balanceTree(n->parent);
+	// need to make sure new node is put into the correct node
+	else if (isNodeFull(n->parent)) {
+		node* newP = balanceTree(n->parent);
+	}
 	node* new = splitNode(n);
 	return new;
 }
@@ -327,26 +401,21 @@ bool writeVal(page* p, int tuple) {
 // UNTESTED
 /*
 inserts a new tuple into the b+tree
-@return - the page number of the page into which the tuple was written
+@return: true - successfully wrote to the specified page
+@return: false - specified page was full and page number must be adjusted
 */
-uint32_t insertTuple(int tuple, u_int32_t pageNum, node* tree) {
-	page* p = findPage(pageNum, tree); // find page
+bool insertTuple(int tuple, u_int32_t pageNum, node* tree) {
+	page* p = findAndInsert(pageNum, tree);
 	if (p == NULL) {
-		printf("Tried to insert into page %d which doesn't exist\n", pageNum);
-		return pageNum;
+		printf("Error: Could not find page %d while inserting\n", pageNum);
+		return false;
 	}
 	if (isPageFull(p)) {
-		printf("Making new page\n");
-		uint32_t newNum = findNextPageNum(p);
-		printf("New Page Num: %u\n", newNum);
-		page* newP = newPage(newNum, p->parent);
-		printf("Adding new page\n");
-		addPage(p->parent, newP);
-		if (!writeVal(newP, tuple)) printf("Error: failed to write tuple to a page created in the insertTuple() function\n");
-		return newNum;
+		printf("Tried to write to page %d but it is full\n", pageNum);
+		return false;
 	} else {
 		if (!writeVal(p, tuple)) printf("Error: tried to write tuple to incompatible page\n");
-		return p->pageNum;
+		return true;
 	}
 }
 

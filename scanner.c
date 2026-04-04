@@ -12,6 +12,10 @@ typedef struct scanner {
 scanner s;
 
 void initParser(int querylen, char* query) {
+    if (querylen >= 2048) {
+        printf("Error: Exceeded maximum query length of 2047 characters\n");
+        return;
+    }
     s.cursor = 0;
     s.querylen = querylen;
     strncpy(s.query, query, querylen);
@@ -115,6 +119,12 @@ static Token scanAlpha() {
     switch(s.query[s.cursor]) {
         case 'S': {
             out.type = checkKeyword(1, 5, "ELECT", TOKEN_SELECT);
+            out.payload = NULL;
+            s.cursor += 6;
+            break;
+        }
+        case 'I': {
+            out.type = checkKeyword(1, 5, "NSERT", TOKEN_INSERT);
             out.payload = NULL;
             s.cursor += 6;
             break;

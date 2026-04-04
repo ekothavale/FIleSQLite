@@ -170,8 +170,8 @@ void printTree(node* root, int level) {
         printf("    ");
     }
 
-    // Print the current node
-    printf("Node at level %d: ", level);
+    // Print the current node with its address
+    printf("Node at level %d (Address: %p): ", level, (void*)root);
     if (root->isLeaf) {
         printf("[Leaf Node] Keys: ");
         for (int i = 0; i < root->childCount; i++) {
@@ -201,4 +201,42 @@ void printTree(node* root, int level) {
             printTree((node*)root->children[i], level + 1);
         }
     }
+}
+
+bool checkTreePointers(node* root) {
+    if (root == NULL) {
+        return true; // An empty tree is valid
+    }
+
+    for (int i = 0; i < root->childCount; i++) {
+        void* child = root->children[i];
+        if (child == NULL) {
+            continue; // Skip null children
+        }
+
+        if (root->isLeaf) {
+            // If the root is a leaf, its children are pages
+            page* p = (page*)child;
+            if (p->parent != root) {
+                printf("Error: Page %d has incorrect parent pointer. Expected parent: %p, Actual parent: %p\n", 
+                       p->pageNum, (void*)root, (void*)p->parent);
+                return false;
+            }
+        } else {
+            // If the root is an internal node, its children are nodes
+            node* n = (node*)child;
+            if (n->parent != root) {
+                printf("Error: Node at %p has incorrect parent pointer. Expected parent: %p, Actual parent: %p\n", 
+                       (void*)n, (void*)root, (void*)n->parent);
+                return false;
+            }
+
+            // Recursively check the subtree
+            if (!checkTreePointers(n)) {
+                return false;
+            }
+        }
+    }
+
+    return true; // All checks passed
 }
