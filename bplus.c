@@ -27,6 +27,8 @@ which is implemented in another file.
  - How big are pages?
 */ 
 
+// eventually clamp all the Ms in the shiftArray calls to their proper values
+
 #include "bplus.h"
 
 // ##########################################################################################################################################
@@ -98,9 +100,9 @@ assumes there is a free space in the array
 len is the total length of the array
 start is the free space to be created
 */
-int shiftIntArray(int* array, int start, int len) {
+int shiftIntArrayR(int* array, int start, int len) {
 	if (start > len-1) {
-		printf("Start index %d beyond length %d of array in shiftIntArray\n", start, len);
+		printf("Start index %d beyond length %d of array in shiftIntArrayR\n", start, len);
 		return -1;
 	}
 	for (int i = len-1; i > start; i--) {
@@ -110,9 +112,27 @@ int shiftIntArray(int* array, int start, int len) {
 	return 0;
 }
 
-int shiftPageArray(page** array, int start, int len) {
+// UNTESTED
+/*
+shifts the elements of an array left, overwriting target
+@input target - the first spot to be overwritten
+@input len - the total length of the array (or at least the values you care about)
+*/
+int shiftIntArrayL(int* array, int target, int len) {
+	if (target > len-1) {
+		printf("Start index %d beyond length %d of array in shiftIntArrayL\n", target, len);
+		return -1;
+	}
+	for (int i = target; i < len-1; i++) {
+		array[i] = array[i+1];
+	}
+	array[len-1] = 0;
+	return 0;
+}
+
+int shiftPageArrayR(page** array, int start, int len) {
 	if (start > len-1) {
-		printf("Start index %d beyond length %d of array in shiftPageArray\n", start, len);
+		printf("Start index %d beyond length %d of array in shiftPageArrayR\n", start, len);
 		return -1;
 	}
 	for (int i = len-1; i > start; i--) {
@@ -122,15 +142,40 @@ int shiftPageArray(page** array, int start, int len) {
 	return 0;
 }
 
-int shiftNodeArray(node** array, int start, int len) {
+int shiftPageArrayL(page** array, int target, int len) {
+	if (target > len-1) {
+		printf("Start index %d beyond length %d of array in shiftPageArrayL\n", target, len);
+		return -1;
+	}
+	for (int i = target; i < len-1; i++) {
+		array[i] = array[i+1];
+	}
+	array[len-1] = 0;
+	return 0;
+}
+
+int shiftNodeArrayR(node** array, int start, int len) {
 	if (start > len-1) {
-		printf("Start index %d beyond length %d of array in shiftPageArray\n", start, len);
+		printf("Start index %d beyond length %d of array in shiftNodeArrayR\n", start, len);
 		return -1;
 	}
 	for (int i = len-1; i > start; i--) {
 		array[i] = array[i-1];
 	}
 	array[start] = NULL;
+	return 0;
+}
+
+// UNTESTED
+int shiftNodeArrayL(node** array, int target, int len) {
+	if (target > len-1) {
+		printf("Start index %d beyond length %d of array in shiftPageArrayL\n", target, len);
+		return -1;
+	}
+	for (int i = target; i < len-1; i++) {
+		array[i] = array[i+1];
+	}
+	array[len-1] = 0;
 	return 0;
 }
 
@@ -139,12 +184,14 @@ bool isPageFull(page* p) {
 	return p->numRecords >= NUM_SLOTS;
 }
 
-// UNTESTED
 bool isNodeFull(node* n) {
 	return n->childCount >= M;
 }
 
-// UNTESTED
+bool nodeAtMinimum(node* n) {
+	return n->childCount <= HALF_M;
+}
+
 bool isRoot(node* n) {
 	return n->parent == NULL && n->childCount > 0;
 }
@@ -184,7 +231,6 @@ page* findPage(uint32_t pageNum, node* tree) {
 }
 
 /*
-UNTESTED
 finds a page in a tree by page number and returns it
 if the page does not exist, creates a page in the right spot and returns it
 */
@@ -225,6 +271,34 @@ page* findAndInsert(uint32_t pageNum, node* tree) {
 	return p;
 }
 
+/* UNTESTED
+returns an internal node's next sibling (not cousin)
+*/
+node* getNextInternal(node* n) {
+	node* parent = n->parent;
+	if (!parent) return NULL;
+	int maxkey = n->keys[n->childCount-2];
+	for (int i = 0; i < parent->childCount-1; i++) { // search for n in parent's children and return next node if found
+		if (maxkey <= parent->keys[i]) return (node*) parent->children[i+1];
+	}
+	return NULL; // otherwise n is the last node so there's no viable next
+}
+
+/* UNTESTED
+returns an internal node's previous sibling (not cousin)
+assumes a node is internal
+*/
+node* getPrevInternal(node* n) {
+	node* parent = n->parent;
+	if (!parent) return NULL;
+	if (parent->children[0] == n) return NULL;
+	int maxKey = n->keys[n->childCount-2];
+	for (int i = 0; i < parent->childCount-1; i++) {
+		if (maxKey <= parent->keys[i]) return (node*) parent->children[i-1];
+	}
+	return parent->children[parent->childCount-2]; // if not found in node then n is the last node and second to last node should be returned
+}
+
 /*
 Given a page, find the next available page number
 @return 0 for failure
@@ -244,7 +318,6 @@ uint32_t updateMaxPageNum(node* n) {
 // ##########################################################################################################################################
 // INSERTION FUNCTIONS
 
-// UNTESTED
 /*
 puts a page into a parent node's children and keys arrays
 assumes node is not full
@@ -254,9 +327,9 @@ void insertPageIntoChildren(node* n, page* p) {
 	// check if page should be inserted into the middle of the children
 	for (int i = 0; i < n->childCount; i++) {
 		if (n->keys[i] > p->pageNum) {
-			shiftIntArray(n->keys, i, M);
+			shiftIntArrayR(n->keys, i, M);
 			n->keys[i] = p->pageNum;
-			shiftPageArray((page**) n->children, i, M);
+			shiftPageArrayR((page**) n->children, i, M);
 			n->children[i] = p;
 			n->childCount++;
 			return;
@@ -270,7 +343,6 @@ void insertPageIntoChildren(node* n, page* p) {
 	return;
 }
 
-// UNTESTED
 /*
 puts a node into a parent node's children and keys arrays
 assumes node is not full
@@ -278,21 +350,18 @@ assumes node is not full
 void splitUpdateParent(node* parent, node* child, int newKey) {
 	if (isNodeFull(parent)) {
 		printf("Balancing parent from splitUpdateParent()\n");
-		balanceTree(parent);
+		balanceTreeAdd(parent);
 	}
 	// look for correct spot in parent's keys
-	printf("New key: %d\n", newKey);
-	printIntArray(parent->keys, M);
 	for (int i = 0; i < parent->childCount-1; i++) {
 		if (parent->keys[i] > newKey) {
-			shiftIntArray(parent->keys, i, M);
+			shiftIntArrayR(parent->keys, i, M);
 			parent->keys[i] = newKey;
-			shiftNodeArray((node**) parent->children, i+1, M);
+			shiftNodeArrayR((node**) parent->children, i+1, M);
 			/*parent->children[i+1] = parent->children[i+2];
 			parent->children[i+2] = child;*/
 			parent->children[i+1] = child;
 			parent->childCount++;
-			printIntArray(parent->keys, M);
 			return;
 		}
 	}
@@ -300,11 +369,9 @@ void splitUpdateParent(node* parent, node* child, int newKey) {
 	parent->keys[parent->childCount-1] = newKey; // no previous key to replace
 	parent->children[parent->childCount] = child;
 	parent->childCount++;
-	printIntArray(parent->keys, M);
 	return;
 }
 
-// UNTESTED
 // splits a node, making sure the new node is properly connected to the b+tree
 // assumes the parent node is not full
 node* splitNode(node* n) {
@@ -347,13 +414,12 @@ node* splitNode(node* n) {
 	return new;
 }
 
-// UNTESTED
 /*
 @param n = the node to be split
 */
-node* balanceTree(node* n) {
+node* balanceTreeAdd(node* n) {
 	if (!isNodeFull(n)) {
-		printf("Error: called balance() on a node that wasn't full\n");
+		printf("Error: called balanceTreeAdd() on a node that wasn't full\n");
 		return NULL;
 	}
 	if (isRoot(n)) {
@@ -362,17 +428,16 @@ node* balanceTree(node* n) {
 	// recursive step
 	// need to make sure new node is put into the correct node
 	else if (isNodeFull(n->parent)) {
-		node* newP = balanceTree(n->parent);
+		node* newP = balanceTreeAdd(n->parent);
 	}
 	node* new = splitNode(n);
 	return new;
 }
 
-// UNTESTED
 // adds a page to a node and balances the tree recursively
 void addPage(node* n, page* newPage) {
 	if (isNodeFull(n)) {
-		node* new = balanceTree(n);
+		node* new = balanceTreeAdd(n);
 		// decide which node to add the page to and add it
 		if (newPage->pageNum > n->maxPageNumber) {
 			insertPageIntoChildren(new, newPage);
@@ -383,7 +448,6 @@ void addPage(node* n, page* newPage) {
 	insertPageIntoChildren(n, newPage);
 }
 
-// UNTESTED
 /*
 Writes a value into a slotted page
 */
@@ -398,7 +462,6 @@ bool writeVal(page* p, int tuple) {
 	return true;
 }
 
-// UNTESTED
 /*
 inserts a new tuple into the b+tree
 @return: true - successfully wrote to the specified page
@@ -414,9 +477,178 @@ bool insertTuple(int tuple, u_int32_t pageNum, node* tree) {
 		printf("Tried to write to page %d but it is full\n", pageNum);
 		return false;
 	} else {
-		if (!writeVal(p, tuple)) printf("Error: tried to write tuple to incompatible page\n");
+		if (!writeVal(p, tuple)) printf("Error: Tried to write tuple to incompatible page\n");
 		return true;
 	}
+}
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// DELETION FUNCTIONS
+
+// UNTESTED
+node* mergeNode(node* n) {
+	;
+}
+
+/* valid borrow targets:
+exist
+have more than M/2 children
+have the same parent as n
+*/
+bool isValidBorrow(node* n, node* target) {
+	return (target && target->childCount > M/2 && target->parent == n->parent);
+}
+
+// assumes that next is a valid target for a borrow
+void borrowNext(node* n, node* next) {
+	n->children[n->childCount] = next->children[0];
+	n->keys[n->childCount++] = next->keys[0];
+	next->childCount--;
+	next->keys[next->childCount] = 0;
+	next->children[next->childCount] = NULL;
+	shiftPageArrayL((page**) next->children, 0, M);
+	shiftIntArrayL(next->keys, 0, M);
+	// update parent
+	int borrowed = n->keys[n->childCount-1];
+	for (int i = 0; i < n->parent->childCount; i++) {
+		if (borrowed > n->parent->keys[i]) {
+			n->parent->keys[i] = borrowed;
+			return;
+		}
+	}
+	printf("Error: Function borrowNext() borrowed a key from next that was less than a key from n\n");
+	return;
+
+}
+
+// assumes that prev is a valid target for a borrow
+void borrowPrev(node* n, node* prev) {
+	shiftIntArrayR(n->keys, 0, M);
+	shiftPageArrayR((page**) n->children, 0, M);
+	prev->childCount--;
+	n->keys[0] = prev->keys[prev->childCount];
+	n->children[0] = prev->children[prev->childCount];
+	prev->keys[prev->childCount] = 0;
+	prev->children[prev->childCount] = NULL;
+	n->childCount++;
+	// update parent
+	int borrowed = n->keys[0];
+	for (int i = 0; i < n->parent->childCount; i++) {
+		if (borrowed == n->parent->keys[i]) {
+			n->parent->keys[i] = prev->keys[prev->childCount-1];
+			return;
+		}
+	}
+}
+
+/*
+implements b+ tree borrowing for internal nodes
+assumes n, next and their parent are valid and internal nodes
+*/
+void borrowNextThroughParent(node* n, node* next) {
+	node* parent = n->parent;
+	for (int i = 0; i < parent->childCount; i++) {
+		if (parent->children[i] == n) {
+			n->keys[n->childCount-1] = parent->keys[i];
+			parent->keys[i] = next->keys[0];
+			n->children[n->childCount++] = n->children[0];
+			n->maxPageNumber = ((node*) n->children[0])->maxPageNumber;
+			shiftIntArrayL(next->keys, 0, M-1);
+			shiftNodeArrayL((node**) next->children, 0, M);
+			next->childCount--;
+			next->children[next->childCount] = NULL;
+			next->keys[next->childCount-1] = 0;
+			return;
+		}
+	}
+}
+
+void borrowPrevThroughParent(node* n, node* prev) {
+	node* parent = n->parent;
+	for (int i = 0; i < parent->childCount; i++) {
+		if (parent->children[i] == n) {
+			shiftIntArrayR(n->keys, 0, M);
+			shiftNodeArrayR((node**) n->children, 0, M);
+			n->keys[0] = parent->keys[parent->childCount-2];
+			prev->childCount--;
+			n->children[0] = prev->children[prev->childCount];
+			parent->keys[parent->childCount-2] = prev->keys[prev->childCount-1];
+			prev->children[prev->childCount] = NULL;
+			prev->keys[prev->childCount-1] = 0;
+			return;
+		}
+	}
+}
+
+// UNTESTED
+node* balanceTreeDelete(node* n) {
+	// if n is a leaf node
+	if (n->isLeaf) { // needs to come before root case since a node that is both a root and a leaf can have one page child
+		node* next = n->next;
+		if (isValidBorrow(n, next)) {
+			borrowNext(n, next);
+			if (n->parent->childCount < HALF_M) balanceTreeDelete(n->parent);
+			return;
+		}
+		node* prev = n->prev;
+		if (isValidBorrow(n, prev)) {
+			borrowPrev(n, prev);
+			if (n->parent->childCount < HALF_M) balanceTreeDelete(n->parent);
+			return;
+		}
+		mergeNode(n);
+	// if n is a root node
+	} else if (isRoot(n) && n->childCount == 1) {
+		// need to update root pointer to new root
+		node* r = ((node*) n->children[0]);
+		r->parent = NULL;
+		free(n);
+		return r;
+	// if n is an internal node
+	} else {
+		node* next = getNextInternal(n);
+		if (isValidBorrow(n, next)) {
+			borrowNextThroughParent(n, next);
+			return;
+		}
+		node* prev = getPrevInternal(n);
+		if (isValidBorrow(n, prev)) {
+			borrowPrevThroughParent(n, prev);
+			return;
+		}
+		mergeNode(n);
+	}
+}
+
+
+// UNTESTED
+/*
+Deletes a page from a node
+@return - whether the page was successfully deleted or not
+*/
+bool deletePage(node* n, int pageNum)  {
+	if (!n->isLeaf) {
+		printf("Error: Tried to delete page in inner node\n");
+		return false;
+	}
+	if (n->childCount == HALF_M && !isRoot(n)) {
+		n = balanceTreeDelete(n);
+	}
+	// search for page in node's children
+	for (int i = 0; i < n->childCount; i++) {
+		if (n->keys[i] == pageNum) {
+			freePage((page*) n->children[i]);;
+			shiftIntArrayL(n->keys, i, M);
+			shiftPageArrayL((page**) n->children, i, M);
+			n->childCount--;
+			if (i == n->childCount) n->maxPageNumber = n->keys[n->childCount-1];
+			return true;
+		}
+	}
+	// otherwise, page doesn't exist in the node
+	printf("Error: Tried to delete page %d from node at %p, but page was not found\n", pageNum, n);
+	return false;
 }
 
 // ##########################################################################################################################################

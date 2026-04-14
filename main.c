@@ -14,7 +14,7 @@ void execute(char* input) {
     //run(bytecode);
 }
 
-void testTree() {
+void testInsertion() {
     // B+ Tree Testing
     // current issue: there should be a way to find where a page should go, that way new entries can be put there
     node* q = newTree(100);
@@ -34,6 +34,10 @@ void testTree() {
     freeTree(q);
 }
 
+void testDeletion() {
+    ;
+}
+
 int main(int argc, char** argv) {
-    testTree();
+    
 }
