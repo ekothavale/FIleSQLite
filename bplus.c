@@ -487,8 +487,59 @@ bool insertTuple(int tuple, u_int32_t pageNum, node* tree) {
 // DELETION FUNCTIONS
 
 // UNTESTED
+/*
+Assumes n's siblings are empty enough to merge with n since merging should only be done if borrowing fails
+*/
 node* mergeNode(node* n) {
-	;
+	node* survivor = n;
+	node* source;
+	// some operations differ whether n is a leaf node or not
+	if (n->isLeaf) {
+		// determine source and survivor
+		source = n->next;
+		if (n->prev && n->prev->parent == n->parent) {
+			survivor = n->prev;
+			source = n;
+		}
+		// copy keys and children
+		for (int i = 0; i < source->childCount; i++) {
+			survivor->keys[survivor->childCount] = source->keys[i];
+			survivor->children[survivor->childCount++] = source->children[i];
+		}
+
+		// update linked list
+		survivor->next = source->next;
+		source->next->prev = survivor;
+	// n is an internal node
+	} else {
+		// determine source and survivor
+		node* prev = getPrevInternal(n);
+		if (prev && prev->parent == n->parent) {
+			survivor = prev;
+			source = n;
+		} else {
+			source = getNextInternal(n);
+		}
+		// copy keys and children
+		for (int i = 0; i < source->childCount; i++) {
+			survivor->keys[survivor->childCount-1] = source->keys[i]; // copies extra garbage key
+			survivor->children[survivor->childCount++] = source->children[i];
+		}
+	}
+	// update MPN
+	survivor->maxPageNumber = source->maxPageNumber;
+	// update parent
+	node* parent = source->parent;
+	for (int i = 1; i < parent->childCount; i++) {
+		if (parent->children[i] == source) {
+			shiftNodeArrayL(((node**) parent->children), i, M);
+			shiftIntArrayL(parent->keys, i-1, M);
+		}
+	}
+	// conditionally balance parent, free source and return survivor
+	free(source);
+	if (parent->childCount < HALF_M) balanceTreeDelete(parent);
+	return survivor;
 }
 
 /* valid borrow targets:
