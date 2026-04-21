@@ -5,6 +5,7 @@
 #include "common.h"
 #include "chunk.h"
 #include "types.h"
+#include "bplus.h"
 
 void printTokenizedQuery(TokenizedQuery* tquery);
 void printChunk(Chunk* chunk);
@@ -13,7 +14,7 @@ node* generateTestBPlusTree();
 void printIntArray(int* arr, int length);
 void printPage(page* p);
 void printNode(node* n);
-void printTree(node* root, int level);
-bool checkTreePointers(node* root);
+void printTree(node* root);
+bool checkTreePointers(tree* t);
 
 #endif // DEBUG_H

@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "chunk.h"
+#include "bplus.h"
 
 char* stringTokens[] = {"SELECT", "IDENTIFIER", "NUMBER", "STRING", "STAR", "PLUS", "MINUS", "SLASH", "BANG", "EQUALS", "QUESTION", "RIGHT_PAREN", "LEFT_PAREN", "COMMA", "DOT", "AND", "PIPE", "UNKNOWN"};
 
@@ -159,7 +160,7 @@ void printNode(node* n) {
     printf("Next: %p\n\n", n->next);
 }
 
-void printTree(node* root, int level) {
+void printTreeHelper(node* root, int level) {
     if (root == NULL) {
         printf("Tree is empty.\n");
         return;
@@ -198,12 +199,17 @@ void printTree(node* root, int level) {
 
         // Recursively print child nodes
         for (int i = 0; i < root->childCount; i++) {
-            printTree((node*)root->children[i], level + 1);
+            printTreeHelper((node*)root->children[i], level + 1);
         }
     }
 }
 
-bool checkTreePointers(node* root) {
+void printTree(node* root) {
+    printTreeHelper(root, 1);
+}
+
+
+bool checkTreePointersHelper(node* root) {
     if (root == NULL) {
         return true; // An empty tree is valid
     }
@@ -232,11 +238,16 @@ bool checkTreePointers(node* root) {
             }
 
             // Recursively check the subtree
-            if (!checkTreePointers(n)) {
+            if (!checkTreePointersHelper(n)) {
                 return false;
             }
         }
     }
 
     return true; // All checks passed
+}
+
+bool checkTreePointers(tree* t) {
+    node* root = t->root;
+    return checkTreePointersHelper(root);
 }

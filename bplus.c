@@ -75,15 +75,16 @@ node* newNode(bool isLeaf, node* parent) {
 }
 
 // creates a new b+ tree starting with just one leaf node and one page
-node* newTree(uint32_t pageNum) {
+tree* newTree(uint32_t pageNum) {
 	node* new = newNode(true, NULL);
 	new->childCount = 1;
 
 	page* p = newPage(pageNum, new);
 	new->children[0] = p;
 	new->keys[0] = pageNum;
-
-	return new;
+	tree* t = malloc(sizeof(tree));
+	t->root = new;
+	return t;
 }
 
 // ##########################################################################################################################################
@@ -198,7 +199,8 @@ bool isRoot(node* n) {
 
 // finds a page in a tree by page number
 // returns null if page is not in tree
-page* findPage(uint32_t pageNum, node* tree) {
+page* findPage(uint32_t pageNum, tree* t) {
+	node* tree = t->root;
     if (tree == NULL || tree->childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
         return NULL; // input was an invalid tree
@@ -234,7 +236,8 @@ page* findPage(uint32_t pageNum, node* tree) {
 finds a page in a tree by page number and returns it
 if the page does not exist, creates a page in the right spot and returns it
 */
-page* findAndInsert(uint32_t pageNum, node* tree) {
+page* findAndInsert(uint32_t pageNum, tree* t) {
+	node* tree = t->root;
     if (tree == NULL || tree->childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
         return NULL; // input was an invalid tree
@@ -262,14 +265,53 @@ page* findAndInsert(uint32_t pageNum, node* tree) {
             return (page*) tree->children[i];
         } else if (key > pageNum) { // optimization so that we don't have to unnecessarily finish a loop
 			page* p = newPage(pageNum, tree);
-			addPage(tree, p);
+			addPage(tree, p, t);
 			return p;
 		}
     }
 	page* p = newPage(pageNum, tree);
-    addPage(tree, p);
+    addPage(tree, p, t);
 	return p;
 }
+
+// UNTESTED
+/*
+Searches for a page by number in the tree and deletes it
+@return true - page is found and deleted
+@return false - page deletion was unsuccessful
+*/
+bool findAndDelete(uint32_t pageNum, tree* t) {
+	node* tree = t->root;
+    if (tree == NULL || tree->childCount == 0) {
+        printf("Attempted to find page in invalid tree\n");
+        return NULL; // input was an invalid tree
+    }
+    // Compare pageNum against keys in node
+    while (!tree->isLeaf) {
+        int found = 0;
+        for (int i = 0; i < tree->childCount - 1; i++) {
+            // Searching for the correct key position
+            if (pageNum <= tree->keys[i]) {
+                tree = tree->children[i];
+                found = 1;
+                break;
+            }
+        }
+        // If key wasn't less than any indices, the last child is the correct path
+        if (!found) {
+            tree = tree->children[tree->childCount - 1];
+        }
+    }
+    // We have found the correct leaf
+    for (int i = 0; i < tree->childCount; i++) {
+        uint32_t key = tree->keys[i];
+        if (key == pageNum) {
+            return deletePage(tree, pageNum, t);
+		}
+    }
+	return false;
+}
+
 
 /* UNTESTED
 returns an internal node's next sibling (not cousin)
@@ -347,10 +389,10 @@ void insertPageIntoChildren(node* n, page* p) {
 puts a node into a parent node's children and keys arrays
 assumes node is not full
 */
-void splitUpdateParent(node* parent, node* child, int newKey) {
+void splitUpdateParent(node* parent, node* child, int newKey, tree* t) {
 	if (isNodeFull(parent)) {
 		printf("Balancing parent from splitUpdateParent()\n");
-		balanceTreeAdd(parent);
+		balanceTreeAdd(parent, t);
 	}
 	// look for correct spot in parent's keys
 	for (int i = 0; i < parent->childCount-1; i++) {
@@ -374,7 +416,7 @@ void splitUpdateParent(node* parent, node* child, int newKey) {
 
 // splits a node, making sure the new node is properly connected to the b+tree
 // assumes the parent node is not full
-node* splitNode(node* n) {
+node* splitNode(node* n, tree* t) {
 	if (isNodeFull(n->parent)) printf("Error: tried to split a node with a full parent");
 	node* new = newNode(n->isLeaf, n->parent);
 	int middleKid = n->childCount/2;
@@ -410,34 +452,35 @@ node* splitNode(node* n) {
 	new->maxPageNumber = n->maxPageNumber;
 	n->maxPageNumber = n->keys[n->childCount-1];
 	// inserting new node into parent's keys and pointers
-	splitUpdateParent(n->parent, new, n->maxPageNumber);
+	splitUpdateParent(n->parent, new, n->maxPageNumber, t);
 	return new;
 }
 
 /*
 @param n = the node to be split
 */
-node* balanceTreeAdd(node* n) {
+node* balanceTreeAdd(node* n, tree* t) {
 	if (!isNodeFull(n)) {
 		printf("Error: called balanceTreeAdd() on a node that wasn't full\n");
 		return NULL;
 	}
 	if (isRoot(n)) {
 		node* r = newRoot(n);
+		t->root = r;
 	}
 	// recursive step
 	// need to make sure new node is put into the correct node
 	else if (isNodeFull(n->parent)) {
-		node* newP = balanceTreeAdd(n->parent);
+		node* newP = balanceTreeAdd(n->parent, t);
 	}
-	node* new = splitNode(n);
+	node* new = splitNode(n, t);
 	return new;
 }
 
 // adds a page to a node and balances the tree recursively
-void addPage(node* n, page* newPage) {
+void addPage(node* n, page* newPage, tree* t) {
 	if (isNodeFull(n)) {
-		node* new = balanceTreeAdd(n);
+		node* new = balanceTreeAdd(n, t);
 		// decide which node to add the page to and add it
 		if (newPage->pageNum > n->maxPageNumber) {
 			insertPageIntoChildren(new, newPage);
@@ -467,8 +510,9 @@ inserts a new tuple into the b+tree
 @return: true - successfully wrote to the specified page
 @return: false - specified page was full and page number must be adjusted
 */
-bool insertTuple(int tuple, u_int32_t pageNum, node* tree) {
-	page* p = findAndInsert(pageNum, tree);
+bool insertTuple(int tuple, u_int32_t pageNum, tree* t) {
+	node* tree = t->root;
+	page* p = findAndInsert(pageNum, t);
 	if (p == NULL) {
 		printf("Error: Could not find page %d while inserting\n", pageNum);
 		return false;
@@ -490,7 +534,8 @@ bool insertTuple(int tuple, u_int32_t pageNum, node* tree) {
 /*
 Assumes n's siblings are empty enough to merge with n since merging should only be done if borrowing fails
 */
-node* mergeNode(node* n) {
+node* mergeNode(node* n, tree* t) {
+	printf("Merging nodes\n");
 	node* survivor = n;
 	node* source;
 	// some operations differ whether n is a leaf node or not
@@ -508,8 +553,10 @@ node* mergeNode(node* n) {
 		}
 
 		// update linked list
-		survivor->next = source->next;
-		source->next->prev = survivor;
+		if (source->next) {
+			survivor->next = source->next;
+			source->next->prev = survivor;
+		}
 	// n is an internal node
 	} else {
 		// determine source and survivor
@@ -536,9 +583,11 @@ node* mergeNode(node* n) {
 			shiftIntArrayL(parent->keys, i-1, M);
 		}
 	}
+	parent->childCount--;
 	// conditionally balance parent, free source and return survivor
+	printf("Freeing node at %p\n", source);
 	free(source);
-	if (parent->childCount < HALF_M) balanceTreeDelete(parent);
+	if (parent->childCount < HALF_M) balanceTreeDelete(parent, t);
 	return survivor;
 }
 
@@ -633,27 +682,28 @@ void borrowPrevThroughParent(node* n, node* prev) {
 }
 
 // UNTESTED
-node* balanceTreeDelete(node* n) {
+node* balanceTreeDelete(node* n, tree* t) {
 	// if n is a leaf node
 	if (n->isLeaf) { // needs to come before root case since a node that is both a root and a leaf can have one page child
 		node* next = n->next;
 		if (isValidBorrow(n, next)) {
 			borrowNext(n, next);
-			if (n->parent->childCount < HALF_M) balanceTreeDelete(n->parent);
-			return;
+			if (n->parent->childCount < HALF_M) balanceTreeDelete(n->parent, t);
+			return n;
 		}
 		node* prev = n->prev;
 		if (isValidBorrow(n, prev)) {
 			borrowPrev(n, prev);
-			if (n->parent->childCount < HALF_M) balanceTreeDelete(n->parent);
-			return;
+			if (n->parent->childCount < HALF_M) balanceTreeDelete(n->parent, t);
+			return n;
 		}
-		mergeNode(n);
+		return mergeNode(n, t);
 	// if n is a root node
-	} else if (isRoot(n) && n->childCount == 1) {
-		// need to update root pointer to new root
+	} else if (n == t->root && n->childCount == 1) {
 		node* r = ((node*) n->children[0]);
+		t->root = r;
 		r->parent = NULL;
+		printf("Collapsing tree\n");
 		free(n);
 		return r;
 	// if n is an internal node
@@ -661,14 +711,14 @@ node* balanceTreeDelete(node* n) {
 		node* next = getNextInternal(n);
 		if (isValidBorrow(n, next)) {
 			borrowNextThroughParent(n, next);
-			return;
+			return n;
 		}
 		node* prev = getPrevInternal(n);
 		if (isValidBorrow(n, prev)) {
 			borrowPrevThroughParent(n, prev);
-			return;
+			return n;
 		}
-		mergeNode(n);
+		return mergeNode(n, t);
 	}
 }
 
@@ -678,13 +728,13 @@ node* balanceTreeDelete(node* n) {
 Deletes a page from a node
 @return - whether the page was successfully deleted or not
 */
-bool deletePage(node* n, int pageNum)  {
+bool deletePage(node* n, uint32_t pageNum, tree* t)  {
 	if (!n->isLeaf) {
 		printf("Error: Tried to delete page in inner node\n");
 		return false;
 	}
 	if (n->childCount == HALF_M && !isRoot(n)) {
-		n = balanceTreeDelete(n);
+		n = balanceTreeDelete(n, t);
 	}
 	// search for page in node's children
 	for (int i = 0; i < n->childCount; i++) {
@@ -701,6 +751,8 @@ bool deletePage(node* n, int pageNum)  {
 	printf("Error: Tried to delete page %d from node at %p, but page was not found\n", pageNum, n);
 	return false;
 }
+
+// need deleteTuple function
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
@@ -757,7 +809,7 @@ void freePage(page* p) {
 	free(p);
 }
 
-void freeTree(node* r) {
+void freeTreeHelper(node* r) {
 	if (r == NULL) return;
 	if (r->isLeaf) {
 		for (int i = 0; i < r->childCount; i++) {
@@ -769,4 +821,9 @@ void freeTree(node* r) {
 		freeTree(r->children[i]);
 	}
 	free(r);
+}
+
+void freeTree(tree* t) {
+	freeTreeHelper(t->root);
+	free(t);
 }
