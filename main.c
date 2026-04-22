@@ -34,17 +34,16 @@ void testInsertion() {
 }
 
 void testDeletion() {
-    node* q = newTree(1);
-    for (int i = 3; i < 20; i+=2) {
+    tree* q = newTree(1);
+    for (int i = 19; i > 1; i-=2) {
         findAndInsert(i, q);
-        if (q->parent) q = q->parent;
     }
     printTree(q);
     checkTreePointers(q);
-    for (int i = 19; i > 0; i-=2) {
+    for (int i = 1; i < 20; i+=2) {
         bool d = findAndDelete(i, q);
         printf("Page %d deleted ", i);
-        printf(i ? "successfully\n" : "unsuccessfully\n");
+        printf(d ? "successfully\n" : "unsuccessfully\n");
         printTree(q);
     }
     printTree(q);

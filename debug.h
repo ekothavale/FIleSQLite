@@ -14,7 +14,7 @@ node* generateTestBPlusTree();
 void printIntArray(int* arr, int length);
 void printPage(page* p);
 void printNode(node* n);
-void printTree(node* root);
+void printTree(tree* t);
 bool checkTreePointers(tree* t);
 
 #endif // DEBUG_H

@@ -204,8 +204,8 @@ void printTreeHelper(node* root, int level) {
     }
 }
 
-void printTree(node* root) {
-    printTreeHelper(root, 1);
+void printTree(tree* root) {
+    printTreeHelper(root->root, 1);
 }
 
 

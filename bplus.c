@@ -605,8 +605,6 @@ void borrowNext(node* n, node* next) {
 	n->children[n->childCount] = next->children[0];
 	n->keys[n->childCount++] = next->keys[0];
 	next->childCount--;
-	next->keys[next->childCount] = 0;
-	next->children[next->childCount] = NULL;
 	shiftPageArrayL((page**) next->children, 0, M);
 	shiftIntArrayL(next->keys, 0, M);
 	// update parent
