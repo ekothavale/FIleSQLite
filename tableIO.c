@@ -95,5 +95,3 @@ void loadRight(node n) {
 void loadParent(node n) {
 	;
 }
-
-void load
