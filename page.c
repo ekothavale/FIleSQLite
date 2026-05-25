@@ -7,6 +7,7 @@ would need to be overwritten.
 
 #include "page.h"
 
+// UNTESTED
 /*
 reads a 32bit big-endian unsigned integer from a page's slot array
 pos is the MSB
@@ -29,6 +30,7 @@ int readIndex(int pos, char* arr, int arrlen) {
 	return out;
 }
 
+// UNTESTED
 bool pageFull(page* p) {
 	return p->header.arrlen < p->header.numRecords * 4 + p->header.usedData
 }
@@ -57,23 +59,45 @@ more complicated version:
 	// return true
 */
 
+// UNTESTED
 bool addRecord(page* p, uint32_t offset, entry* record) {
 	if (pageFull(p)) return false;
 	p->entries[p->header.numRecords] = record;
 }
 
-void deleteRecord(page* p) {
+//UNTESTED
+/*
+@return true if deletion was successful else return false
+*/
+bool deleteRecord(page* p, uint32_t offset) {
 	;
 }
 
-void updateRecord(page* p) {
+// UNTESTED
+bool updateRecord(page* p, entry* record) {
 	;
 }
 
-void getRecord(page* p) {
+// UNTESTED
+/*
+@return record
+*/
+entry* readRecord(page* p) {
 	;
 }
 
-void sortSlotArray(page* p) {
-	;
+// UNTESTED
+/*
+binary search slot array
+@return index of slot
+*/
+u_int32_t searchSlotArray(page* p, uint32_t offset) {
+	u_int32_t hi = p->header.numRecords;
+	u_int32_t lo = 0;
+	while (hi - lo > 1) {
+		uint32_t mid = (hi - lo) / 2;
+		if (offset >= mid) lo = mid;
+		else hi = mid;
+	}
+	return lo;
 }

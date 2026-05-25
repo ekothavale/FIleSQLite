@@ -48,8 +48,8 @@ typedef struct page {
 int readIndex(int pos, char* arr, int arrlen);
 bool pageFull(page*);
 bool addRecord(page* p, uint32_t offset, entry* record, int recordLen);
-bool deleteRecord();
-bool updateRecord();
-bool readRecord();
+bool deleteRecord(page* p, uint32_t offset);
+bool updateRecord(page* p, entry* record);
+entry* readRecord(page* p);
 
 #endif
