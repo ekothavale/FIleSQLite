@@ -113,7 +113,6 @@ int shiftIntArrayR(int* array, int start, int len) {
 	return 0;
 }
 
-// UNTESTED
 /*
 shifts the elements of an array left, overwriting target
 @input target - the first spot to be overwritten
@@ -167,7 +166,6 @@ int shiftNodeArrayR(node** array, int start, int len) {
 	return 0;
 }
 
-// UNTESTED
 int shiftNodeArrayL(node** array, int target, int len) {
 	if (target > len-1) {
 		printf("Start index %d beyond length %d of array in shiftPageArrayL\n", target, len);
@@ -180,7 +178,6 @@ int shiftNodeArrayL(node** array, int target, int len) {
 	return 0;
 }
 
-// UNTESTED
 bool isPageFull(page* p) {
 	return p->numRecords >= NUM_SLOTS;
 }

@@ -39,7 +39,7 @@ bool loadMeta(FILE* file, table* table, char* fname) {
 }
 
 bool writeMeta(FILE* file, table* table) {
-	int buf = {
+	int buf[] = {
 		MAGIC,
 		table->metalen,
 		table->pageRows,
@@ -84,7 +84,7 @@ void loadPage(table* t) {
 }
 
 
-void loadLeft(node n) {
+/*void loadLeft(node n) {
 	;
 }
 
@@ -94,4 +94,4 @@ void loadRight(node n) {
 
 void loadParent(node n) {
 	;
-}
+}*/

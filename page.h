@@ -6,7 +6,7 @@ This representation is not the same used to store pages on disk; the translation
 #ifndef PAGE_H
 #define PAGE_H
 
-#include <common.h>
+#include "common.h"
 
 typedef enum datatype {
 	T_INT,
@@ -28,28 +28,38 @@ typedef struct entry {
 	datatype type;
 }entry;
 
-typedef struct slot {
-	uint32_t ID; // 
-	uint32_t ptr; // location in array of slot
-	uint32_t len; // number of entries corresponding to the record
-}slot;
+/* sp_record / sp_slot / slotted_page use the "sp_" prefix to avoid
+   colliding with the identically-named types in types.h. */
+typedef struct sp_record {
+	entry* entries;
+	uint32_t len;
+}sp_record;
+
+typedef struct sp_slot {
+	uint32_t ID; // record identifier (offset key)
+	uint32_t ptr; // index into the entries array where this record begins
+	uint32_t len; // number of entries belonging to this record
+}sp_slot;
 
 /*
 arr is the slot array and data
 from 0 -> are the slot indexes that store the offset from the end of the corresponding record
 from  <- len(arr) are the records
 */
-typedef struct page {
+typedef struct slotted_page {
 	header header;
 	entry* entries;
-	slot* slots;
-}page;
+	sp_slot* slots;
+}slotted_page;
 
 int readIndex(int pos, char* arr, int arrlen);
-bool pageFull(page*);
-bool addRecord(page* p, uint32_t offset, entry* record, int recordLen);
-bool deleteRecord(page* p, uint32_t offset);
-bool updateRecord(page* p, entry* record);
-entry* readRecord(page* p);
+bool pageFull(slotted_page*);
+slotted_page* makePage(uint32_t pageNum, uint32_t numSlots, uint32_t numEntries);
+void freePage(slotted_page* p)
+
+bool addRecord(slotted_page* p, uint32_t offset, sp_record r);
+bool deleteRecord(slotted_page* p, uint32_t offset);
+bool updateRecord(slotted_page* p, uint32_t offset, sp_record r);
+sp_record readRecord(slotted_page* p, uint32_t offset);
 
 #endif

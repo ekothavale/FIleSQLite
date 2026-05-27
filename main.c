@@ -51,7 +51,11 @@ void testDeletion() {
     freeTree(q);
 }
 
+void testPages() {
+}
+
 int main(int argc, char** argv) {
     testInsertion();
     testDeletion();
+    test_page();
 }

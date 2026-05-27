@@ -251,3 +251,85 @@ bool checkTreePointers(tree* t) {
     node* root = t->root;
     return checkTreePointersHelper(root);
 }
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// SLOTTED PAGE PRETTY-PRINTERS
+
+static const char* datatypeStr(datatype t) {
+    switch (t) {
+        case T_INT:    return "INT";
+        case T_STRING: return "STR";
+        case T_DATE:   return "DATE";
+        case T_TIME:   return "TIME";
+        default:       return "???";
+    }
+}
+
+/*
+Prints a single entry in the form TYPE(value), e.g. STR(Alice) or INT(42).
+*/
+void printEntry(entry* e) {
+    if (e == NULL || e->data == NULL) {
+        printf("<NULL>");
+        return;
+    }
+    printf("%s(%s)", datatypeStr(e->type), e->data);
+}
+
+/*
+Prints a single slot's metadata.
+*/
+void printSPSlot(sp_slot* s) {
+    if (s == NULL) {
+        printf("<NULL slot>\n");
+        return;
+    }
+    printf("{ ID=%-4u  ptr=%-4u  len=%-4u }", s->ID, s->ptr, s->len);
+}
+
+/*
+Pretty-prints a slotted_page showing its header, the slot directory, and
+the contents of every record stored in the page.
+
+Layout printed:
+  === Slotted Page #N ===
+  header fields ...
+  --- Slot Directory ---
+  idx   ID     ptr    len
+  ...
+  --- Records ---
+  [ID=N]  entry0, entry1, ...
+*/
+void printSlottedPage(slotted_page* p) {
+    if (p == NULL) {
+        printf("[NULL slotted_page]\n");
+        return;
+    }
+
+    printf("=== Slotted Page #%u ===\n", p->header.pageNum);
+    printf("  parent    : %llu\n", (unsigned long long)p->header.parent);
+    printf("  numRecords: %u\n",   p->header.numRecords);
+    printf("  numEntries: %u\n",   p->header.numEntries);
+    printf("  usedData  : %u bytes\n\n", p->header.usedData);
+
+    printf("  --- Slot Directory ---\n");
+    printf("  %4s  %6s  %6s  %6s\n", "idx", "ID", "ptr", "len");
+    printf("  %4s  %6s  %6s  %6s\n", "----", "------", "------", "------");
+    for (uint32_t i = 0; i < p->header.numRecords; i++) {
+        sp_slot* s = &p->slots[i];
+        printf("  %4u  %6u  %6u  %6u\n", i, s->ID, s->ptr, s->len);
+    }
+
+    printf("\n  --- Records ---\n");
+    for (uint32_t i = 0; i < p->header.numRecords; i++) {
+        sp_slot* s = &p->slots[i];
+        printf("  [ID=%-4u]  ", s->ID);
+        for (uint32_t j = 0; j < s->len; j++) {
+            if (j > 0) printf(", ");
+            printEntry(&p->entries[s->ptr + j]);
+        }
+        printf("\n");
+    }
+    printf("======================\n");
+}
