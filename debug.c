@@ -63,23 +63,23 @@ node* generateTestBPlusTree() {
             int pageCount = (j % 3) + 1; // Variable, nonzero number of pages
             leaf->childCount = pageCount;
             for (int k = 0; k < pageCount; k++) {
-                page* p = malloc(sizeof(page));
-                p->pageNum = num;
+                slotted_page* p = malloc(sizeof(slotted_page));
+                p->header.pageNum = num;
                 num += 50; // increment pageNums by 50
 
-                p->numRecords = 0;
-                p->parent = leaf;
+                p->header.numRecords = 0;
+                p->header.parent = leaf;
                 leaf->children[k] = p;
 
                 // Update maxPageNumber for the leaf node
-                if (p->pageNum > maxPageNumber) {
-                    maxPageNumber = p->pageNum;
+                if (p->header.pageNum > maxPageNumber) {
+                    maxPageNumber = p->header.pageNum;
                 }
             }
 
             // Set the key range for the leaf node
-            leaf->keys[0] = ((page*)leaf->children[0])->pageNum;
-            leaf->keys[1] = ((page*)leaf->children[leaf->childCount - 1])->pageNum;
+            leaf->keys[0] = ((slotted_page*)leaf->children[0])->header.pageNum;
+            leaf->keys[1] = ((slotted_page*)leaf->children[leaf->childCount - 1])->header.pageNum;
             leaf->maxPageNumber = maxPageNumber; // Update maxPageNumber for the leaf
         }
 
@@ -110,35 +110,6 @@ void printIntArray(int* arr, int length) {
         printf(", %d", arr[i]);
     }
     printf("]\n");
-}
-/*
-void printPage(page* p) {
-	printf("Page %d\n", p->pageNum);
-	printf("Parent node: %p\n", p->parent);
-	printf("Used slots: %d\nUsed memory: %dB\n", p->totalUsedSlots, p->usedMem);
-	printf("Slot array:\n");
-	for (int i = 0; i < p->totalUsedSlots - 1; i++) {
-		printf("%d | ", p->slotarr[i]);
-	}
-	printf("%d\n", p->slotarr[p->totalUsedSlots-1]);
-	printf("Stack Top: %d\n", p->valsOffset);
-	printf("Memory:\n");
-	for (int l = p->valsOffset; l > 0; l--) {
-		printf("%d | ", p->cells[NUM_VALS - 1 - l]);
-	}
-	printf("%d\n", p->cells[NUM_VALS-1]);
-	printf("\n");
-}*/
-
-void printPage(page* p) {
-    printf("Page %d\n", p->pageNum);
-	printf("Parent node: %p\n", p->parent);
-	printf("Used slots: %d\n", p->numRecords);
-	printf("Slot array:\n");
-	for (int i = 0; i < p->numRecords - 1; i++) {
-		printf("%d | ", p->records[i]);
-	}
-    printf("%d\n", p->records[p->numRecords-1]);
 }
 
 /* UNTESTED
@@ -182,12 +153,12 @@ void printTreeHelper(node* root, int level) {
 
         // Print the pages this leaf node points to
         for (int i = 0; i < root->childCount; i++) {
-            page* p = (page*)root->children[i];
+            slotted_page* p = (slotted_page*)root->children[i];
             if (p != NULL) {
                 for (int j = 0; j < level + 1; j++) {
                     printf("    ");
                 }
-                printf("Page %d\n", p->pageNum);
+                printf("Page %d\n", p->header.pageNum);
             }
         }
     } else {
@@ -222,10 +193,10 @@ bool checkTreePointersHelper(node* root) {
 
         if (root->isLeaf) {
             // If the root is a leaf, its children are pages
-            page* p = (page*)child;
-            if (p->parent != root) {
+            slotted_page* p = (slotted_page*)child;
+            if (p->header.parent != root) {
                 printf("Error: Page %d has incorrect parent pointer. Expected parent: %p, Actual parent: %p\n", 
-                       p->pageNum, (void*)root, (void*)p->parent);
+                       p->header.pageNum, (void*)root, (void*)p->header.parent);
                 return false;
             }
         } else {

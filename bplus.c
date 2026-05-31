@@ -53,16 +53,6 @@ node* newRoot(node* child) {
 }
 
 /*
-creates a blank page and fills in the page number and parent
-*/
-page* newPage(uint32_t pageNum, node* parent) {
-	page* p = calloc(1, sizeof(page));
-	p->pageNum = pageNum;
-	p->parent = parent;
-	return p;
-}
-
-/*
 creates a blank leaf or interior node
 */
 node* newNode(bool isLeaf, node* parent) {
@@ -75,15 +65,17 @@ node* newNode(bool isLeaf, node* parent) {
 }
 
 // creates a new b+ tree starting with just one leaf node and one page
-tree* newTree(uint32_t pageNum) {
+tree* newTree(slotted_page* p) {
 	node* new = newNode(true, NULL);
 	new->childCount = 1;
 
-	page* p = newPage(pageNum, new);
 	new->children[0] = p;
-	new->keys[0] = pageNum;
+	new->keys[0] = p->header.pageNum;
 	tree* t = malloc(sizeof(tree));
 	t->root = new;
+	t->pageMaxSlots = p->header.maxSlots;
+	t->pageMaxEntries = p->header.maxEntries;
+	t->pageCap = p->header.arrCap;
 	return t;
 }
 
@@ -130,7 +122,7 @@ int shiftIntArrayL(int* array, int target, int len) {
 	return 0;
 }
 
-int shiftPageArrayR(page** array, int start, int len) {
+int shiftPageArrayR(slotted_page** array, int start, int len) {
 	if (start > len-1) {
 		printf("Start index %d beyond length %d of array in shiftPageArrayR\n", start, len);
 		return -1;
@@ -142,7 +134,7 @@ int shiftPageArrayR(page** array, int start, int len) {
 	return 0;
 }
 
-int shiftPageArrayL(page** array, int target, int len) {
+int shiftPageArrayL(slotted_page** array, int target, int len) {
 	if (target > len-1) {
 		printf("Start index %d beyond length %d of array in shiftPageArrayL\n", target, len);
 		return -1;
@@ -178,8 +170,8 @@ int shiftNodeArrayL(node** array, int target, int len) {
 	return 0;
 }
 
-bool isPageFull(page* p) {
-	return p->numRecords >= NUM_SLOTS;
+bool isPageFull(slotted_page* p) {
+	return p->header.numRecords >= NUM_SLOTS;
 }
 
 bool isNodeFull(node* n) {
@@ -196,7 +188,7 @@ bool isRoot(node* n) {
 
 // finds a page in a tree by page number
 // returns null if page is not in tree
-page* findPage(uint32_t pageNum, tree* t) {
+slotted_page* findPage(uint32_t pageNum, tree* t) {
 	node* tree = t->root;
     if (tree == NULL || tree->childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
@@ -221,8 +213,8 @@ page* findPage(uint32_t pageNum, tree* t) {
     }
     // We have found the correct leaf
     for (int i = 0; i < tree->childCount; i++) {
-        page* p = (page*)tree->children[i];
-        if (p->pageNum == pageNum) {
+        slotted_page* p = (slotted_page*)tree->children[i];
+        if (p->header.pageNum == pageNum) {
             return p;
         }
     }
@@ -233,7 +225,7 @@ page* findPage(uint32_t pageNum, tree* t) {
 finds a page in a tree by page number and returns it
 if the page does not exist, creates a page in the right spot and returns it
 */
-page* findAndInsert(uint32_t pageNum, tree* t) {
+slotted_page* findAndInsert(uint32_t pageNum, tree* t) {
 	node* tree = t->root;
     if (tree == NULL || tree->childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
@@ -259,14 +251,14 @@ page* findAndInsert(uint32_t pageNum, tree* t) {
     for (int i = 0; i < tree->childCount; i++) {
         uint32_t key = tree->keys[i];
         if (key == pageNum) {
-            return (page*) tree->children[i];
+            return (slotted_page*) tree->children[i];
         } else if (key > pageNum) { // optimization so that we don't have to unnecessarily finish a loop
-			page* p = newPage(pageNum, tree);
+			slotted_page* p = makeSPage(pageNum, t->pageMaxSlots, t->pageMaxEntries, t->pageCap);
 			addPage(tree, p, t);
 			return p;
 		}
     }
-	page* p = newPage(pageNum, tree);
+	slotted_page* p = makeSPage(pageNum, t->pageMaxSlots, t->pageMaxEntries, t->pageCap);
     addPage(tree, p, t);
 	return p;
 }
@@ -344,12 +336,12 @@ Given a page, find the next available page number
 There is no guarantee this function will return a page number that is legal by the properties of a search tree.
 Probably a good target for refactoring after the first draft of the tree.
 */
-uint32_t findNextPageNum(page* p) {
-	return p->pageNum + 1;
+uint32_t findNextPageNum(slotted_page* p) {
+	return p->header.pageNum + 1;
 }
 
 uint32_t updateMaxPageNum(node* n) {
-	if (n->isLeaf) return ((page*) n->children[n->childCount-1])->pageNum;
+	if (n->isLeaf) return ((slotted_page*) n->children[n->childCount-1])->header.pageNum;
 	return ((node*) n->children[n->childCount-1])->maxPageNumber;
 }
 
@@ -361,24 +353,24 @@ uint32_t updateMaxPageNum(node* n) {
 puts a page into a parent node's children and keys arrays
 assumes node is not full
 */
-void insertPageIntoChildren(node* n, page* p) {
-	p->parent = n;
+void insertPageIntoChildren(node* n, slotted_page* p) {
+	p->header.parent = n;
 	// check if page should be inserted into the middle of the children
 	for (int i = 0; i < n->childCount; i++) {
-		if (n->keys[i] > p->pageNum) {
+		if (n->keys[i] > p->header.pageNum) {
 			shiftIntArrayR(n->keys, i, M);
-			n->keys[i] = p->pageNum;
-			shiftPageArrayR((page**) n->children, i, M);
+			n->keys[i] = p->header.pageNum;
+			shiftPageArrayR((slotted_page**) n->children, i, M);
 			n->children[i] = p;
 			n->childCount++;
 			return;
 		}
 	}
 	// otherwise, the correct spot must be at the end
-	n->keys[n->childCount] = p->pageNum;
+	n->keys[n->childCount] = p->header.pageNum;
 	n->children[n->childCount] = p;
 	n->childCount++;
-	n->maxPageNumber = p->pageNum;
+	n->maxPageNumber = p->header.pageNum;
 	return;
 }
 
@@ -420,7 +412,7 @@ node* splitNode(node* n, tree* t) {
 	// copying over children and keys
 	for (int i = 0; i < middleKid; i++) {
 		new->children[i] = n->children[i + middleKid];
-		if (n->isLeaf) ((page*) new->children[i])->parent = new;
+		if (n->isLeaf) ((slotted_page*) new->children[i])->header.parent = new;
 		else ((node*) new->children[i])->parent = new;
 		n->children[i + middleKid] = NULL;
 	}
@@ -475,52 +467,17 @@ node* balanceTreeAdd(node* n, tree* t) {
 }
 
 // adds a page to a node and balances the tree recursively
-void addPage(node* n, page* newPage, tree* t) {
+void addPage(node* n, slotted_page* newPage, tree* t) {
 	if (isNodeFull(n)) {
 		node* new = balanceTreeAdd(n, t);
 		// decide which node to add the page to and add it
-		if (newPage->pageNum > n->maxPageNumber) {
+		if (newPage->header.pageNum > n->maxPageNumber) {
 			insertPageIntoChildren(new, newPage);
 			return;
 		}
 	}
 	// else just add the new page to the node
 	insertPageIntoChildren(n, newPage);
-}
-
-/*
-Writes a value into a slotted page
-*/
-bool writeVal(page* p, int tuple) {
-	if (p == NULL) return false;
-	if (isPageFull(p)) {
-		printf("Tried to write to page %d which was full\n", p->pageNum);
-		return false;
-	}
-	p->records[p->numRecords] = tuple;
-	p->numRecords++;
-	return true;
-}
-
-/*
-inserts a new tuple into the b+tree
-@return: true - successfully wrote to the specified page
-@return: false - specified page was full and page number must be adjusted
-*/
-bool insertTuple(int tuple, u_int32_t pageNum, tree* t) {
-	node* tree = t->root;
-	page* p = findAndInsert(pageNum, t);
-	if (p == NULL) {
-		printf("Error: Could not find page %d while inserting\n", pageNum);
-		return false;
-	}
-	if (isPageFull(p)) {
-		printf("Tried to write to page %d but it is full\n", pageNum);
-		return false;
-	} else {
-		if (!writeVal(p, tuple)) printf("Error: Tried to write tuple to incompatible page\n");
-		return true;
-	}
 }
 
 // ##########################################################################################################################################
@@ -602,7 +559,7 @@ void borrowNext(node* n, node* next) {
 	n->children[n->childCount] = next->children[0];
 	n->keys[n->childCount++] = next->keys[0];
 	next->childCount--;
-	shiftPageArrayL((page**) next->children, 0, M);
+	shiftPageArrayL((slotted_page**) next->children, 0, M);
 	shiftIntArrayL(next->keys, 0, M);
 	// update parent
 	int borrowed = n->keys[n->childCount-1];
@@ -620,7 +577,7 @@ void borrowNext(node* n, node* next) {
 // assumes that prev is a valid target for a borrow
 void borrowPrev(node* n, node* prev) {
 	shiftIntArrayR(n->keys, 0, M);
-	shiftPageArrayR((page**) n->children, 0, M);
+	shiftPageArrayR((slotted_page**) n->children, 0, M);
 	prev->childCount--;
 	n->keys[0] = prev->keys[prev->childCount];
 	n->children[0] = prev->children[prev->childCount];
@@ -734,9 +691,9 @@ bool deletePage(node* n, uint32_t pageNum, tree* t)  {
 	// search for page in node's children
 	for (int i = 0; i < n->childCount; i++) {
 		if (n->keys[i] == pageNum) {
-			freePage((page*) n->children[i]);;
+			freePage((slotted_page*) n->children[i]);;
 			shiftIntArrayL(n->keys, i, M);
-			shiftPageArrayL((page**) n->children, i, M);
+			shiftPageArrayL((slotted_page**) n->children, i, M);
 			n->childCount--;
 			if (i == n->childCount) n->maxPageNumber = n->keys[n->childCount-1];
 			return true;
@@ -755,7 +712,7 @@ bool deletePage(node* n, uint32_t pageNum, tree* t)  {
 // DEBUGGING FUNCTIONS
 // These are here not in debug.c because I'm not sure which of these will be kept when this is reimplemented on disk
 
-void freePage(page* p) {
+void freePage(slotted_page* p) {
 	free(p);
 }
 

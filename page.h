@@ -19,9 +19,11 @@ typedef struct header {
 	uint64_t parent;
 	uint32_t pageNum;
 	uint32_t usedData; // total amount of data used by records
-	uint32_t numRecords; // number of records in array
+	uint32_t numRecords; // number of records in array at a time
 	uint32_t numEntries; // number of entries in the the page, this should be a constant multiple of numRecords since row size is constant across a tbale
 	uint32_t arrCap; // total size in bytes of slot array including both slots and records
+	uint32_t maxEntries; // max number of entries in the page
+	uint32_t maxSlots; // max number of slots in the page
 }header;
 
 typedef struct entry {

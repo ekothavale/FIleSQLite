@@ -22,4 +22,17 @@ typedef struct table {
 	int M;
 }table;
 
+/*
+each record is a row of data in a table
+each element of the record is proceeded by an escape character representing its c type
+\s - string
+\i - int
+\u - u_int32
+\l - long
+\d - double
+\b - bool
+\! - NULL
+'\ - intentional backslash as a part of a string
+*/ 
+
 #endif
