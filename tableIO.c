@@ -36,6 +36,7 @@ bool loadMeta(FILE* file, table* table, char* fname) {
 	table->free = (long) buf[9] << 32 + (long) buf[10];
 	table->root = (long) buf[11] << 32 + (long) buf[12];
 	table->M = buf[13];
+	return true;
 }
 
 bool writeMeta(FILE* file, table* table) {
@@ -57,6 +58,7 @@ bool writeMeta(FILE* file, table* table) {
 
 	};
 	fwrite(buf, 4, METALEN, file);
+	return true;
 }
 
 bool loadTable(char* fname, table* table) {
@@ -65,6 +67,7 @@ bool loadTable(char* fname, table* table) {
 		printf("Error: Failed to open table %s\n", fname);
 	}
 	loadMeta(tfile, table, fname);
+	return true;
 }
 
 /*

@@ -51,11 +51,74 @@ void testDeletion() {
     freeTree(q);
 }
 
+static entry makeEntry(const char* str, datatype t) {
+    entry e;
+    e.type = t;
+    e.data = malloc(strlen(str) + 1);
+    strcpy(e.data, str);
+    return e;
+}
+
+static entry* makeRecord() {
+    entry* out = malloc(5 * sizeof(entry));
+    out[0] = makeEntry("Hello", T_STRING);
+    out[1] = makeEntry("My", T_STRING);
+    out[2] = makeEntry("Name", T_STRING);
+    out[3] = makeEntry("IS", T_STRING);
+    out[4] = makeEntry("40", T_INT);
+    return out;
+}
+
 void testPages() {
+    int numSlots = 40;
+    int numEntries = 200;
+    int pageCap = 10000;
+    slotted_page* p = makeSPage(13, numSlots, numEntries, pageCap);
+    for (int i = 0; i < 45; i++) {
+        sp_record record = {
+            .entries = makeRecord(),
+            .len = 5
+        };
+        for (int i = 0; i < 5; i++) {
+            record.size += strlen(record.entries[i].data) + 1;
+        }
+        addRecord(p, i, record);
+    }
+    printSlottedPage(p);
+    for (int i = 0; i < 45; i++) {
+        deleteRecord(p, i);
+    }
+    printSlottedPage(p);
+}
+
+void testPagesRandom() {
+    int numSlots = 40;
+    int numEntries = 200;
+    int pageCap = 10000;
+    slotted_page* p = makeSPage(13, numSlots, numEntries, pageCap);
+    int insertionOrder[] = {4, 2, 7, 0, 8, 1, 3, 9, 5, 6};
+    for (int i = 0; i < 10; i++) {
+        sp_record record = {
+            // new records don't have their size written
+            .entries = makeRecord(),
+            .len = 5
+        };
+        for (int i = 0; i < 5; i++) {
+            record.size += strlen(record.entries[i].data) + 1;
+        }
+        addRecord(p, insertionOrder[i], record);
+    }
+    printSlottedPage(p);
+    int deletionOrder[] = {9, 6, 1, 2, 7, 3, 4, 8, 0, 5};
+    for (int i = 0; i < 10; i++) {
+        deleteRecord(p, deletionOrder[i]);
+    }
+    printSlottedPage(p);
 }
 
 int main(int argc, char** argv) {
     testInsertion();
     testDeletion();
-    test_page();
+    testPages();
+    testPagesRandom();
 }

@@ -11,34 +11,12 @@ would need to be overwritten.
 // ##########################################################################################################################################
 // HELPER FUNCTIONS
 
-// UNTESTED
-/*
-reads a 32bit big-endian unsigned integer from a page's slot array
-pos is the MSB
-UNSAFE FUNCTION - does not escape if parameters are unsafe
-*/
-int readIndex(int pos, char* arr, int arrlen) {
-	if (pos + 3 > arrlen) {
-		printf("Error: read an index from a slot array that extended past the defined slots\n");
-	}
-	if (pos % 4 != 0) {
-		printf("Error: read an index from a slot array using a misaligned position\n");
-	}
-	uint32_t out = (uint8_t)arr[pos];
-	out = (out << 8) | (uint8_t)arr[pos+1];
-	out = (out << 8) | (uint8_t)arr[pos+2];
-	out = (out << 8) | (uint8_t)arr[pos+3];
-	return out;
+
+bool hasSpace(slotted_page* p, uint32_t size) {
+	if (p->header.usedData + size > p->header.arrCap) return false;
+	return true;
 }
 
-// UNTESTED
-bool pageFull(slotted_page* p) {
-	// TODO: implement once page capacity is tracked in the header
-	(void)p;
-	return false;
-}
-
-// UNTESTED
 /*
 binary search slot array
 @return index of slot
@@ -68,7 +46,6 @@ static int shiftSlotArrayR(sp_slot* array, int start, int len) {
 	return 0;
 }
 
-// UNTESTED
 /*
 Does not zero out last element of array
 */
@@ -83,15 +60,16 @@ static int shiftSlotArrayL(sp_slot* array, int target, int len) {
 	return 0;
 }
 
-slotted_page* makePage(uint32_t pageNum, uint32_t numSlots, uint32_t numEntries) {
+slotted_page* makeSPage(uint32_t pageNum, uint32_t numSlots, uint32_t numEntries, uint32_t capacity) {
 	slotted_page* out = calloc(1, sizeof(slotted_page));
 	out->header.pageNum = pageNum;
+	out->header.arrCap = capacity;
 	out->slots = calloc(numSlots, sizeof(sp_slot));
-	out->entries = callo(numEntries, sizeof(entry));
+	out->entries = calloc(numEntries, sizeof(entry));
 	return out;
 }
 
-void freePage(slotted_page* p) {
+void freeSPage(slotted_page* p) {
 	free(p->entries);
 	free(p->slots);
 	free(p);
@@ -125,45 +103,68 @@ more complicated version:
 	// return true
 */
 
-// UNTESTED
 /*
 Currently doesn't account for full pages
 */
 bool addRecord(slotted_page* p, uint32_t offset, sp_record r) {
+	printf("Add size: %d\n", r.size);
+	if (!hasSpace(p, r.size)) {
+		printf("Tried to add record to page %d but it was full\n", p->header.pageNum);
+		return false;
+	}
 	uint32_t index = searchSlotArray(p, offset);
-	shiftSlotArrayR(p->slots, index, p->header.numRecords);
+	shiftSlotArrayR(p->slots, index, p->header.numRecords + 1);
 	p->slots[index].ID = offset;
 	p->slots[index].len = r.len;
 	p->slots[index].ptr = p->header.numEntries;
+	p->slots[index].size = r.size;
 	p->header.numRecords++;
 	for (int i = 0; i < r.len; i++) {
 		p->entries[p->header.numEntries++] = r.entries[i];
 	}
+	p->header.usedData += r.size;
 	return true;
 }
 
-//UNTESTED
 /*
 @return true if deletion was successful else return false
 */
 bool deleteRecord(slotted_page* p, uint32_t offset) {
 	uint32_t index = searchSlotArray(p, offset);
 	if (index >= p->header.numRecords || p->slots[index].ID != offset) return false;
-	sp_slot* s = p->slots + index;
-	for (uint32_t i = 0; i < s->len; i++) {
-		free((p->entries[s->ptr+i]).data);
-		p->entries[s->ptr+i].data = NULL;
+	sp_slot deleted = p->slots[index];
+	p->header.usedData -= deleted.size;
+	printf("Deleted size: %d\n", deleted.size);
+	for (uint32_t i = 0; i < deleted.len; i++) {
+		free((p->entries[deleted.ptr + i]).data);
+		p->entries[deleted.ptr + i].data = NULL;
 	}
-	for (uint32_t i = s->ptr; i < p->header.numEntries - s->len; i++) {
-		p->entries[i] = p->entries[i + s->len];
+	for (uint32_t i = deleted.ptr; i < p->header.numEntries - deleted.len; i++) {
+		p->entries[i] = p->entries[i + deleted.len];
 	}
-	p->header.numEntries -= s->len;
+
+	// Any slot that pointed after the deleted record must be rebased.
+	for (uint32_t i = 0; i < p->header.numRecords; i++) {
+		if (i == index) continue;
+		if (p->slots[i].ptr > deleted.ptr) {
+			p->slots[i].ptr -= deleted.len;
+		}
+	}
+
+	uint32_t oldNumEntries = p->header.numEntries;
+	p->header.numEntries -= deleted.len;
+
+	// Clear trailing duplicate cells left behind by entry compaction.
+	for (uint32_t i = p->header.numEntries; i < oldNumEntries; i++) {
+		p->entries[i].data = NULL;
+		p->entries[i].type = T_INT;
+	}
+
 	shiftSlotArrayL(p->slots, index, p->header.numRecords);
 	p->header.numRecords--;
 	return true;
 }
 
-// UNTESTED
 bool updateRecord(slotted_page* p, uint32_t offset, sp_record r) {
 	uint32_t index = searchSlotArray(p, offset);
 	if (index >= p->header.numRecords) return false;
@@ -176,7 +177,6 @@ bool updateRecord(slotted_page* p, uint32_t offset, sp_record r) {
 	return true;
 }
 
-// UNTESTED
 /*
 @return sp_record pointing into the page's entry array
 @return {NULL, 0} if record not in page
