@@ -16,26 +16,17 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include "chunk.h"
+/*
+This file includes constants that can be tweaked to alter the behavior and performance of this DBMS
+Some combinations of constant values may break the DBMS
+*/
 
-void initChunk(Chunk* chunk) {
-    chunk->code = NULL;
-    chunk->capacity = 0;
-    chunk->count = 0;
-}
+#ifndef CONST_H
+#define CONST_H
 
-void writeChunk(Chunk* chunk, uint8_t byte) {
-    if (chunk->capacity < chunk->count + 1) {
-        // Resize the chunk if necessary
-        printf("Growing array (for debugging purposes)\n");
-        int oldCapacity = chunk->capacity;
-        chunk->capacity = GROW_CAPACITY(oldCapacity);
-        chunk->code = GROW_ARRAY(uint8_t, chunk->code, oldCapacity, chunk->capacity);
-    }
-    chunk->code[chunk->count++] = byte;
-}
+const int M = 4;		// order (number of children a node can have) of the tree
+#define PAGE_SIZE 4096 		// size in bytes of each page
+#define NUM_SLOTS 64 		// Size of slot array within each page (each page can hold 72 tuples)
+#define NUM_VALS 700 		// in reality this will be the size of the page minus the slot array and the header
 
-void freeChunk(Chunk* chunk) {
-  FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
-  initChunk(chunk);
-}
+#endif

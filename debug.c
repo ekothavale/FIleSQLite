@@ -1,3 +1,21 @@
+/*
+Copyright (c) 2026 Ethan Kothavale
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
 #include "debug.h"
 #include "chunk.h"
 #include "bplus.h"
@@ -19,9 +37,9 @@ void printChunk(Chunk* chunk) {
 	printf("Total chunks: %d\n", chunk->count);
 }
 
-node* generateTestBPlusTree() {
+btree_node* generateTestBPlusTree() {
     // Create the root node
-    node* root = malloc(sizeof(node));
+    btree_node* root = malloc(sizeof(btree_node));
     root->isLeaf = false;
     root->parent = NULL;
     root->prev = NULL;
@@ -29,9 +47,9 @@ node* generateTestBPlusTree() {
     root->childCount = 3; // Root has 3 children
 
     // Create internal nodes
-    node* internalNodes[3];
+    btree_node* internalNodes[3];
     for (int i = 0; i < 3; i++) {
-        internalNodes[i] = malloc(sizeof(node));
+        internalNodes[i] = malloc(sizeof(btree_node));
         internalNodes[i]->isLeaf = false;
         internalNodes[i]->parent = root;
         internalNodes[i]->prev = (i > 0) ? internalNodes[i - 1] : NULL;
@@ -45,12 +63,12 @@ node* generateTestBPlusTree() {
 
     // Create leaf nodes
     int leafNodeCounts[3] = {2, 2, 2}; // Number of leaf nodes per internal node
-    node* prevLeaf = NULL;
+    btree_node* prevLeaf = NULL;
     for (int i = 0; i < 3; i++) {
         internalNodes[i]->childCount = leafNodeCounts[i];
         int maxPageNumber = 0; // Track max page number for internal node
         for (int j = 0; j < leafNodeCounts[i]; j++) {
-            node* leaf = malloc(sizeof(node));
+            btree_node* leaf = malloc(sizeof(btree_node));
             leaf->isLeaf = true;
             leaf->parent = internalNodes[i];
             leaf->prev = prevLeaf;
@@ -84,9 +102,9 @@ node* generateTestBPlusTree() {
         }
 
         // Set the keys and maxPageNumber for the internal node
-        internalNodes[i]->keys[0] = ((node*)internalNodes[i]->children[0])->keys[1];
+        internalNodes[i]->keys[0] = ((btree_node*)internalNodes[i]->children[0])->keys[1];
         if (internalNodes[i]->childCount > 1) {
-            internalNodes[i]->keys[1] = ((node*)internalNodes[i]->children[1])->keys[1];
+            internalNodes[i]->keys[1] = ((btree_node*)internalNodes[i]->children[1])->keys[1];
         }
         internalNodes[i]->maxPageNumber = maxPageNumber;
     }
@@ -115,7 +133,7 @@ void printIntArray(int* arr, int length) {
 /* UNTESTED
 incomplete
 */
-void printNode(node* n) {
+void printNode(btree_node* n) {
     printf(n->isLeaf ? "Leaf" : "Internal");
     printf(" node with\nKeys:");
     for (int i = 0; i < n->childCount-1; i++) {
@@ -131,7 +149,7 @@ void printNode(node* n) {
     printf("Next: %p\n\n", n->next);
 }
 
-void printTreeHelper(node* root, int level) {
+void printTreeHelper(btree_node* root, int level) {
     if (root == NULL) {
         printf("Tree is empty.\n");
         return;
@@ -170,7 +188,7 @@ void printTreeHelper(node* root, int level) {
 
         // Recursively print child nodes
         for (int i = 0; i < root->childCount; i++) {
-            printTreeHelper((node*)root->children[i], level + 1);
+            printTreeHelper((btree_node*)root->children[i], level + 1);
         }
     }
 }
@@ -180,7 +198,7 @@ void printTree(tree* root) {
 }
 
 
-bool checkTreePointersHelper(node* root) {
+bool checkTreePointersHelper(btree_node* root) {
     if (root == NULL) {
         return true; // An empty tree is valid
     }
@@ -201,7 +219,7 @@ bool checkTreePointersHelper(node* root) {
             }
         } else {
             // If the root is an internal node, its children are nodes
-            node* n = (node*)child;
+            btree_node* n = (btree_node*)child;
             if (n->parent != root) {
                 printf("Error: Node at %p has incorrect parent pointer. Expected parent: %p, Actual parent: %p\n", 
                        (void*)n, (void*)root, (void*)n->parent);
@@ -219,7 +237,7 @@ bool checkTreePointersHelper(node* root) {
 }
 
 bool checkTreePointers(tree* t) {
-    node* root = t->root;
+    btree_node* root = t->root;
     return checkTreePointersHelper(root);
 }
 

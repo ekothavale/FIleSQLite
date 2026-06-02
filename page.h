@@ -1,4 +1,22 @@
 /*
+Copyright (c) 2026 Ethan Kothavale
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+/*
 This file defines a bunch of constructs used to represent a slotted page in memory.
 This representation is not the same used to store pages on disk; the translation algorithms are in tableIO.
 */
@@ -15,6 +33,18 @@ typedef enum datatype {
 	T_TIME
 }datatype;
 
+/*
+each record is a row of data in a table
+each element of the record is proceeded by an escape character representing its c type
+\i - int
+\s - string
+\d - date
+\t = time
+'\ - intentional backslash as a part of a string
+*/ 
+
+const char DATATYPE_CODES[] = {'i', 's', 'd', 't'};
+
 typedef struct header {
 	uint64_t parent;
 	uint32_t pageNum;
@@ -28,6 +58,7 @@ typedef struct header {
 
 typedef struct entry {
 	char* data;
+	uint32_t size; // size of entry data in bytes (NEEDS TO BE ADDED TO TESTING FUNCTIONS)
 	datatype type;
 }entry;
 
@@ -35,8 +66,8 @@ typedef struct entry {
    colliding with the identically-named types in types.h. */
 typedef struct sp_record {
 	entry* entries;
-	uint32_t len;
-	uint32_t size;
+	uint32_t len; // number of entries in record (should be fixed for each table)
+	uint32_t size; // size in bytes of record
 }sp_record;
 
 typedef struct sp_slot {

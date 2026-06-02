@@ -16,26 +16,38 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include "chunk.h"
+#ifndef NODE_H
+#define NODE_H
 
-void initChunk(Chunk* chunk) {
-    chunk->code = NULL;
-    chunk->capacity = 0;
-    chunk->count = 0;
-}
+#include "common.h"
+#include "const.h"
 
-void writeChunk(Chunk* chunk, uint8_t byte) {
-    if (chunk->capacity < chunk->count + 1) {
-        // Resize the chunk if necessary
-        printf("Growing array (for debugging purposes)\n");
-        int oldCapacity = chunk->capacity;
-        chunk->capacity = GROW_CAPACITY(oldCapacity);
-        chunk->code = GROW_ARRAY(uint8_t, chunk->code, oldCapacity, chunk->capacity);
-    }
-    chunk->code[chunk->count++] = byte;
-}
+typedef struct btree_node {
+	void* children[M];
+	// keys = [3, 5] means 1, 2, 3 - left child, 4, 5 - middle child, 6+ - right child
+	// nodes have room for M keys but only leaf nodes will use all M slots
+	int keys[M];
+	struct btree_node* parent;
+	struct btree_node* next;
+	struct btree_node* prev; // remove if two way scanning not necessary
 
-void freeChunk(Chunk* chunk) {
-  FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
-  initChunk(chunk);
-}
+	int childCount;
+	uint32_t maxPageNumber;
+
+	bool isLeaf; // if the node is a leaf node
+}btree_node;
+
+typedef struct node {
+	uint64_t children[M];
+	uint32_t keys[M];
+	uint64_t parent;
+	uint64_t next;
+	uint64_t prev;
+
+	uint32_t childCount;
+	uint32_t maxPageNumber;
+
+	bool isLeaf;
+}node;
+
+#endif
