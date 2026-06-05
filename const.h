@@ -29,4 +29,6 @@ const int M = 4;		// order (number of children a node can have) of the tree
 #define NUM_SLOTS 64 		// Size of slot array within each page (each page can hold 72 tuples)
 #define NUM_VALS 700 		// in reality this will be the size of the page minus the slot array and the header
 
+const double DIRTY_STACK_GROWTH_RATE = 1.5; // the rate at which the dynamic arrays that hold the stacks for dirty pages and dirty nodes grow
+
 #endif

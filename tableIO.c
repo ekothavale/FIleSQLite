@@ -34,6 +34,23 @@ Addressing:
 #include "tableIO.h"
 #include <stdbool.h>
 
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// STATIC HELPER FUNCTIONS
+
+
+/*
+allocate more room than what's available in a page since there are checks
+to ensure the pages don't overflow
+*/
+static size_t calcSlotsSize(table* t) {
+	return t->pageSize / sizeof(sp_slot) / 8;
+}
+
+static size_t calcEntriesSize(table* t) {
+	return t->pageSize * 0.9;
+}
+
 /*
 jumps to a specific address in the table's source
 */
@@ -43,6 +60,15 @@ static bool jump(uint64_t address, table* t) {
 		return true;
 	} else {
 		printf("Error: failed to navigate to address: %lu when reading a binary file\n", address);
+	}
+}
+
+static bool jumpRel(long offset, table* t) {
+	if (fseek(t->source, offset, SEEK_CUR) == 0) {
+		t->cursor += offset;
+		return true;
+	} else {
+		printf("Error: failed to make relative jump to address: %lu when reading a binary file\n", t->cursor);
 	}
 }
 
@@ -65,6 +91,94 @@ static void writeUIntBytewise(char* arr, uint32_t ui) {
 	}
 }
 
+/*
+reads one byte at the table's cursor + an offset
+returns the cursor to the original position
+*/
+static char readByte(long offset, table* t) {
+	char a;
+	jumpRel(offset, t);
+	fread(&a, 1, 1, t->source);
+	jumpTel(-offset, t);
+	return a;
+}
+
+/*
+reads an unsigned integer at the table's cursor + an offset
+returns the cursor to the original position
+*/
+static uint32_t readUInt(long offset, table* t) {
+	uint32_t a;
+	jumpRel(offset, t);
+	fread(&a, 4, 1, t->source);
+	jumpRel(-offset, t);
+	return a;
+}
+
+/*
+reads an unsigned long at the table's cursor + an offset
+returns the cursor to the original position
+*/
+static uint64_t readULong(long offset, table* t) {
+	uint64_t a;
+	jumpRel(offset, t);
+	fread(&a, 8, 1, t->source);
+	jumpRel(-offset, t);
+	return a;
+}
+
+/*
+reads an arbitrary number of bytes from the source file into the buffer
+returns the cursor to the original position
+*/
+static void readArbitrary(char* buffer, uint32_t len, long offset, table* t) {
+	jumpRel(offset, t);
+	fread(buffer, 1, len, t->source);
+	jumpRel(-offset, t);
+}
+
+/*
+reads one byte at the table's cursor + an offset
+does not return the cursor to the original position
+*/
+static char consumeByte(long offset, table* t) {
+	char a;
+	jumpRel(offset, t);
+	fread(&a, 1, 1, t->source);
+	return a;
+}
+
+/*
+reads an unsigned integer at the table's cursor + an offset
+does not return the cursor to the original position
+*/
+static uint32_t consumeUInt(long offset, table* t) {
+	uint32_t a;
+	jumpRel(offset, t);
+	fread(&a, 4, 1, t->source);
+	return a;
+}
+
+/*
+reads an unsigned long at the table's cursor + an offset
+does not return the cursor to the original position
+*/
+static uint64_t consumeULong(long offset, table* t) {
+	uint64_t a;
+	jumpRel(offset, t);
+	fread(&a, 8, 1, t->source);
+	return a;
+}
+
+/*
+reads an arbitrary number of bytes from the source file into the buffer
+does not return the cursor to the original position
+*/
+static void consumeArbitrary(char* buffer, uint32_t len, long offset, table* t) {
+	jumpRel(offset, t);
+	fread(buffer, 1, len, t->source);
+}
+
 bool loadMeta(FILE* file, table* table, char* fname) {
 	int buf[METALEN];
 	fread(&buf, 4, METALEN, file);
@@ -75,11 +189,11 @@ bool loadMeta(FILE* file, table* table, char* fname) {
 	table->source = file;
 	table->cursor = 0;
 	table->metalen = buf[1];
-	table->pageRows = buf[2];
-	table->nodeRows = buf[3];
+	table->pageStripes = buf[2];
+	table->nodeStripes = buf[3];
 	table->pageNodeRatio = buf[4];
-	table->pageRowLen = buf[5];
-	table->nodeRowLen = buf[6];
+	table->pageStripeLen = buf[5];
+	table->nodeStripeLen = buf[6];
 	table->pageSize = buf[7];
 	table->nodeSize = buf[8];
 	table->free = (long) buf[9] << 32 + (long) buf[10];
@@ -92,11 +206,11 @@ bool writeMeta(FILE* file, table* table) {
 	int buf[] = {
 		MAGIC,
 		table->metalen,
-		table->pageRows,
-		table->nodeRows,
+		table->pageStripes,
+		table->nodeStripes,
 		table->pageNodeRatio,
-		table->pageRowLen,
-		table->nodeRowLen,
+		table->pageStripeLen,
+		table->nodeStripeLen,
 		table->pageSize,
 		table->nodeSize,
 		(int) table->free >> 32,
@@ -110,6 +224,10 @@ bool writeMeta(FILE* file, table* table) {
 	return true;
 }
 
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// PUBLIC API FUNCTIONS
+
 bool loadTable(char* fname, table* table) {
 	FILE* tfile = fopen(fname, "rb+");
 	if (!tfile) {
@@ -120,11 +238,68 @@ bool loadTable(char* fname, table* table) {
 }
 
 /*
-loads a nodes's cursor into a node
-assumes the current location of the cursor is a valid node
+reads a page from an address into a chunk of memory
+@param: p - a slotted page to load the data from disk into
 */
-void loadPage(table* t) {
-	;
+bool readPage(uint64_t address, slotted_page* p, table* t) {
+	uint64_t prev = t->cursor;
+	jump(address, t);
+	if (readByte(0, t) != 0) {
+		printf("Error: attempted to read page at address %lu but page was invalid\n", address);
+		return false;
+	}
+	if (p == NULL) {
+		p == calloc(1, sizeof(slotted_page));
+	}
+	// header
+	p->header.parent = readULong(1, t);
+	p->header.pageNum = readUInt(9, t);
+	p->header.usedData = readUInt(13, t);
+	p->header.numRecords = readUInt(17, t);
+	p->header.numEntries = readUInt(21, t);
+	p->header.arrCap = readUInt(25, t);
+	p->header.maxEntries = readUInt(29, t);
+	p->header.maxSlots = readUInt(33, t);
+	// slots
+	if (!p->slots) {
+		p->slots = malloc(calcSlotsSize(t));
+	}
+	int offset = 37;
+	for (int i = 0; i < p->header.numRecords; i++) {
+		p->slots[i].ID = readUInt(offset, t);
+		p->slots[i].len = readUInt(offset+4, t);
+		p->slots[i].size = readUInt(offset+8, t);
+		p->slots[i].ptr = readUInt(offset+12, t);
+		offset += 16;
+	}
+	// records
+	int entryOffset = 0;
+	if(!p->entries) {
+		p->entries = malloc(calcEntriesSize(t));
+	}
+	for (int i = 0; i < p->header.numEntries; i++) {
+		// entry: <--  data | size (4B) | type (2B)  <--
+		char code = readByte(t->pageSize - entryOffset - 1, t);
+		for (int j = 0; j < NUM_DATATYPES; j++) {
+			if (DATATYPE_CODES[j] == code) p->entries[j].type = j;
+		}
+
+		uint32_t size = readUInt(t->pageSize - entryOffset - 6, t);
+		p->entries[i].size = size;
+		if (p->entries[i].data) free(p->entries[i].data);
+		p->entries[i].data = malloc(size);
+
+	}
+	return true;
+	jump(prev, t);
+}
+
+/*
+moves a table's cursor to a page and loads it
+*/
+bool loadPage(uint64_t address, table* t) {
+	jump(address, t);
+	return readPage(address, t->page, t);
 }
 
 /*
@@ -142,6 +317,7 @@ page layout:
  | 0 | parent | pageNum | usedData | numRecords | numEntries | arrCap |
  | maxEntries | maxSlots | slots | ... | records |
 
+REVERSE ORDER IN WHICH RECORDS ARE ADDED SINCE WE NEED TO READ THE ARRAY BACKWARDS
 */
 void writeNextPage(table* t) { // all pages will be looked up in the dirty queue by their address
 	if (t->pageDirty.count <= 0) return;
@@ -165,26 +341,27 @@ void writeNextPage(table* t) { // all pages will be looked up in the dirty queue
 	int offset = 37;
 	for (int i = 0; i < h.numRecords; i++) {
 		writeUIntBytewise(buffer+offset, p->slots[i].ID);
-		writeUIntBytewise(buffer+offset+4, p->slots[i].ptr);
 		writeUIntBytewise(buffer+offset+8, p->slots[i].len);
 		writeUIntBytewise(buffer+offset+12, p->slots[i].size);
+		writeUIntBytewise(buffer+offset+4, p->slots[i].ptr);
 		offset += 16;
 	}
 	// write records
 	int entryOffset = 0;
 	for (int i = 0; i < h.numRecords; i++) {
-		// entry: type (2B) | size (4B) | data
+		// entry: <--  data | size (4B) | type (2B)  <--
 		entry e = p->entries[i];
-		entryOffset += e.size + 6;
-		if (entryOffset + offset > t->pageSize) { // records with overwrite slots (without malicious inputs this should never occur)
+		int addition = e.size + 6;
+		if (entryOffset + addition + offset > t->pageSize) { // records with overwrite slots (without malicious inputs this should never occur)
 			printf("Error: representation of page %u stores more data than the specified page capacity.\n", h.pageNum);
 			// once error handling is implemented should kill program here
 		}
-		char* entryStart = buffer + t->pageSize-entryOffset;
-		*entryStart = '\\';
-		*(entryStart+1) = DATATYPE_CODES[e.type];
-		writeUIntBytewise(entryStart+2, e.size);
-		memcpy(entryStart+6, e.data, e.size); // potentially dangerous
+		char* entryStart = buffer + t->pageSize - entryOffset - 1;
+		*entryStart = DATATYPE_CODES[e.type];
+		*(entryStart-1) = '\\';
+		writeUIntBytewise(entryStart-5, e.size);
+		memcpy(entryStart - 5 - e.size, e.data, e.size); // potentially dangerous
+		entryOffset += addition;
 	}
 	// copy buffer to disk and clean up
 	fwrite(buffer, 1, t->pageSize, t->source);
@@ -237,11 +414,70 @@ void loadRight(node n) {
 }*/
 
 // mark page dirty
+void markPage(uint64_t address, slotted_page* p, table* t) {
+	if (t->pageDirty.count == t->pageDirty.size) {
+		uint32_t newSize = t->pageDirty.size * DIRTY_STACK_GROWTH_RATE;
+		page_write_order* new = malloc(newSize * sizeof(page_write_order));
+		memmove(new, t->pageDirty.stack, t->pageDirty.size);
+		free(t->pageDirty.stack);
+		t->pageDirty.stack = new;
+		t->pageDirty.size = newSize;
+	}
+	t->pageDirty.stack[t->pageDirty.count].address = address;
+	t->pageDirty.stack[t->pageDirty.count++].page = p;
+}
 
 // mark node dirty
+void markNode(uint64_t address, node* n, table* t) {
+	if (t->nodeDirty.count == t->nodeDirty.size) {
+		uint32_t newSize = t->nodeDirty.size * DIRTY_STACK_GROWTH_RATE;
+		node_write_order* new = malloc(newSize * sizeof(node_write_order));
+		memmove(new, t->nodeDirty.stack, t->nodeDirty.size);
+		free(t->nodeDirty.stack);
+		t->nodeDirty.stack = new;
+		t->nodeDirty.size = newSize;
+	}
+	t->nodeDirty.stack[t->nodeDirty.count].address = address;
+	t->nodeDirty.stack[t->nodeDirty.count++].node = n;
+}
+
+// delete object
+void deleteObject(uint64_t address, table* t) {
+	char code = 2; // a two in the first byte of an obejct means it's garbage
+	jump(address, t);
+	fwrite(&code, 1, 1, t->source);
+}
 
 // allocate new stripe
+/*
+allocates a new stripe and sets table.pageFree to that address
+*/
+void newPageStripe(table* t) {
+	t->pageFree = t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize;
+	t->pageStripes++;
+}
+
+void newNodeStripe(table* t) {
+	t->nodeFree = t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize;
+	t->nodeStripes++;
+}
 
 // condense stripe
+/*
+@param address - address of the first byte of the stripe
+*/
+void condensePageStripe(uint64_t address, table* t) {
+	jump(address, t);
+	int garbage = 0;
+	for (int i = 0; i + garbage < t->pageStripeLen; i++) {
+		if (readByte(0, t) == 2) { // first byte of an object being 2 means its garbage
+			if (garbage > 0) {
+				//
+			}
+		} else if (readByte(0, t) != 0) {
+			printf("Error: tried to condense memory stripe at %d but address was invalid\n", address);
+		}
+	}
+}
 
 // condense all stripes

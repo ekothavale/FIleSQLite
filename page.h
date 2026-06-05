@@ -40,10 +40,10 @@ each element of the record is proceeded by an escape character representing its 
 \s - string
 \d - date
 \t = time
-'\ - intentional backslash as a part of a string
 */ 
 
 const char DATATYPE_CODES[] = {'i', 's', 'd', 't'};
+const int NUM_DATATYPES = 4;
 
 typedef struct header {
 	uint64_t parent;

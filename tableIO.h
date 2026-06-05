@@ -50,26 +50,28 @@ typedef struct node_stack {
 }node_stack;
 
 typedef struct table {
-	page_stack pageDirty;
-	node_stack nodeDirty;
-	FILE* source;
-	u_int64_t cursor;
-	u_int64_t free;
-	u_int64_t root;
-	slotted_page* page;
-	int metalen;
-	int pageRows;
-	int pageRowLen;
-	int nodeRows;
-	int nodeRowLen;
-	int pageNodeRatio;
-	int pageSize;
-	int nodeSize;
-	int M;
+	page_stack pageDirty; // stack of dirty pages
+	node_stack nodeDirty; // stack of dirty nodes
+	FILE* source; // physical file
+	u_int64_t cursor; // current address
+	u_int64_t pageFree; // address of next free page space
+	u_int64_t nodeFree; // address of next free node space
+	u_int64_t root; // pointer to the root of the tree
+	slotted_page* page; // pointer to current object if it's a page
+	node* node; // pointer to current object if it's a node
+	int metalen; // size of the metadata in the table file in bytes
+	int pageStripes; // number of page strips in file
+	int pageStripeLen; // number of pages per page stripe
+	int nodeStripes; // number of node stripes in file
+	int nodeStripeLen; // number of nodes per stripe
+	int pageNodeRatio; // how many page stripes there are per node stripe
+	int pageSize; // size of page in bytes
+	int nodeSize; // size of node in bytes
+	int M; // maximum number of children each node can have
 }table;
 
 // load page
-void loadPage(table* t);
+bool loadPage(uint64_t address, table* t);
 // load node
 void loadNode(table* t);
 // write page
