@@ -196,44 +196,61 @@ bool loadMeta(FILE* file, table* table, char* fname) {
 	table->nodeStripeLen = buf[6];
 	table->pageSize = buf[7];
 	table->nodeSize = buf[8];
-	table->free = (long) buf[9] << 32 + (long) buf[10];
-	table->root = (long) buf[11] << 32 + (long) buf[12];
-	table->M = buf[13];
+	table->pageFree = (long) buf[9] << 32 + (long) buf[10];
+	table->nodeFree = (long) buf[11] << 32 + (long) buf[12];
+	table->root = (long) buf[13] << 32 + (long) buf[14];
+	table->M = buf[15];
 	return true;
 }
 
-bool writeMeta(FILE* file, table* table) {
+bool writeMeta(FILE* file, table* t) {
 	int buf[] = {
 		MAGIC,
-		table->metalen,
-		table->pageStripes,
-		table->nodeStripes,
-		table->pageNodeRatio,
-		table->pageStripeLen,
-		table->nodeStripeLen,
-		table->pageSize,
-		table->nodeSize,
-		(int) table->free >> 32,
-		(int) table->free & 0xFFFFFFFF,
-		(int) table->root >> 32,
-		(int) table->root & 0xFFFFFFFF,
-		table->M
+		t->metalen,
+		t->pageStripes,
+		t->nodeStripes,
+		t->pageNodeRatio,
+		t->pageStripeLen,
+		t->nodeStripeLen,
+		t->pageSize,
+		t->nodeSize,
+		(int) t->pageFree >> 32,
+		(int) t->pageFree & 0xFFFFFFFF,
+		(int) t->nodeFree >> 32,
+		(int) t->nodeFree & 0xFFFFFFFF,
+		(int) t->root >> 32,
+		(int) t->root & 0xFFFFFFFF,
+		t->M
 
 	};
+	jump(0, t);
 	fwrite(buf, 4, METALEN, file);
 	return true;
+}
+
+void setStacks(table* t) {
+	t->pageDirty.size = DIRTY_STACK_INTIAL_SIZE;
+	t->pageDirty.count = 0;
+	t->pageDirty.stack = malloc(sizeof(slotted_page) * DIRTY_STACK_INTIAL_SIZE);
+	t->nodeDirty.size = DIRTY_STACK_INTIAL_SIZE;
+	t->nodeDirty.count = 0;
+	t->nodeDirty.stack = malloc(sizeof(node) * DIRTY_STACK_INTIAL_SIZE);
 }
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // PUBLIC API FUNCTIONS
 
-bool loadTable(char* fname, table* table) {
+bool loadTable(char* fname, table* t) {
 	FILE* tfile = fopen(fname, "rb+");
 	if (!tfile) {
 		printf("Error: Failed to open table %s\n", fname);
+		return false;
 	}
-	loadMeta(tfile, table, fname);
+	t->source = tfile;
+	t->cursor = 0;
+	loadMeta(tfile, t, fname);
+	setStacks(t);
 	return true;
 }
 
@@ -249,7 +266,8 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 		return false;
 	}
 	if (p == NULL) {
-		p == calloc(1, sizeof(slotted_page));
+		printf("Error: tried to read a page into a chunk of memory but the pointer given was null\n");
+		return false;
 	}
 	// header
 	p->header.parent = readULong(1, t);
@@ -274,24 +292,26 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 	}
 	// records
 	int entryOffset = 0;
+	jumpRel(t->pageSize, t); // navigating to 1 byte after the end of the page
 	if(!p->entries) {
 		p->entries = malloc(calcEntriesSize(t));
 	}
 	for (int i = 0; i < p->header.numEntries; i++) {
 		// entry: <--  data | size (4B) | type (2B)  <--
-		char code = readByte(t->pageSize - entryOffset - 1, t);
+		char code = consumeByte(-1, t);
 		for (int j = 0; j < NUM_DATATYPES; j++) {
 			if (DATATYPE_CODES[j] == code) p->entries[j].type = j;
 		}
 
-		uint32_t size = readUInt(t->pageSize - entryOffset - 6, t);
+		uint32_t size = consumeUInt(-5, t);
 		p->entries[i].size = size;
 		if (p->entries[i].data) free(p->entries[i].data);
 		p->entries[i].data = malloc(size);
+		consumeArbitrary(p->entries[i].data, size, -size, t);
 
 	}
-	return true;
 	jump(prev, t);
+	return true;
 }
 
 /*
@@ -303,11 +323,52 @@ bool loadPage(uint64_t address, table* t) {
 }
 
 /*
-loads a table's cursor into a node
+reads a page from an address into a chunk of memory
+@param: p - a slotted page to load the data from disk into
+*/
+bool readNode(uint64_t address, node* n, table* t) {
+	uint64_t prev = t->cursor;
+	jump(address, t);
+
+	if (readByte(0, t) != 1) {
+		printf("Error: attempted to read page at address %lu but page was invalid\n", address);
+		return false;
+	}
+	if (n == NULL) {
+		printf("Error: tried to read a node into a chunk of memory but the pointer given was null\n");
+		return false;
+	}
+
+	// read metadata
+	n->parent = readULong(1, t);
+	n->prev = readULong(9, t);
+	n->next = readULong(17, t);
+	n->childCount = readUInt(25, t);
+	n->maxPageNumber = readUInt(29, t);
+	n->isLeaf = readByte(33, t);
+
+	// read children
+	int offset = 34;
+	for (int i = 0; i < n->childCount; i++) {
+		n->children[i] = readULong(offset, t);
+		offset += 8;
+	}
+	// read keys
+	for (int i = 0; i < n->childCount-1; i++) {
+		n->keys[i] = readUInt(offset, t);
+		offset += 4;
+	}
+
+	// return to original cursor position
+	jump(prev, t);
+}
+/*
+moves a table's cursor to a node and loads it
 assumes the current location of the cursor is a valid node
 */
-void loadNode(table* t) {
-	;
+void loadNode(uint64_t address, table* t) {
+	jump(address, t);
+	return readNode(address, t->node, t);
 }
 
 // write page
@@ -400,18 +461,18 @@ void writeNextNode(table* t) {
 	free(buffer);
 }
 
-/*
-void loadParent(node n) {
-	;
+/*MIGHT NEED THESE TO RETURN TRUE OR FALSE*/
+void loadParent(node* n, node* parent, table* t) {
+	readNode(n->parent, parent, t);
 }
 
-void loadLeft(node n) {
-	;
+void loadPrev(node* n, node* prev, table* t) {
+	readNode(n->prev, prev, t);
 }
 
-void loadRight(node n) {
-	;
-}*/
+void loadNext(node* n, node* next, table* t) {
+	readNode(n->next, next, t);
+}
 
 // mark page dirty
 void markPage(uint64_t address, slotted_page* p, table* t) {
@@ -462,10 +523,12 @@ void newNodeStripe(table* t) {
 	t->nodeStripes++;
 }
 
-// condense stripe
+// GARBAGE COLLECTION
 /*
+// condense stripe
+
 @param address - address of the first byte of the stripe
-*/
+
 void condensePageStripe(uint64_t address, table* t) {
 	jump(address, t);
 	int garbage = 0;
@@ -481,3 +544,4 @@ void condensePageStripe(uint64_t address, table* t) {
 }
 
 // condense all stripes
+*/

@@ -53,6 +53,7 @@ which is implemented in another file.
 // ##########################################################################################################################################
 // TREE CREATION FUNCTIONS
 
+// UNWIRED
 /*
 creates a new root node
 */
@@ -203,6 +204,8 @@ bool nodeAtMinimum(btree_node* n) {
 bool isRoot(btree_node* n) {
 	return n->parent == NULL && n->childCount > 0;
 }
+
+// START OF WIRING 6/7/25
 
 // finds a page in a tree by page number
 // returns null if page is not in tree

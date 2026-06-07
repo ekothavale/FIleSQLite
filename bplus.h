@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "common.h"
 #include "page.h"
 #include "node.h"
+#include "tableIO.h"
 
 // UNTESTED
 #define MAX_KEY(n) \

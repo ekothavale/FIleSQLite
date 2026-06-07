@@ -25,7 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "node.h"
 
 #define MAGIC 0xFACE3419
-#define METALEN 14
+#define METALEN 16 // number of 4-byte words needed to represent a table's metadata
 
 typedef struct page_write_order {
 	slotted_page* page;
@@ -60,7 +60,7 @@ typedef struct table {
 	slotted_page* page; // pointer to current object if it's a page
 	node* node; // pointer to current object if it's a node
 	int metalen; // size of the metadata in the table file in bytes
-	int pageStripes; // number of page strips in file
+	int pageStripes; // number of page stripes in file
 	int pageStripeLen; // number of pages per page stripe
 	int nodeStripes; // number of node stripes in file
 	int nodeStripeLen; // number of nodes per stripe
@@ -73,7 +73,7 @@ typedef struct table {
 // load page
 bool loadPage(uint64_t address, table* t);
 // load node
-void loadNode(table* t);
+void loadNode(uint64_t address, table* t);
 // write page
 void writeNextPage(table* t);
 void writePage(uint32_t address, table* t); // all pages will be looked up in the dirty queue by their address
@@ -81,11 +81,11 @@ void writePage(uint32_t address, table* t); // all pages will be looked up in th
 void writeNextNode(table* t);
 void writeNode(uint32_t address, table* t);
 // load parent
-void loadParent(table* t);
-// load left
-void loadLeft(table* t);
-// load right
-void loadRight(table* t);
+void loadParent(node* n, node* parent, table* t);
+// load previous node (left node)
+void loadPrev(node* n, node* prev, table* t);
+// load next node (right node)
+void loadNext(node* n, node* next, table* t);
 // add page to dirty queue
 // add node to dirty queue
 void pushQ(table* t);
