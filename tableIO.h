@@ -33,7 +33,7 @@ typedef struct page_write_order {
 }page_write_order;
 
 typedef struct node_write_order {
-	btree_node* node;
+	node* node;
 	uint64_t address;
 }node_write_order;
 
@@ -48,6 +48,12 @@ typedef struct node_stack {
 	uint32_t count;
 	node_write_order* stack;
 }node_stack;
+
+typedef struct delete_stack {
+	uint32_t size;
+	uint32_t count;
+	uint64_t* stack;
+}delete_stack;
 
 typedef struct table {
 	page_stack pageDirty; // stack of dirty pages
@@ -91,6 +97,8 @@ void loadNext(node* n, node* next, table* t);
 void markPage(uint64_t address, slotted_page* p, table* t);
 // add node to dirty queue
 void markNode(uint64_t address, node* n, table* t);
+// mark an object for deletion
+void markDelete(uint64_t address, table* t);
 // allocate new stripe
 void newStripe(table* t);
 uint64_t allocNode(table* t);

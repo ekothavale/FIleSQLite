@@ -33,7 +33,9 @@ Addressing:
 
 /*
 TODO:
+ - Create functions to copy nodes and pages from one block of memory to another
  - Reading functions
+ - Marking functions x2
  - File header functions
  - Garbage collection
 */
@@ -487,6 +489,9 @@ void loadNext(node* n, node* next, table* t) {
 	readNode(n->next, next, t);
 }
 
+// MARKING FUNCTIONS NEED TO CHECK IF THE OBJECT IS ALREADY IN THE STACKS
+// MARKING FUCNTIONS NEED TO CREATE COPIES OF OBEJCTS INSTEAD OF USING THE ORIGINAL POINTERS SINCE THOSE WILL BE FREED IN BETEWEEN WHEN THE OBJECT IS ADDED TO THE STACKS AND WHEN THE WRITE OCCURS
+
 // mark page dirty
 void markPage(uint64_t address, slotted_page* p, table* t) {
 	if (t->pageDirty.count == t->pageDirty.size) {
@@ -513,6 +518,12 @@ void markNode(uint64_t address, node* n, table* t) {
 	}
 	t->nodeDirty.stack[t->nodeDirty.count].address = address;
 	t->nodeDirty.stack[t->nodeDirty.count++].node = n;
+}
+
+// NEED TO CREATE NEW STACKS FOR DELETING PAGES AND NODES
+// OBJECTS SHOULD INITIALLY BE MARKED FOR DELETION
+void markDelete(uint64_t address, table* t) {
+	;
 }
 
 // delete object
