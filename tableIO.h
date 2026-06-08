@@ -73,6 +73,7 @@ typedef struct table {
 // load page
 bool loadPage(uint64_t address, table* t);
 // load node
+bool readNode(uint64_t address, node* n, table* t);
 void loadNode(uint64_t address, table* t);
 // write page
 void writeNextPage(table* t);
@@ -87,10 +88,13 @@ void loadPrev(node* n, node* prev, table* t);
 // load next node (right node)
 void loadNext(node* n, node* next, table* t);
 // add page to dirty queue
+void markPage(uint64_t address, slotted_page* p, table* t);
 // add node to dirty queue
-void pushQ(table* t);
+void markNode(uint64_t address, node* n, table* t);
 // allocate new stripe
 void newStripe(table* t);
+uint64_t allocNode(table* t);
+uint64_t allocPage(table* t);
 // condense a stripe
 void condenseStripe(table* t);
 // condense all stripes

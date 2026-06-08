@@ -31,6 +31,13 @@ Addressing:
  Represented by an unsigned 64-bit integer
 */
 
+/*
+TODO:
+ - Reading functions
+ - File header functions
+ - Garbage collection
+*/
+
 #include "tableIO.h"
 #include <stdbool.h>
 
@@ -254,6 +261,8 @@ bool loadTable(char* fname, table* t) {
 	return true;
 }
 
+// THESE FUNCTIONS NEED TO CHECK THE DIRTY QUEUES BEFORE CHECKING THE FILE
+
 /*
 reads a page from an address into a chunk of memory
 @param: p - a slotted page to load the data from disk into
@@ -354,7 +363,11 @@ bool readNode(uint64_t address, node* n, table* t) {
 		offset += 8;
 	}
 	// read keys
-	for (int i = 0; i < n->childCount-1; i++) {
+	int keylim = n->childCount;
+	if (!n->isLeaf) {
+		keylim--;
+	}
+	for (int i = 0; i < keylim; i++) {
 		n->keys[i] = readUInt(offset, t);
 		offset += 4;
 	}
@@ -509,6 +522,18 @@ void deleteObject(uint64_t address, table* t) {
 	fwrite(&code, 1, 1, t->source);
 }
 
+/*
+header
+node | node | ... | node
+page | page | ... | page
+page | page | ... | page
+...
+page | page | ... | page
+node | node | ... | node
+page | page | ... | page
+...
+*/
+
 // allocate new stripe
 /*
 allocates a new stripe and sets table.pageFree to that address
@@ -521,6 +546,26 @@ void newPageStripe(table* t) {
 void newNodeStripe(table* t) {
 	t->nodeFree = t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize;
 	t->nodeStripes++;
+}
+
+uint64_t allocPage(table* t) {
+	uint64_t out = t->pageFree;
+	if (t->pageFree == t->metalen + (t->pageStripes * t->pageStripeLen - 1) * t->pageSize) {
+		newPageStripe(t);
+	} else {
+		t->pageFree += t->pageSize;
+	}
+	return out;
+}
+
+uint64_t allocNode(table* t) {
+	uint64_t out = t->nodeFree;
+	if (t->nodeFree == t->metalen + (t->nodeStripes * t->nodeStripeLen - 1) * t->nodeSize) {
+		newNodeStripe(t);
+	} else {
+		t->nodeFree += t->nodeSize;
+	}
+	return out;
 }
 
 // GARBAGE COLLECTION

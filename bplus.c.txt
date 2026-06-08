@@ -53,11 +53,12 @@ which is implemented in another file.
 // ##########################################################################################################################################
 // TREE CREATION FUNCTIONS
 
+// UNWIRED
 /*
 creates a new root node
 */
-node* newRoot(node* child, table* t) {
-	node* new = malloc(t->nodeSize);
+btree_node* newRoot(btree_node* child) {
+	btree_node* new = malloc(sizeof(btree_node));
 	new->childCount = 1;
 	new->children[0] = child;
 	new->parent = NULL;
@@ -67,9 +68,6 @@ node* newRoot(node* child, table* t) {
 
 	new->maxPageNumber = child->maxPageNumber;
 	child->parent = new;
-	uint64_t rootAdd = allocNode(t);
-	markNode(rootAdd, new, t);
-	t->root = rootAdd;
 	return new;
 }
 
@@ -209,148 +207,148 @@ bool isRoot(btree_node* n) {
 
 // START OF WIRING 6/7/25
 
-// finds a page in a tree by page number and returns its address
+// finds a page in a tree by page number
 // returns null if page is not in tree
-uint64_t findPage(uint32_t pageNum, table* t) {
-	loadNode(t->root, t);
-    if (t->node == NULL || t->node->childCount == 0) {
+slotted_page* findPage(uint32_t pageNum, tree* t) {
+	btree_node* tree = t->root;
+    if (tree == NULL || tree->childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
-        return 0; // input was an invalid tree
+        return NULL; // input was an invalid tree
     }
-	if (pageNum > t->node->maxPageNumber) return NULL;
+	if (pageNum > tree->maxPageNumber) return NULL;
     // Compare pageNum against keys in node
-    while (!t->node->isLeaf) {
+    while (!tree->isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node->childCount - 1; i++) {
+        for (int i = 0; i < tree->childCount - 1; i++) {
             // Searching for the correct key position
-            if (pageNum <= t->node->keys[i]) {
-                loadNode(t->node->children[i], t);
+            if (pageNum <= tree->keys[i]) {
+                tree = tree->children[i];
                 found = 1;
                 break;
             }
         }
         // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node->children[t->node->childCount - 1], t);
+            tree = tree->children[tree->childCount - 1];
         }
     }
     // We have found the correct leaf
-    for (int i = 0; i < t->node->childCount; i++) {
-        if (t->node->keys[i] == pageNum) {
-            return t->node->children[i];
+    for (int i = 0; i < tree->childCount; i++) {
+        slotted_page* p = (slotted_page*)tree->children[i];
+        if (p->header.pageNum == pageNum) {
+            return p;
         }
     }
-	return 0;
+	return NULL;
 }
 
 /*
-finds a page in a tree by page number and returns its address
+finds a page in a tree by page number and returns it
 if the page does not exist, creates a page in the right spot and returns it
 */
-uint64_t findAndInsert(uint32_t pageNum, table* t) {
-	loadNode(t->root, t);
-    if (t->node == NULL || t->node->childCount == 0) {
+slotted_page* findAndInsert(uint32_t pageNum, tree* t) {
+	btree_node* tree = t->root;
+    if (tree == NULL || tree->childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
         return NULL; // input was an invalid tree
     }
     // Compare pageNum against keys in node
-    while (!t->node->isLeaf) {
+    while (!tree->isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node->childCount - 1; i++) {
+        for (int i = 0; i < tree->childCount - 1; i++) {
             // Searching for the correct key position
-            if (pageNum <= t->node->keys[i]) {
-                loadNode(t->node->children[i], t);
+            if (pageNum <= tree->keys[i]) {
+                tree = tree->children[i];
                 found = 1;
                 break;
             }
         }
         // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node->children[t->node->childCount - 1], t);
+            tree = tree->children[tree->childCount - 1];
         }
     }
     // We have found the correct leaf
-    for (int i = 0; i < t->node->childCount; i++) {
-        uint32_t key = t->node->keys[i];
+    for (int i = 0; i < tree->childCount; i++) {
+        uint32_t key = tree->keys[i];
         if (key == pageNum) {
-            return t->node->children[i];
+            return (slotted_page*) tree->children[i];
         } else if (key > pageNum) { // optimization so that we don't have to unnecessarily finish a loop
-			slotted_page* p = makeSPage(pageNum, NUM_SLOTS, NUM_ENTRIES, PAGE_ARR_CAP);
-			addPage(t->page, p, t);
+			slotted_page* p = makeSPage(pageNum, t->pageMaxSlots, t->pageMaxEntries, t->pageCap);
+			addPage(tree, p, t);
 			return p;
 		}
     }
-	slotted_page* p = makeSPage(pageNum, NUM_SLOTS, NUM_ENTRIES, PAGE_ARR_CAP);
-    addPage(t->page, p, t);
+	slotted_page* p = makeSPage(pageNum, t->pageMaxSlots, t->pageMaxEntries, t->pageCap);
+    addPage(tree, p, t);
 	return p;
 }
 
+// UNTESTED
 /*
 Searches for a page by number in the tree and deletes it
 @return true - page is found and deleted
-@return false - page deletiosn was unsuccessful
+@return false - page deletion was unsuccessful
 */
-bool findAndDelete(uint32_t pageNum, table* t) {
-	loadNode(t->root, t);
-    if (t->node == NULL || t->node->childCount == 0) {
+bool findAndDelete(uint32_t pageNum, tree* t) {
+	btree_node* tree = t->root;
+    if (tree == NULL || tree->childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
         return NULL; // input was an invalid tree
     }
     // Compare pageNum against keys in node
-    while (!t->node->isLeaf) {
+    while (!tree->isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node->childCount - 1; i++) {
+        for (int i = 0; i < tree->childCount - 1; i++) {
             // Searching for the correct key position
-            if (pageNum <= t->node->keys[i]) {
-                loadNode(t->node->children[i], t);
+            if (pageNum <= tree->keys[i]) {
+                tree = tree->children[i];
                 found = 1;
                 break;
             }
         }
         // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node->children[t->node->childCount - 1], t);
+            tree = tree->children[tree->childCount - 1];
         }
     }
     // We have found the correct leaf
-    for (int i = 0; i < t->node->childCount; i++) {
-        uint32_t key = t->node->keys[i];
+    for (int i = 0; i < tree->childCount; i++) {
+        uint32_t key = tree->keys[i];
         if (key == pageNum) {
-            return deletePage(t->page, pageNum, t);
+            return deletePage(tree, pageNum, t);
 		}
     }
 	return false;
 }
 
 
-/*
-returns the address of an internal node's next sibling (not cousin)
+/* UNTESTED
+returns an internal node's next sibling (not cousin)
 */
-uint64_t getNextInternal(node* n, table* t) {
-	if (!n->parent) return 0;
-	node parent;
-	loadParent(n, &parent, t);
+btree_node* getNextInternal(btree_node* n) {
+	btree_node* parent = n->parent;
+	if (!parent) return NULL;
 	int maxkey = n->keys[n->childCount-2];
-	for (int i = 0; i < parent.childCount-1; i++) { // search for n in parent's children and return next node if found
-		if (maxkey <= parent.keys[i]) return parent.children[i+1];
+	for (int i = 0; i < parent->childCount-1; i++) { // search for n in parent's children and return next node if found
+		if (maxkey <= parent->keys[i]) return (btree_node*) parent->children[i+1];
 	}
-	return 0; // otherwise n is the last node so there's no viable next
+	return NULL; // otherwise n is the last node so there's no viable next
 }
 
-/*
+/* UNTESTED
 returns an internal node's previous sibling (not cousin)
 assumes a node is internal
 */
-uint64_t* getPrevInternal(node* n, table* t) {
-	if (!n->parent) return 0;
-	node parent;
-	loadParent(n, &parent, t);
-	if (parent.children[0] == n) return 0;
+btree_node* getPrevInternal(btree_node* n) {
+	btree_node* parent = n->parent;
+	if (!parent) return NULL;
+	if (parent->children[0] == n) return NULL;
 	int maxKey = n->keys[n->childCount-2];
-	for (int i = 0; i < parent.childCount-1; i++) {
-		if (maxKey <= parent.keys[i]) return (node*) parent.children[i-1];
+	for (int i = 0; i < parent->childCount-1; i++) {
+		if (maxKey <= parent->keys[i]) return (btree_node*) parent->children[i-1];
 	}
-	return parent.children[parent.childCount-2]; // if not found in node then n is the last node and second to last node should be returned
+	return parent->children[parent->childCount-2]; // if not found in node then n is the last node and second to last node should be returned
 }
 
 /*
@@ -363,11 +361,10 @@ uint32_t findNextPageNum(slotted_page* p) {
 	return p->header.pageNum + 1;
 }
 
-uint32_t updateMaxPageNum(node* n) {
+uint32_t updateMaxPageNum(btree_node* n) {
 	if (n->isLeaf) return ((slotted_page*) n->children[n->childCount-1])->header.pageNum;
-	return ((node*) n->children[n->childCount-1])->maxPageNumber;
+	return ((btree_node*) n->children[n->childCount-1])->maxPageNumber;
 }
-
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
@@ -377,8 +374,8 @@ uint32_t updateMaxPageNum(node* n) {
 puts a page into a parent node's children and keys arrays
 assumes node is not full
 */
-void insertPageIntoChildren(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, table* t) {
-	p->header.parent = nodeAddr;
+void insertPageIntoChildren(btree_node* n, slotted_page* p) {
+	p->header.parent = n;
 	// check if page should be inserted into the middle of the children
 	for (int i = 0; i < n->childCount; i++) {
 		if (n->keys[i] > p->header.pageNum) {
@@ -392,10 +389,9 @@ void insertPageIntoChildren(node* n, uint64_t nodeAddr, slotted_page* p, uint64_
 	}
 	// otherwise, the correct spot must be at the end
 	n->keys[n->childCount] = p->header.pageNum;
-	n->children[n->childCount] = pageAddr;
+	n->children[n->childCount] = p;
 	n->childCount++;
 	n->maxPageNumber = p->header.pageNum;
-	markNode(nodeAddr, n, t);
 	return;
 }
 
@@ -403,44 +399,42 @@ void insertPageIntoChildren(node* n, uint64_t nodeAddr, slotted_page* p, uint64_
 puts a node into a parent node's children and keys arrays
 assumes node is not full
 */
-void splitUpdateParent(node* parent, node* child, uint64_t childAddr, int newKey, table* t) {
+void splitUpdateParent(btree_node* parent, btree_node* child, int newKey, tree* t) {
 	if (isNodeFull(parent)) {
 		printf("Balancing parent from splitUpdateParent()\n");
-		balanceTreeAdd(parent, child->parent, t);
+		balanceTreeAdd(parent, t);
 	}
 	// look for correct spot in parent's keys
 	for (int i = 0; i < parent->childCount-1; i++) {
 		if (parent->keys[i] > newKey) {
 			shiftIntArrayR(parent->keys, i, M);
 			parent->keys[i] = newKey;
-			shiftNodeArrayR((node**) parent->children, i+1, M);
+			shiftNodeArrayR((btree_node**) parent->children, i+1, M);
 			/*parent->children[i+1] = parent->children[i+2];
 			parent->children[i+2] = child;*/
-			parent->children[i+1] = childAddr;
+			parent->children[i+1] = child;
 			parent->childCount++;
 			return;
 		}
 	}
 	// otherwise, the correct spot must be at the end
 	parent->keys[parent->childCount-1] = newKey; // no previous key to replace
-	parent->children[parent->childCount] = childAddr;
+	parent->children[parent->childCount] = child;
 	parent->childCount++;
-	markNode(child->parent, parent, t);
 	return;
 }
 
 // splits a node, making sure the new node is properly connected to the b+tree
 // assumes the parent node is not full
-node* splitNode(node* n, uint64_t address, table* t) {
+btree_node* splitNode(btree_node* n, tree* t) {
 	if (isNodeFull(n->parent)) printf("Error: tried to split a node with a full parent");
-	node* new = newNode(n->isLeaf, n->parent);
-	uint64_t newAddr = allocNode(t); // getting new disk address for new node
+	btree_node* new = newNode(n->isLeaf, n->parent);
 	int middleKid = n->childCount/2;
 	// copying over children and keys
 	for (int i = 0; i < middleKid; i++) {
 		new->children[i] = n->children[i + middleKid];
 		if (n->isLeaf) ((slotted_page*) new->children[i])->header.parent = new;
-		else ((node*) new->children[i])->parent = new;
+		else ((btree_node*) new->children[i])->parent = new;
 		n->children[i + middleKid] = NULL;
 	}
 
@@ -453,7 +447,7 @@ node* splitNode(node* n, uint64_t address, table* t) {
 	// Inserting into linked list of leaves
 	if (n->isLeaf) {
 		if (n->next) {
-			node* tmp = n->next;
+			btree_node* tmp = n->next;
 			n->next = new;
 			new->prev = n;
 			new->next = tmp;
@@ -468,48 +462,43 @@ node* splitNode(node* n, uint64_t address, table* t) {
 	new->maxPageNumber = n->maxPageNumber;
 	n->maxPageNumber = n->keys[n->childCount-1];
 	// inserting new node into parent's keys and pointers
-	node* parent;
-	readNode(n->parent, &parent, t);
-	splitUpdateParent(&parent, new, newAddr, n->maxPageNumber, t);
-	markNode(address, n, t);
-	markNode(newAddr, new, t);
+	splitUpdateParent(n->parent, new, n->maxPageNumber, t);
 	return new;
 }
 
 /*
 @param n = the node to be split
 */
-node* balanceTreeAdd(node* n, uint64_t address, table* t) {
+btree_node* balanceTreeAdd(btree_node* n, tree* t) {
 	if (!isNodeFull(n)) {
 		printf("Error: called balanceTreeAdd() on a node that wasn't full\n");
 		return NULL;
 	}
-	node* parent;
-	readNode(n->parent, parent, t);
 	if (isRoot(n)) {
-		node* r = newRoot(n, t);
+		btree_node* r = newRoot(n);
+		t->root = r;
 	}
 	// recursive step
 	// need to make sure new node is put into the correct node
-	else if (isNodeFull(&parent)) {
-		struct node* newP = balanceTreeAdd(&parent, n->parent, t);
+	else if (isNodeFull(n->parent)) {
+		btree_node* newP = balanceTreeAdd(n->parent, t);
 	}
-	node* new = splitNode(n, address, t);
+	btree_node* new = splitNode(n, t);
 	return new;
 }
 
 // adds a page to a node and balances the tree recursively
-void addPage(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, tree* t) {
+void addPage(btree_node* n, slotted_page* newPage, tree* t) {
 	if (isNodeFull(n)) {
-		node* new = balanceTreeAdd(n, nodeAddr, t);
+		btree_node* new = balanceTreeAdd(n, t);
 		// decide which node to add the page to and add it
-		if (p->header.pageNum > n->maxPageNumber) {
-			insertPageIntoChildren(new, nodeAddr, p, pageAddr, t);
+		if (newPage->header.pageNum > n->maxPageNumber) {
+			insertPageIntoChildren(new, newPage);
 			return;
 		}
 	}
 	// else just add the new page to the node
-	insertPageIntoChildren(n, nodeAddr, p, pageAddr, t);
+	insertPageIntoChildren(n, newPage);
 }
 
 // ##########################################################################################################################################

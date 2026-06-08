@@ -78,6 +78,11 @@ static int shiftSlotArrayL(sp_slot* array, int target, int len) {
 	return 0;
 }
 
+/*
+@param - numSlots - maximum number of slots for the page to hold
+@param - numEntries - maximum number of entries for the page to hold
+@param - capacity - maximum capacity of the slot array (including both entries and slots)
+*/
 slotted_page* makeSPage(uint32_t pageNum, uint32_t numSlots, uint32_t numEntries, uint32_t capacity) {
 	slotted_page* out = calloc(1, sizeof(slotted_page));
 	out->header.pageNum = pageNum;

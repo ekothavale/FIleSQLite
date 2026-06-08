@@ -22,32 +22,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "common.h"
 #include "const.h"
 
-typedef struct btree_node {
-	void* children[M];
-	// keys = [3, 5] means 1, 2, 3 - left child, 4, 5 - middle child, 6+ - right child
-	// nodes have room for M keys but only leaf nodes will use all M slots
-	int keys[M];
-	struct btree_node* parent;
-	struct btree_node* next;
-	struct btree_node* prev; // remove if two way scanning not necessary
-
-	int childCount;
-	uint32_t maxPageNumber;
-
-	bool isLeaf; // if the node is a leaf node
-}btree_node;
-
 typedef struct node {
 	uint64_t children[M];
+	// keys = [3, 5] means 1, 2, 3 - left child, 4, 5 - middle child, 6+ - right child
+	// nodes have room for M keys but only leaf nodes will use all M slots
 	uint32_t keys[M];
 	uint64_t parent;
 	uint64_t next;
-	uint64_t prev;
+	uint64_t prev; // remove if two way scanning not necessary
 
 	uint32_t childCount;
 	uint32_t maxPageNumber;
 
-	bool isLeaf;
+	bool isLeaf; // if the node is a leaf node
 }node;
 
 #endif
