@@ -143,7 +143,7 @@ int shiftIntArrayL(int* array, int target, int len) {
 	return 0;
 }
 
-int shiftPageArrayR(slotted_page** array, int start, int len) {
+int shiftAddressArrayR(uint64_t* array, int start, int len) {
 	if (start > len-1) {
 		printf("Start index %d beyond length %d of array in shiftPageArrayR\n", start, len);
 		return -1;
@@ -155,31 +155,7 @@ int shiftPageArrayR(slotted_page** array, int start, int len) {
 	return 0;
 }
 
-int shiftPageArrayL(slotted_page** array, int target, int len) {
-	if (target > len-1) {
-		printf("Start index %d beyond length %d of array in shiftPageArrayL\n", target, len);
-		return -1;
-	}
-	for (int i = target; i < len-1; i++) {
-		array[i] = array[i+1];
-	}
-	array[len-1] = 0;
-	return 0;
-}
-
-int shiftNodeArrayR(btree_node** array, int start, int len) {
-	if (start > len-1) {
-		printf("Start index %d beyond length %d of array in shiftNodeArrayR\n", start, len);
-		return -1;
-	}
-	for (int i = len-1; i > start; i--) {
-		array[i] = array[i-1];
-	}
-	array[start] = NULL;
-	return 0;
-}
-
-int shiftNodeArrayL(btree_node** array, int target, int len) {
+int shiftAddressArrayL(uint64_t* array, int target, int len) {
 	if (target > len-1) {
 		printf("Start index %d beyond length %d of array in shiftPageArrayL\n", target, len);
 		return -1;
@@ -589,7 +565,7 @@ uint64_t mergeNode(node* n, uint64_t addr, table* t) {
 	// conditionally balance parent, free source and return survivor
 	printf("Deleting node at %lu\n", sourceAddr);
 	markDelete(sourceAddr, t);
-	if (parent->childCount < HALF_M) balanceTreeDelete(parent, t);
+	if (parent->childCount < HALF_M) balanceTreeDelete(parent, n->parent, t);
 	markNode(n->parent, parent, t);
 	free(source);
 	free(prev);
@@ -703,45 +679,54 @@ void borrowPrevThroughParent(node* n, uint64_t nAddr, node* prev, uint64_t prevA
 	}
 }
 
-// END OF MARKING AS OF 6/8/25
+// END OF WIRING AS OF 6/8/25
 
-btree_node* balanceTreeDelete(btree_node* n, tree* t) {
+node* balanceTreeDelete(node* n, uint64_t addr, table* t) {
 	// if n is a leaf node
 	if (n->isLeaf) { // needs to come before root case since a node that is both a root and a leaf can have one page child
-		btree_node* next = n->next;
-		if (isValidBorrow(n, next)) {
-			borrowNext(n, next);
-			if (n->parent->childCount < HALF_M) balanceTreeDelete(n->parent, t);
+		node next;
+		loadNext(n, &next, t);
+		node* parent = malloc(sizeof(node));
+		loadParent(n, parent, t);
+		if (isValidBorrow(n, &next)) {
+			borrowNext(n, addr, &next, n->next, t);
+			if (parent->childCount < HALF_M) balanceTreeDelete(parent, n->parent, t);
+			free(parent);
 			return n;
 		}
-		btree_node* prev = n->prev;
-		if (isValidBorrow(n, prev)) {
-			borrowPrev(n, prev);
-			if (n->parent->childCount < HALF_M) balanceTreeDelete(n->parent, t);
+		node prev;
+		loadPrev(n, &prev, t);
+		if (isValidBorrow(n, &prev)) {
+			borrowPrev(n, addr, &prev, n->prev, t);
+			if (parent->childCount < HALF_M) balanceTreeDelete(parent, n->parent, t);
+			free(parent);
 			return n;
 		}
-		return mergeNode(n, t);
+		free(parent);
+		return mergeNode(n, addr, t);
 	// if n is a root node
 	} else if (n == t->root && n->childCount == 1) {
-		btree_node* r = ((btree_node*) n->children[0]);
-		t->root = r;
-		r->parent = NULL;
+		node* r = malloc(t->nodeSize);
+		readNode(n->children[0], &r, t);
+		t->root = n->children[0];
+		r->parent = 0;
+		markNode(n->children[0], r, t);
 		printf("Collapsing tree\n");
-		free(n);
+		free(n); // MIGHT CAUSE PROBLEMS
 		return r;
 	// if n is an internal node
 	} else {
-		btree_node* next = getNextInternal(n);
+		node* next = getNextInternal(n, t);
 		if (isValidBorrow(n, next)) {
-			borrowNextThroughParent(n, next);
+			borrowNextThroughParent(n, addr, next, n->next, t);
 			return n;
 		}
-		btree_node* prev = getPrevInternal(n);
+		node* prev = getPrevInternal(n, t);
 		if (isValidBorrow(n, prev)) {
-			borrowPrevThroughParent(n, prev);
+			borrowPrevThroughParent(n, addr, prev, n->prev, t);
 			return n;
 		}
-		return mergeNode(n, t);
+		return mergeNode(n, addr, t);
 	}
 }
 
@@ -750,22 +735,23 @@ btree_node* balanceTreeDelete(btree_node* n, tree* t) {
 Deletes a page from a node
 @return - whether the page was successfully deleted or not
 */
-bool deletePage(btree_node* n, uint32_t pageNum, tree* t)  {
+bool deletePage(node* n, uint64_t nAddr, uint32_t pageNum, table* t)  {
 	if (!n->isLeaf) {
 		printf("Error: Tried to delete page in inner node\n");
 		return false;
 	}
 	if (n->childCount == HALF_M && !isRoot(n)) {
-		n = balanceTreeDelete(n, t);
+		n = balanceTreeDelete(n, nAddr, t);
 	}
 	// search for page in node's children
 	for (int i = 0; i < n->childCount; i++) {
 		if (n->keys[i] == pageNum) {
-			freePage((slotted_page*) n->children[i]);;
+			markDelete(n->children[i], t);
 			shiftIntArrayL(n->keys, i, M);
-			shiftPageArrayL((slotted_page**) n->children, i, M);
+			shiftAddressArrayL( n->children, i, M);
 			n->childCount--;
 			if (i == n->childCount) n->maxPageNumber = n->keys[n->childCount-1];
+			markNode(nAddr, n, t);
 			return true;
 		}
 	}
@@ -778,27 +764,3 @@ bool deletePage(btree_node* n, uint32_t pageNum, tree* t)  {
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // DEBUGGING FUNCTIONS
-// These are here not in debug.c because I'm not sure which of these will be kept when this is reimplemented on disk
-
-void freePage(slotted_page* p) {
-	free(p);
-}
-
-void freeTreeHelper(btree_node* r) {
-	if (r == NULL) return;
-	if (r->isLeaf) {
-		for (int i = 0; i < r->childCount; i++) {
-			freePage(r->children[i]);
-		}
-		return;
-	}
-	for (int i = 0; i < r->childCount; i++) {
-		freeTree(r->children[i]);
-	}
-	free(r);
-}
-
-void freeTree(tree* t) {
-	freeTreeHelper(t->root);
-	free(t);
-}

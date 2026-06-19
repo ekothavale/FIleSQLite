@@ -33,11 +33,12 @@ Addressing:
 
 /*
 TODO:
- - Create functions to copy nodes and pages from one block of memory to another
  - Reading functions
  - Marking functions x2
  - File header functions
  - Garbage collection
+ - Change array shifting to address
+ - change t->nodeSize to sizeof(node) when appropriate since nodeSize represents size on disk, not size in memory
 */
 
 #include "tableIO.h"
@@ -72,6 +73,9 @@ static bool jump(uint64_t address, table* t) {
 	}
 }
 
+/*
+jumps to an offset relative to the cursor's current position in the table's source
+*/
 static bool jumpRel(long offset, table* t) {
 	if (fseek(t->source, offset, SEEK_CUR) == 0) {
 		t->cursor += offset;
@@ -388,21 +392,17 @@ void loadNode(uint64_t address, table* t) {
 
 // write page
 /*
-writes a page from the dirty queue to an address
+writes the given page to the given address
 page layout:
  | 0 | parent | pageNum | usedData | numRecords | numEntries | arrCap |
  | maxEntries | maxSlots | slots | ... | records |
 
 REVERSE ORDER IN WHICH RECORDS ARE ADDED SINCE WE NEED TO READ THE ARRAY BACKWARDS
 */
-void writeNextPage(table* t) { // all pages will be looked up in the dirty queue by their address
-	if (t->pageDirty.count <= 0) return;
-	// get next write order off the stack
-	page_write_order order = t->pageDirty.stack[t->pageDirty.count-1];
-	t->pageDirty.count--;
-	jump(order.address, t);
+static void writePage(slotted_page* p, uint64_t address, table* t) {
+	// setup
+	jump(address, t);
 	char* buffer = calloc(t->pageSize, 1);
-	slotted_page* p = order.page;
 	// write header
 	header h = p->header;
 	writeULongBytewise(buffer+1, h.parent);
@@ -443,15 +443,27 @@ void writeNextPage(table* t) { // all pages will be looked up in the dirty queue
 	fwrite(buffer, 1, t->pageSize, t->source);
 	free(buffer);
 }
-// write node
-void writeNextNode(table* t) {
-	if (t->nodeDirty.count <= 0) return;
+
+/*
+writes a page from the dirty queue to an address
+*/
+void writeNextPage(table* t) { // all pages will be looked up in the dirty queue by their address
+	if (t->pageDirty.count <= 0) return;
 	// get next write order off the stack
-	node_write_order order = t->nodeDirty.stack[t->nodeDirty.count-1];
-	t->nodeDirty.count--;
-	jump(order.address, t);
+	page_write_order order = t->pageDirty.stack[t->pageDirty.count-1];
+	t->pageDirty.count--;
+	writePage(order.page, order.address, t);
+}
+
+// write node
+
+/*
+writes the given node to the given address
+*/
+static void writeNode(node* n, uint64_t address, table* t) {
+	// setup
+	jump(address, t);
 	char* buffer = calloc(t->nodeSize, 1);
-	node* n = order.node;
 	// write metadata
 	buffer[0] = 1;
 	writeULongBytewise(buffer+1, n->parent);
@@ -474,6 +486,15 @@ void writeNextNode(table* t) {
 	// copy buffer to disk and clean up
 	fwrite(buffer, 1, t->nodeSize, t->source);
 	free(buffer);
+}
+
+void writeNextNode(table* t) {
+	if (t->nodeDirty.count <= 0) return;
+	// get next write order off the stack
+	node_write_order order = t->nodeDirty.stack[t->nodeDirty.count-1];
+	t->nodeDirty.count--;
+	jump(order.address, t);
+	writeNode(order.node, order.address, t);
 }
 
 /*MIGHT NEED THESE TO RETURN TRUE OR FALSE*/
@@ -580,6 +601,35 @@ uint64_t allocNode(table* t) {
 }
 
 // GARBAGE COLLECTION
+
+/*
+moves a node from the source disk address to the dest disk address
+writes directly to disk without using the write queue
+trusts that both addresses given are correct
+*/
+static void moveNode(uint64_t source, uint64_t dest, table* t) {
+	slotted_page* p = t->page;
+	uint64_t add = t->cursor;
+	loadNode(source, t);
+	writeNode(t->node, dest, t);
+	loadNode(add, t);
+	t->page = p;
+}
+
+/*
+moves a page from the source disk address to the dest disk address
+writes directly to disk without using the write queue
+trusts that both addresses given are correct
+*/
+static void movePage(uint64_t source, uint64_t dest, table* t) {
+	slotted_page* p = t->page;
+	uint64_t add = t->cursor;
+	loadPage(source, t);
+	writePage(t->page, dest, t);
+	loadNode(add, t);
+	t->page = p;
+}
+
 /*
 // condense stripe
 
