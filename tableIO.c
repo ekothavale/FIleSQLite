@@ -33,9 +33,8 @@ Addressing:
 
 /*
 TODO:
- - Reading functions
- - Marking functions x2
- - File header functions
+ - MarkDelete
+ - Update metadata functions
  - Garbage collection
  - Change array shifting to address
  - change t->nodeSize to sizeof(node) when appropriate since nodeSize represents size on disk, not size in memory
@@ -192,6 +191,20 @@ static void consumeArbitrary(char* buffer, uint32_t len, long offset, table* t) 
 	fread(buffer, 1, len, t->source);
 }
 
+/*
+copies the contents of the source page into the target page
+*/
+static void copyPage(slotted_page* source, slotted_page* target) {
+	*target = *source;
+}
+
+/*
+copies the contents of the source node into the target node
+*/
+static void copyNode(slotted_page* source, slotted_page* target) {
+	*target = *source;
+}
+
 bool loadMeta(FILE* file, table* table, char* fname) {
 	int buf[METALEN];
 	fread(&buf, 4, METALEN, file);
@@ -267,13 +280,42 @@ bool loadTable(char* fname, table* t) {
 	return true;
 }
 
-// THESE FUNCTIONS NEED TO CHECK THE DIRTY QUEUES BEFORE CHECKING THE FILE
+/*
+As of now, the stacks will be searched linearly. This is obviously inefficient
+After first draft of back end is done the stacks should be changed to hashmaps
+*/
+
+/*
+searches the table's page dirty stack for a page at the given address
+returns the corresponding write order if found else returns NULL
+*/
+page_write_order* searchPageStack(uint64_t address, table* t) {
+	for (int i = 1; i <= t->pageDirty.count; i++) {
+		if ((t->pageDirty.stack-i)->address == address) return t->pageDirty.stack-i;
+	}
+	return NULL;
+}
+
+node_write_order* searchNodeStack(uint64_t address, table* t) {
+	for (int i = 1; i <= t->nodeDirty.count; i++) {
+		if ((t->nodeDirty.stack-i)->address == address) return t->nodeDirty.stack-i;
+	}
+	return NULL;
+}
 
 /*
 reads a page from an address into a chunk of memory
 @param: p - a slotted page to load the data from disk into
 */
 bool readPage(uint64_t address, slotted_page* p, table* t) {
+	// checking write stack
+	page_write_order* search = searchPageStack(address, t);
+	if (search) {
+		copyPage(search, p);
+		return true;
+	}
+
+	// otherwise read from disk
 	uint64_t prev = t->cursor;
 	jump(address, t);
 	if (readByte(0, t) != 0) {
@@ -342,6 +384,14 @@ reads a page from an address into a chunk of memory
 @param: p - a slotted page to load the data from disk into
 */
 bool readNode(uint64_t address, node* n, table* t) {
+	// checking write stack
+	node_write_order* search = searchNodeStack(address, t);
+	if (search) {
+		copyNode(search, n);
+		return true;
+	}
+
+	// otherwise search disk
 	uint64_t prev = t->cursor;
 	jump(address, t);
 
@@ -510,11 +560,9 @@ void loadNext(node* n, node* next, table* t) {
 	readNode(n->next, next, t);
 }
 
-// MARKING FUNCTIONS NEED TO CHECK IF THE OBJECT IS ALREADY IN THE STACKS
-// MARKING FUCNTIONS NEED TO CREATE COPIES OF OBEJCTS INSTEAD OF USING THE ORIGINAL POINTERS SINCE THOSE WILL BE FREED IN BETEWEEN WHEN THE OBJECT IS ADDED TO THE STACKS AND WHEN THE WRITE OCCURS
-
 // mark page dirty
 void markPage(uint64_t address, slotted_page* p, table* t) {
+	if (searchPageStack(address, t)) return; // skip if already in stack
 	if (t->pageDirty.count == t->pageDirty.size) {
 		uint32_t newSize = t->pageDirty.size * DIRTY_STACK_GROWTH_RATE;
 		page_write_order* new = malloc(newSize * sizeof(page_write_order));
@@ -524,11 +572,12 @@ void markPage(uint64_t address, slotted_page* p, table* t) {
 		t->pageDirty.size = newSize;
 	}
 	t->pageDirty.stack[t->pageDirty.count].address = address;
-	t->pageDirty.stack[t->pageDirty.count++].page = p;
+	copyPage(p, t->pageDirty.stack[t->pageDirty.count++].page);
 }
 
 // mark node dirty
 void markNode(uint64_t address, node* n, table* t) {
+	if (searchNodeStack(address, t)) return; // skip if already in stack
 	if (t->nodeDirty.count == t->nodeDirty.size) {
 		uint32_t newSize = t->nodeDirty.size * DIRTY_STACK_GROWTH_RATE;
 		node_write_order* new = malloc(newSize * sizeof(node_write_order));
@@ -538,7 +587,7 @@ void markNode(uint64_t address, node* n, table* t) {
 		t->nodeDirty.size = newSize;
 	}
 	t->nodeDirty.stack[t->nodeDirty.count].address = address;
-	t->nodeDirty.stack[t->nodeDirty.count++].node = n;
+	copyNode(n, t->nodeDirty.stack[t->nodeDirty.count++].node);
 }
 
 // NEED TO CREATE NEW STACKS FOR DELETING PAGES AND NODES
