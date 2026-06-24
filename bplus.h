@@ -32,7 +32,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define MIN_KEY(n) \
 	((n)->keys[0])
 
-const int HALF_M = M / 2;
+#define HALF_M (M / 2)
 
 // struct to control root pointer for a tree
 // this is the RAM equivalent of a table's root pointer when disk storage is implemented
@@ -44,23 +44,23 @@ typedef struct tree {
 }tree;
 
 void freeTree(tree* t);
-tree* newTree(slotted_page* p);
+tree* newTree(uint64_t pageAddress, slotted_page* p);
 
 
-slotted_page* findPage(uint32_t pageNum, table* tree);
-slotted_page* findAndInsert(uint32_t pageNum, tree* tree);
-bool findAndDelete(uint32_t pageNum, tree* tree);
-node* newNode(bool isLeaf, node* parent);
+uint64_t findPage(uint32_t pageNum, table* t);
+uint64_t findAndInsert(uint32_t pageNum, table* t);
+bool findAndDelete(uint32_t pageNum, table* tree);
+node* newNode(bool isLeaf, uint64_t parent);
 uint32_t findNextPageNum(slotted_page* p);
 void freePage(slotted_page* p);
 
 // Insertion functions
-void insertPageIntoChildren(node* n, slotted_page* p);
-node* splitNode(node* n, tree* t);
-void addPage(node* n, slotted_page* newPage, tree* t);
-bool deletePage(node* n, uint32_t pageNum, tree* t);
-node* balanceTreeAdd(node* n, tree* t);
-node* balanceTreeDelete(node* n, tree* t);
+void insertPageIntoChildren(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, table* t);
+node* splitNode(node* n, uint64_t address, uint64_t* newAddrOut, table* t);
+void addPage(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, table* t);
+bool deletePage(node* n, uint64_t addr, uint32_t pageNum, table* t);
+node* balanceTreeAdd(node* n, uint64_t address, uint64_t* newAddrOut, table* t);
+node* balanceTreeDelete(node* n, uint64_t addr, table* t);
 bool insertTuple(int tuple, u_int32_t pageNum, tree* t);
 bool writeVal(slotted_page* p, int tuple);
 

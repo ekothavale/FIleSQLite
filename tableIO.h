@@ -83,10 +83,8 @@ bool readNode(uint64_t address, node* n, table* t);
 void loadNode(uint64_t address, table* t);
 // write page
 void writeNextPage(table* t);
-void writePage(uint32_t address, table* t); // all pages will be looked up in the dirty queue by their address
 // write node
 void writeNextNode(table* t);
-void writeNode(node* n, uint64_t address, table* t);
 // load parent
 void loadParent(node* n, node* parent, table* t);
 // load previous node (left node)

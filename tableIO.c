@@ -34,7 +34,6 @@ Addressing:
 /*
 TODO:
  - MarkDelete
- - Update metadata functions
  - Garbage collection
  - Change array shifting to address
  - change t->nodeSize to sizeof(node) when appropriate since nodeSize represents size on disk, not size in memory
@@ -91,14 +90,14 @@ big endian
 */
 static void writeULongBytewise(char* arr, uint64_t lui) {
 	for (int i = 7; i >= 0; i--) {
-		*(arr+i) = lui && 0xFF;
+		*(arr+i) = lui & 0xFF;
 		lui >>= 8;
 	}
 }
 
 static void writeUIntBytewise(char* arr, uint32_t ui) {
 	for (int i = 3; i >= 0; i--) {
-		*(arr+i) = ui && 0xFF;
+		*(arr+i) = ui & 0xFF;
 		ui >>= 8;
 	}
 }
@@ -111,7 +110,7 @@ static char readByte(long offset, table* t) {
 	char a;
 	jumpRel(offset, t);
 	fread(&a, 1, 1, t->source);
-	jumpTel(-offset, t);
+	jumpRel(-offset - 1, t);
 	return a;
 }
 
@@ -120,11 +119,12 @@ reads an unsigned integer at the table's cursor + an offset
 returns the cursor to the original position
 */
 static uint32_t readUInt(long offset, table* t) {
-	uint32_t a;
+	unsigned char a[4];
 	jumpRel(offset, t);
-	fread(&a, 4, 1, t->source);
-	jumpRel(-offset, t);
-	return a;
+	fread(a, 4, 1, t->source);
+	jumpRel(-offset - 4, t);
+	uint32_t out = (uint32_t) a[0] << 24 | (uint32_t) a[1] << 16 | (uint32_t) a[2] << 8 | (uint32_t) a[3];
+	return out;
 }
 
 /*
@@ -132,11 +132,13 @@ reads an unsigned long at the table's cursor + an offset
 returns the cursor to the original position
 */
 static uint64_t readULong(long offset, table* t) {
-	uint64_t a;
+	unsigned char a[8];
 	jumpRel(offset, t);
-	fread(&a, 8, 1, t->source);
-	jumpRel(-offset, t);
-	return a;
+	fread(a, 8, 1, t->source);
+	jumpRel(-offset - 8, t);
+	uint64_t out = (uint64_t) a[0] << 56 | (uint64_t) a[1] << 48 | (uint64_t) a[2] << 40 | (uint64_t) a[3] << 32
+					| (uint64_t) a[4] << 24 | (uint64_t) a[5] << 16 | (uint64_t) a[6] << 8 | (uint64_t) a[7];
+	return out;
 }
 
 /*
@@ -146,7 +148,7 @@ returns the cursor to the original position
 static void readArbitrary(char* buffer, uint32_t len, long offset, table* t) {
 	jumpRel(offset, t);
 	fread(buffer, 1, len, t->source);
-	jumpRel(-offset, t);
+	jumpRel(-offset-len, t);
 }
 
 /*
@@ -201,12 +203,12 @@ static void copyPage(slotted_page* source, slotted_page* target) {
 /*
 copies the contents of the source node into the target node
 */
-static void copyNode(slotted_page* source, slotted_page* target) {
+static void copyNode(node* source, node* target) {
 	*target = *source;
 }
 
 bool loadMeta(FILE* file, table* table, char* fname) {
-	int buf[METALEN];
+	uint32_t buf[METALEN];
 	fread(&buf, 4, METALEN, file);
 	if(buf[0] != MAGIC) {
 		printf("Error: failed to open table %s because the file was of an incorrect type\n", fname);
@@ -222,15 +224,15 @@ bool loadMeta(FILE* file, table* table, char* fname) {
 	table->nodeStripeLen = buf[6];
 	table->pageSize = buf[7];
 	table->nodeSize = buf[8];
-	table->pageFree = (long) buf[9] << 32 + (long) buf[10];
-	table->nodeFree = (long) buf[11] << 32 + (long) buf[12];
-	table->root = (long) buf[13] << 32 + (long) buf[14];
+	table->pageFree = ((uint64_t) (uint32_t) buf[9] << 32) | (uint32_t) buf[10];
+	table->nodeFree = ((uint64_t) (uint32_t) buf[11] << 32) | (uint32_t) buf[12];
+	table->nodeFree = ((uint64_t) (uint32_t) buf[13] << 32) | (uint32_t) buf[14];
 	table->M = buf[15];
 	return true;
 }
 
 bool writeMeta(FILE* file, table* t) {
-	int buf[] = {
+	uint32_t buf[] = {
 		MAGIC,
 		t->metalen,
 		t->pageStripes,
@@ -240,12 +242,12 @@ bool writeMeta(FILE* file, table* t) {
 		t->nodeStripeLen,
 		t->pageSize,
 		t->nodeSize,
-		(int) t->pageFree >> 32,
-		(int) t->pageFree & 0xFFFFFFFF,
-		(int) t->nodeFree >> 32,
-		(int) t->nodeFree & 0xFFFFFFFF,
-		(int) t->root >> 32,
-		(int) t->root & 0xFFFFFFFF,
+		(uint32_t) (t->pageFree >> 32),
+		(uint32_t) (t->pageFree & 0xFFFFFFFF),
+		(uint32_t) (t->nodeFree >> 32),
+		(uint32_t) (t->nodeFree & 0xFFFFFFFF),
+		(uint32_t) (t->root >> 32),
+		(uint32_t) (t->root & 0xFFFFFFFF),
 		t->M
 
 	};
@@ -257,10 +259,10 @@ bool writeMeta(FILE* file, table* t) {
 void setStacks(table* t) {
 	t->pageDirty.size = DIRTY_STACK_INTIAL_SIZE;
 	t->pageDirty.count = 0;
-	t->pageDirty.stack = malloc(sizeof(slotted_page) * DIRTY_STACK_INTIAL_SIZE);
+	t->pageDirty.stack = malloc(sizeof(page_write_order) * DIRTY_STACK_INTIAL_SIZE);
 	t->nodeDirty.size = DIRTY_STACK_INTIAL_SIZE;
 	t->nodeDirty.count = 0;
-	t->nodeDirty.stack = malloc(sizeof(node) * DIRTY_STACK_INTIAL_SIZE);
+	t->nodeDirty.stack = malloc(sizeof(node_write_order) * DIRTY_STACK_INTIAL_SIZE);
 }
 
 // ##########################################################################################################################################
@@ -291,14 +293,14 @@ returns the corresponding write order if found else returns NULL
 */
 page_write_order* searchPageStack(uint64_t address, table* t) {
 	for (int i = 1; i <= t->pageDirty.count; i++) {
-		if ((t->pageDirty.stack-i)->address == address) return t->pageDirty.stack-i;
+		if ((t->pageDirty.stack + t->pageDirty.count - i)->address == address) return t->pageDirty.stack-i;
 	}
 	return NULL;
 }
 
 node_write_order* searchNodeStack(uint64_t address, table* t) {
 	for (int i = 1; i <= t->nodeDirty.count; i++) {
-		if ((t->nodeDirty.stack-i)->address == address) return t->nodeDirty.stack-i;
+		if ((t->nodeDirty.stack + t->nodeDirty.count - i)->address == address) return t->nodeDirty.stack-i;
 	}
 	return NULL;
 }
@@ -311,7 +313,7 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 	// checking write stack
 	page_write_order* search = searchPageStack(address, t);
 	if (search) {
-		copyPage(search, p);
+		copyPage(search->page, p);
 		return true;
 	}
 
@@ -349,23 +351,25 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 	}
 	// records
 	int entryOffset = 0;
-	jumpRel(t->pageSize, t); // navigating to 1 byte after the end of the page
+	jump(address + t->pageSize, t); // navigating to 1 byte after the end of the page
 	if(!p->entries) {
 		p->entries = malloc(calcEntriesSize(t));
 	}
 	for (int i = 0; i < p->header.numEntries; i++) {
 		// entry: <--  data | size (4B) | type (2B)  <--
-		char code = consumeByte(-1, t);
+		char code = readByte(-1, t);
+		jumpRel(-2, t);
 		for (int j = 0; j < NUM_DATATYPES; j++) {
-			if (DATATYPE_CODES[j] == code) p->entries[j].type = j;
+			if (DATATYPE_CODES[j] == code) p->entries[i].type = j;
 		}
 
-		uint32_t size = consumeUInt(-5, t);
+		uint32_t size = readUInt(-4, t);
+		jumpRel(-4, t);
 		p->entries[i].size = size;
 		if (p->entries[i].data) free(p->entries[i].data);
 		p->entries[i].data = malloc(size);
-		consumeArbitrary(p->entries[i].data, size, -size, t);
-
+		readArbitrary(p->entries[i].data, size, -size, t);
+		jumpRel(-size, t);
 	}
 	jump(prev, t);
 	return true;
@@ -387,7 +391,7 @@ bool readNode(uint64_t address, node* n, table* t) {
 	// checking write stack
 	node_write_order* search = searchNodeStack(address, t);
 	if (search) {
-		copyNode(search, n);
+		copyNode(search->node, n);
 		return true;
 	}
 
@@ -435,7 +439,7 @@ bool readNode(uint64_t address, node* n, table* t) {
 moves a table's cursor to a node and loads it
 assumes the current location of the cursor is a valid node
 */
-void loadNode(uint64_t address, table* t) {
+bool loadNode(uint64_t address, table* t) {
 	jump(address, t);
 	return readNode(address, t->node, t);
 }
@@ -467,9 +471,9 @@ static void writePage(slotted_page* p, uint64_t address, table* t) {
 	int offset = 37;
 	for (int i = 0; i < h.numRecords; i++) {
 		writeUIntBytewise(buffer+offset, p->slots[i].ID);
-		writeUIntBytewise(buffer+offset+8, p->slots[i].len);
-		writeUIntBytewise(buffer+offset+12, p->slots[i].size);
-		writeUIntBytewise(buffer+offset+4, p->slots[i].ptr);
+		writeUIntBytewise(buffer+offset+4, p->slots[i].len);
+		writeUIntBytewise(buffer+offset+8, p->slots[i].size);
+		writeUIntBytewise(buffer+offset+12, p->slots[i].ptr);
 		offset += 16;
 	}
 	// write records
@@ -566,13 +570,15 @@ void markPage(uint64_t address, slotted_page* p, table* t) {
 	if (t->pageDirty.count == t->pageDirty.size) {
 		uint32_t newSize = t->pageDirty.size * DIRTY_STACK_GROWTH_RATE;
 		page_write_order* new = malloc(newSize * sizeof(page_write_order));
-		memmove(new, t->pageDirty.stack, t->pageDirty.size);
+		memmove(new, t->pageDirty.stack, t->pageDirty.size * sizeof(page_write_order));
 		free(t->pageDirty.stack);
 		t->pageDirty.stack = new;
 		t->pageDirty.size = newSize;
 	}
-	t->pageDirty.stack[t->pageDirty.count].address = address;
-	copyPage(p, t->pageDirty.stack[t->pageDirty.count++].page);
+	page_write_order* order = t->pageDirty.stack + t->pageDirty.count++;
+	order->address = address;
+	order->page = malloc(sizeof(slotted_page));
+	copyPage(p, order->page);
 }
 
 // mark node dirty
@@ -581,13 +587,15 @@ void markNode(uint64_t address, node* n, table* t) {
 	if (t->nodeDirty.count == t->nodeDirty.size) {
 		uint32_t newSize = t->nodeDirty.size * DIRTY_STACK_GROWTH_RATE;
 		node_write_order* new = malloc(newSize * sizeof(node_write_order));
-		memmove(new, t->nodeDirty.stack, t->nodeDirty.size);
+		memmove(new, t->nodeDirty.stack, t->nodeDirty.size * sizeof(node_write_order));
 		free(t->nodeDirty.stack);
 		t->nodeDirty.stack = new;
 		t->nodeDirty.size = newSize;
 	}
-	t->nodeDirty.stack[t->nodeDirty.count].address = address;
-	copyNode(n, t->nodeDirty.stack[t->nodeDirty.count++].node);
+	node_write_order* order = t->nodeDirty.stack + t->nodeDirty.count++;
+	order->address = address;
+	order->node = malloc(sizeof(node));
+	copyNode(n, order->node);
 }
 
 // NEED TO CREATE NEW STACKS FOR DELETING PAGES AND NODES
@@ -619,19 +627,19 @@ page | page | ... | page
 /*
 allocates a new stripe and sets table.pageFree to that address
 */
-void newPageStripe(table* t) {
+static void newPageStripe(table* t) {
 	t->pageFree = t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize;
 	t->pageStripes++;
 }
 
-void newNodeStripe(table* t) {
+static void newNodeStripe(table* t) {
 	t->nodeFree = t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize;
 	t->nodeStripes++;
 }
 
 uint64_t allocPage(table* t) {
 	uint64_t out = t->pageFree;
-	if (t->pageFree == t->metalen + (t->pageStripes * t->pageStripeLen - 1) * t->pageSize) {
+	if (t->pageFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize) {
 		newPageStripe(t);
 	} else {
 		t->pageFree += t->pageSize;
@@ -641,7 +649,7 @@ uint64_t allocPage(table* t) {
 
 uint64_t allocNode(table* t) {
 	uint64_t out = t->nodeFree;
-	if (t->nodeFree == t->metalen + (t->nodeStripes * t->nodeStripeLen - 1) * t->nodeSize) {
+	if (t->nodeFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize) {
 		newNodeStripe(t);
 	} else {
 		t->nodeFree += t->nodeSize;
@@ -658,11 +666,13 @@ trusts that both addresses given are correct
 */
 static void moveNode(uint64_t source, uint64_t dest, table* t) {
 	slotted_page* p = t->page;
-	uint64_t add = t->cursor;
+	node* n = t->node;
+	uint64_t addr = t->cursor;
 	loadNode(source, t);
 	writeNode(t->node, dest, t);
-	loadNode(add, t);
+	jump(addr, t);
 	t->page = p;
+	t->node = n;
 }
 
 /*
@@ -672,11 +682,13 @@ trusts that both addresses given are correct
 */
 static void movePage(uint64_t source, uint64_t dest, table* t) {
 	slotted_page* p = t->page;
-	uint64_t add = t->cursor;
+	node* n = t->node;
+	uint64_t addr = t->cursor;
 	loadPage(source, t);
 	writePage(t->page, dest, t);
-	loadNode(add, t);
+	jump(addr, t);
 	t->page = p;
+	t->node = n;
 }
 
 /*

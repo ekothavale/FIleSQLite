@@ -56,18 +56,18 @@ which is implemented in another file.
 /*
 creates a new root node
 */
-node* newRoot(node* child, table* t) {
+node* newRoot(node* child, uint64_t childAddr, table* t) {
 	node* new = malloc(t->nodeSize);
 	new->childCount = 1;
-	new->children[0] = child;
-	new->parent = NULL;
-	new->prev = NULL;
-	new->next = NULL;
+	new->children[0] = childAddr;
+	new->parent = 0;
+	new->prev = 0;
+	new->next = 0;
 	new->isLeaf = false;
-
 	new->maxPageNumber = child->maxPageNumber;
-	child->parent = new;
 	uint64_t rootAdd = allocNode(t);
+	child->parent = rootAdd;
+	markNode(childAddr, child, t);
 	markNode(rootAdd, new, t);
 	t->root = rootAdd;
 	return new;
@@ -76,8 +76,8 @@ node* newRoot(node* child, table* t) {
 /*
 creates a blank leaf or interior node
 */
-btree_node* newNode(bool isLeaf, btree_node* parent) {
-	btree_node* n = calloc(1, sizeof(btree_node));
+node* newNode(bool isLeaf, uint64_t parent) {
+	node* n = calloc(1, sizeof(node));
 	n->isLeaf = isLeaf;
 	n->parent = parent;
 	n->childCount = 0;
@@ -85,12 +85,14 @@ btree_node* newNode(bool isLeaf, btree_node* parent) {
 	return n;
 }
 
-// creates a new b+ tree starting with just one leaf node and one page
-tree* newTree(slotted_page* p) {
-	btree_node* new = newNode(true, NULL);
+/*
+creates a new b+ tree starting with just one leaf node and one page
+*/
+tree* newTree(uint64_t pageAddress, slotted_page* p) {
+	node* new = newNode(true, NULL);
 	new->childCount = 1;
 
-	new->children[0] = p;
+	new->children[0] = pageAddress;
 	new->keys[0] = p->header.pageNum;
 	tree* t = malloc(sizeof(tree));
 	t->root = new;
@@ -145,7 +147,7 @@ int shiftIntArrayL(int* array, int target, int len) {
 
 int shiftAddressArrayR(uint64_t* array, int start, int len) {
 	if (start > len-1) {
-		printf("Start index %d beyond length %d of array in shiftPageArrayR\n", start, len);
+		printf("Start index %d beyond length %d of array in shiftAddressArrayR\n", start, len);
 		return -1;
 	}
 	for (int i = len-1; i > start; i--) {
@@ -171,15 +173,15 @@ bool isPageFull(slotted_page* p) {
 	return p->header.numRecords >= NUM_SLOTS;
 }
 
-bool isNodeFull(btree_node* n) {
+bool isNodeFull(node* n) {
 	return n->childCount >= M;
 }
 
-bool nodeAtMinimum(btree_node* n) {
+bool nodeAtMinimum(node* n) {
 	return n->childCount <= HALF_M;
 }
 
-bool isRoot(btree_node* n) {
+bool isRoot(node* n) {
 	return n->parent == NULL && n->childCount > 0;
 }
 
@@ -252,13 +254,15 @@ uint64_t findAndInsert(uint32_t pageNum, table* t) {
             return t->node->children[i];
         } else if (key > pageNum) { // optimization so that we don't have to unnecessarily finish a loop
 			slotted_page* p = makeSPage(pageNum, NUM_SLOTS, NUM_ENTRIES, PAGE_ARR_CAP);
-			addPage(t->page, p, t);
-			return p;
+			uint64_t pageAddr = allocPage(t);
+			addPage(t->node, t->cursor, p, pageAddr, t);
+			return pageAddr;
 		}
     }
 	slotted_page* p = makeSPage(pageNum, NUM_SLOTS, NUM_ENTRIES, PAGE_ARR_CAP);
-    addPage(t->page, p, t);
-	return p;
+	uint64_t pageAddr = allocPage(t);
+    addPage(t->node, t->cursor, p, pageAddr, t);
+	return pageAddr;
 }
 
 /*
@@ -292,7 +296,7 @@ bool findAndDelete(uint32_t pageNum, table* t) {
     for (int i = 0; i < t->node->childCount; i++) {
         uint32_t key = t->node->keys[i];
         if (key == pageNum) {
-            return deletePage(t->page, pageNum, t);
+            return deletePage(t->node, t->cursor, pageNum, t);
 		}
     }
 	return false;
@@ -302,31 +306,28 @@ bool findAndDelete(uint32_t pageNum, table* t) {
 /*
 returns the address of an internal node's next sibling (not cousin)
 */
-uint64_t getNextInternal(node* n, table* t) {
+uint64_t getNextInternal(node* n, uint64_t nAddr, table* t) {
 	if (!n->parent) return 0;
 	node parent;
 	loadParent(n, &parent, t);
-	int maxkey = n->keys[n->childCount-2];
-	for (int i = 0; i < parent.childCount-1; i++) { // search for n in parent's children and return next node if found
-		if (maxkey <= parent.keys[i]) return parent.children[i+1];
+	for (int i = 0; i < parent.childCount - 1; i++) {
+		if (parent.children[i] == nAddr) return parent.children[i+1];
 	}
-	return 0; // otherwise n is the last node so there's no viable next
+	return 0;
 }
 
 /*
 returns the address of an internal node's previous sibling (not cousin)
 assumes a node is internal
 */
-uint64_t getPrevInternal(node* n, table* t) {
+uint64_t getPrevInternal(node* n, uint64_t nAddr, table* t) {
 	if (!n->parent) return 0;
 	node parent;
 	loadParent(n, &parent, t);
-	if (parent.children[0] == n) return 0;
-	int maxKey = n->keys[n->childCount-2];
-	for (int i = 0; i < parent.childCount-1; i++) {
-		if (maxKey <= parent.keys[i]) return (node*) parent.children[i-1];
+	for (int i = 1; i < parent.childCount; i++) {
+		if (parent.children[i] == nAddr) return parent.children[i-1];
 	}
-	return parent.children[parent.childCount-2]; // if not found in node then n is the last node and second to last node should be returned
+	return 0;
 }
 
 /*
@@ -339,9 +340,14 @@ uint32_t findNextPageNum(slotted_page* p) {
 	return p->header.pageNum + 1;
 }
 
-uint32_t updateMaxPageNum(node* n) {
-	if (n->isLeaf) return ((slotted_page*) n->children[n->childCount-1])->header.pageNum;
-	return ((node*) n->children[n->childCount-1])->maxPageNumber;
+uint32_t updateMaxPageNum(node* n, table* t) {
+	if (n->isLeaf) {
+		loadPage(n->children[n->childCount-1], t);
+		return t->page->header.pageNum;
+	}
+	node child;
+	readNode(n->children[n->childCount-1], &child, t);
+	return child.maxPageNumber;
 }
 
 
@@ -360,9 +366,10 @@ void insertPageIntoChildren(node* n, uint64_t nodeAddr, slotted_page* p, uint64_
 		if (n->keys[i] > p->header.pageNum) {
 			shiftIntArrayR(n->keys, i, M);
 			n->keys[i] = p->header.pageNum;
-			shiftPageArrayR((slotted_page**) n->children, i, M);
-			n->children[i] = p;
+			shiftAddressArrayR(n->children, i, M);
+			n->children[i] = pageAddr;
 			n->childCount++;
+			markNode(nodeAddr, n, t);
 			return;
 		}
 	}
@@ -382,14 +389,15 @@ assumes node is not full
 void splitUpdateParent(node* parent, node* child, uint64_t childAddr, int newKey, table* t) {
 	if (isNodeFull(parent)) {
 		printf("Balancing parent from splitUpdateParent()\n");
-		balanceTreeAdd(parent, child->parent, t);
+		uint64_t dummy;
+		balanceTreeAdd(parent, child->parent, &dummy, t);
 	}
 	// look for correct spot in parent's keys
 	for (int i = 0; i < parent->childCount-1; i++) {
 		if (parent->keys[i] > newKey) {
 			shiftIntArrayR(parent->keys, i, M);
 			parent->keys[i] = newKey;
-			shiftNodeArrayR((node**) parent->children, i+1, M);
+			shiftAddressArrayR(parent->children, i+1, M);
 			/*parent->children[i+1] = parent->children[i+2];
 			parent->children[i+2] = child;*/
 			parent->children[i+1] = childAddr;
@@ -407,46 +415,69 @@ void splitUpdateParent(node* parent, node* child, uint64_t childAddr, int newKey
 
 // splits a node, making sure the new node is properly connected to the b+tree
 // assumes the parent node is not full
-node* splitNode(node* n, uint64_t address, table* t) {
+node* splitNode(node* n, uint64_t address, uint64_t* newAddrOut, table* t) {
 	if (isNodeFull(n->parent)) printf("Error: tried to split a node with a full parent");
 	node* new = newNode(n->isLeaf, n->parent);
-	uint64_t newAddr = allocNode(t); // getting new disk address for new node
-	int middleKid = n->childCount/2;
-	// copying over children and keys
+	uint64_t newAddr = allocNode(t);
+	*newAddrOut = newAddr;
+	int middleKid = n->childCount / 2;
+
+	// save separator key before modifying keys (internal nodes only)
+	uint32_t separatorKey = n->keys[middleKid - 1];
+
+	// copy children — update their parent pointer on disk
 	for (int i = 0; i < middleKid; i++) {
 		new->children[i] = n->children[i + middleKid];
-		if (n->isLeaf) ((slotted_page*) new->children[i])->header.parent = new;
-		else ((node*) new->children[i])->parent = new;
-		n->children[i + middleKid] = NULL;
+		n->children[i + middleKid] = 0;
 	}
 
-	for (int i = 0; i < middleKid; i++) {
-		new->keys[i] = n->keys[i + middleKid];
-		n->keys[i + middleKid] = 0;
+	// copy keys: leaf gets middleKid keys; internal promotes middleKid-1 (separator goes to parent)
+	if (n->isLeaf) {
+		for (int i = 0; i < middleKid; i++) {
+			new->keys[i] = n->keys[i + middleKid];
+			n->keys[i + middleKid] = 0;
+		}
+	} else {
+		for (int i = 0; i < middleKid - 1; i++) {
+			new->keys[i] = n->keys[i + middleKid];
+			n->keys[i + middleKid] = 0;
+		}
+		n->keys[middleKid - 1] = 0; // clear promoted separator from n
 	}
+
 	new->childCount = middleKid;
 	n->childCount -= middleKid;
-	// Inserting into linked list of leaves
+
+	// insert new node into the leaf linked list
 	if (n->isLeaf) {
 		if (n->next) {
-			node* tmp = n->next;
-			n->next = new;
-			new->prev = n;
-			new->next = tmp;
-			tmp->prev = new;
+			uint64_t oldNext = n->next;
+			n->next = newAddr;
+			new->prev = address;
+			new->next = oldNext;
+			node tmp;
+			readNode(oldNext, &tmp, t);
+			tmp.prev = newAddr;
+			markNode(oldNext, &tmp, t);
 		} else {
-			n->next = new;
-			new->prev = n;
+			n->next = newAddr;
+			new->prev = address;
 		}
 	}
 
-	// Updating and setting maxPageNumber
+	// update maxPageNumber for both halves
 	new->maxPageNumber = n->maxPageNumber;
-	n->maxPageNumber = n->keys[n->childCount-1];
-	// inserting new node into parent's keys and pointers
-	node* parent;
+	if (n->isLeaf) {
+		n->maxPageNumber = n->keys[n->childCount - 1];
+	} else {
+		n->maxPageNumber = n->keys[n->childCount - 2];
+	}
+
+	// insert new node into parent
+	uint32_t splitKey = n->isLeaf ? n->maxPageNumber : separatorKey;
+	node parent;
 	readNode(n->parent, &parent, t);
-	splitUpdateParent(&parent, new, newAddr, n->maxPageNumber, t);
+	splitUpdateParent(&parent, new, newAddr, splitKey, t);
 	markNode(address, n, t);
 	markNode(newAddr, new, t);
 	return new;
@@ -455,36 +486,32 @@ node* splitNode(node* n, uint64_t address, table* t) {
 /*
 @param n = the node to be split
 */
-node* balanceTreeAdd(node* n, uint64_t address, table* t) {
+node* balanceTreeAdd(node* n, uint64_t address, uint64_t* newAddrOut, table* t) {
 	if (!isNodeFull(n)) {
 		printf("Error: called balanceTreeAdd() on a node that wasn't full\n");
 		return NULL;
 	}
-	node* parent;
-	readNode(n->parent, parent, t);
+	node parent;
+	readNode(n->parent, &parent, t);
 	if (isRoot(n)) {
-		node* r = newRoot(n, t);
+		newRoot(n, address, t);
+	} else if (isNodeFull(&parent)) {
+		uint64_t dummy;
+		balanceTreeAdd(&parent, n->parent, &dummy, t);
 	}
-	// recursive step
-	// need to make sure new node is put into the correct node
-	else if (isNodeFull(&parent)) {
-		struct node* newP = balanceTreeAdd(&parent, n->parent, t);
-	}
-	node* new = splitNode(n, address, t);
-	return new;
+	return splitNode(n, address, newAddrOut, t);
 }
 
 // adds a page to a node and balances the tree recursively
-void addPage(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, tree* t) {
+void addPage(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, table* t) {
 	if (isNodeFull(n)) {
-		node* new = balanceTreeAdd(n, nodeAddr, t);
-		// decide which node to add the page to and add it
+		uint64_t newNodeAddr;
+		node* new = balanceTreeAdd(n, nodeAddr, &newNodeAddr, t);
 		if (p->header.pageNum > n->maxPageNumber) {
-			insertPageIntoChildren(new, nodeAddr, p, pageAddr, t);
+			insertPageIntoChildren(new, newNodeAddr, p, pageAddr, t);
 			return;
 		}
 	}
-	// else just add the new page to the node
 	insertPageIntoChildren(n, nodeAddr, p, pageAddr, t);
 }
 
@@ -526,21 +553,21 @@ uint64_t mergeNode(node* n, uint64_t addr, table* t) {
 			survivor->next = source->next;
 			node tmp;
 			readNode(source->next, &tmp, t);
-			tmp.prev = survivor;
+			tmp.prev = survAddr;
 			markNode(survivor->next, &tmp, t);
 		}
 	// n is an internal node
 	} else {
 		// determine source and survivor
-		uint64_t prevAddr = getPrevInternal(n, t);
-		readNode(prevAddr, prev, t);
-		if (prev && prev->parent == n->parent) {
+		uint64_t prevAddr = getPrevInternal(n, addr, t);
+		if (prevAddr) readNode(prevAddr, prev, t);
+		if (prevAddr && prev->parent == n->parent) {
 			survivor = prev;
 			survAddr = prevAddr;
 			source = n;
 			sourceAddr = addr;
 		} else {
-			sourceAddr = getNextInternal(n, t);
+			sourceAddr = getNextInternal(n, addr, t);
 			readNode(sourceAddr, source, t);
 		}
 		// copy keys and children
@@ -557,7 +584,7 @@ uint64_t mergeNode(node* n, uint64_t addr, table* t) {
 	loadParent(n, parent, t);
 	for (int i = 1; i < parent->childCount; i++) {
 		if (parent->children[i] == sourceAddr) {
-			shiftNodeArrayL(((node**) parent->children), i, M);
+			shiftAddressArrayL((parent->children), i, M);
 			shiftIntArrayL(parent->keys, i-1, M);
 		}
 	}
@@ -587,7 +614,7 @@ void borrowNext(node* n, uint64_t nAddr, node* next, uint64_t nextAddr, table* t
 	n->children[n->childCount] = next->children[0];
 	n->keys[n->childCount++] = next->keys[0];
 	next->childCount--;
-	shiftPageArrayL((slotted_page**) next->children, 0, M);
+	shiftAddressArrayL(next->children, 0, M);
 	shiftIntArrayL(next->keys, 0, M);
 	markNode(nAddr, n, t);
 	markNode(nextAddr, next, t);
@@ -610,7 +637,7 @@ void borrowNext(node* n, uint64_t nAddr, node* next, uint64_t nextAddr, table* t
 // assumes that prev is a valid target for a borrow
 void borrowPrev(node* n, uint64_t nAddr, node* prev, uint64_t prevAddr, table* t) {
 	shiftIntArrayR(n->keys, 0, M);
-	shiftPageArrayR((slotted_page**) n->children, 0, M);
+	shiftAddressArrayR(n->children, 0, M);
 	prev->childCount--;
 	n->keys[0] = prev->keys[prev->childCount];
 	n->children[0] = prev->children[prev->childCount];
@@ -640,15 +667,18 @@ void borrowNextThroughParent(node* n, uint64_t nAddr, node* next, uint64_t nextA
 	node parent;
 	loadParent(n, &parent, t);
 	for (int i = 0; i < parent.childCount; i++) {
-		if (parent.children[i] == n) {
+		if (parent.children[i] == nAddr) {
 			n->keys[n->childCount-1] = parent.keys[i];
 			parent.keys[i] = next->keys[0];
-			n->children[n->childCount++] = n->children[0];
-			n->maxPageNumber = ((node*) n->children[0])->maxPageNumber;
+			uint64_t borrowedAddr = next->children[0];
+			n->children[n->childCount++] = borrowedAddr;
+			node borrowed;
+			readNode(borrowedAddr, &borrowed, t);
+			n->maxPageNumber = borrowed.maxPageNumber;
 			shiftIntArrayL(next->keys, 0, M-1);
-			shiftNodeArrayL((node**) next->children, 0, M);
+			shiftAddressArrayL(next->children, 0, M);
 			next->childCount--;
-			next->children[next->childCount] = NULL;
+			next->children[next->childCount] = 0;
 			next->keys[next->childCount-1] = 0;
 			markNode(nAddr, n, t);
 			markNode(nextAddr, next, t);
@@ -661,15 +691,15 @@ void borrowNextThroughParent(node* n, uint64_t nAddr, node* next, uint64_t nextA
 void borrowPrevThroughParent(node* n, uint64_t nAddr, node* prev, uint64_t prevAddr, table* t) {
 	node parent;
 	loadParent(n, &parent, t);
-	for (int i = 0; i < parent.childCount; i++) {
-		if (parent.children[i] == n) {
+	for (int i = 1; i < parent.childCount; i++) {
+		if (parent.children[i] == nAddr) {
 			shiftIntArrayR(n->keys, 0, M);
-			shiftNodeArrayR((node**) n->children, 0, M);
-			n->keys[0] = parent.keys[parent.childCount-2];
+			shiftAddressArrayR(n->children, 0, M);
+			n->keys[0] = parent.keys[i-1];
 			prev->childCount--;
 			n->children[0] = prev->children[prev->childCount];
-			parent.keys[parent.childCount-2] = prev->keys[prev->childCount-1];
-			prev->children[prev->childCount] = NULL;
+			parent.keys[i-1] = prev->keys[prev->childCount-1];
+			prev->children[prev->childCount] = 0;
 			prev->keys[prev->childCount-1] = 0;
 			markNode(nAddr, n, t);
 			markNode(prevAddr, prev, t);
@@ -705,25 +735,29 @@ node* balanceTreeDelete(node* n, uint64_t addr, table* t) {
 		free(parent);
 		return mergeNode(n, addr, t);
 	// if n is a root node
-	} else if (n == t->root && n->childCount == 1) {
+	} else if (addr == t->root && n->childCount == 1) {
 		node* r = malloc(t->nodeSize);
-		readNode(n->children[0], &r, t);
+		readNode(n->children[0], r, t);
 		t->root = n->children[0];
 		r->parent = 0;
 		markNode(n->children[0], r, t);
 		printf("Collapsing tree\n");
-		free(n); // MIGHT CAUSE PROBLEMS
+		free(n);
 		return r;
 	// if n is an internal node
 	} else {
-		node* next = getNextInternal(n, t);
-		if (isValidBorrow(n, next)) {
-			borrowNextThroughParent(n, addr, next, n->next, t);
+		uint64_t nextAddr = getNextInternal(n, addr, t);
+		node nextNode;
+		if (nextAddr) readNode(nextAddr, &nextNode, t);
+		if (nextAddr && isValidBorrow(n, &nextNode)) {
+			borrowNextThroughParent(n, addr, &nextNode, nextAddr, t);
 			return n;
 		}
-		node* prev = getPrevInternal(n, t);
-		if (isValidBorrow(n, prev)) {
-			borrowPrevThroughParent(n, addr, prev, n->prev, t);
+		uint64_t prevAddr = getPrevInternal(n, addr, t);
+		node prevNode;
+		if (prevAddr) readNode(prevAddr, &prevNode, t);
+		if (prevAddr && isValidBorrow(n, &prevNode)) {
+			borrowPrevThroughParent(n, addr, &prevNode, prevAddr, t);
 			return n;
 		}
 		return mergeNode(n, addr, t);
