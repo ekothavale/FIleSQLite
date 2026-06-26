@@ -228,7 +228,7 @@ bool loadMeta(FILE* file, table* table, char* fname) {
 	table->nodeSize = buf[8];
 	table->pageFree = ((uint64_t) (uint32_t) buf[9] << 32) | (uint32_t) buf[10];
 	table->nodeFree = ((uint64_t) (uint32_t) buf[11] << 32) | (uint32_t) buf[12];
-	table->nodeFree = ((uint64_t) (uint32_t) buf[13] << 32) | (uint32_t) buf[14];
+	table->root    = ((uint64_t) (uint32_t) buf[13] << 32) | (uint32_t) buf[14];
 	table->M = buf[15];
 	return true;
 }
@@ -643,9 +643,8 @@ uint64_t allocPage(table* t) {
 	uint64_t out = t->pageFree;
 	if (t->pageFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize) {
 		newPageStripe(t);
-	} else {
-		t->pageFree += t->pageSize;
 	}
+	t->pageFree += t->pageSize;
 	return out;
 }
 
@@ -653,9 +652,8 @@ uint64_t allocNode(table* t) {
 	uint64_t out = t->nodeFree;
 	if (t->nodeFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize) {
 		newNodeStripe(t);
-	} else {
-		t->nodeFree += t->nodeSize;
 	}
+	t->nodeFree += t->nodeSize;
 	return out;
 }
 
