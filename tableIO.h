@@ -26,6 +26,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define MAGIC 0xFACE3419
 #define METALEN 16 // number of 4-byte words needed to represent a table's metadata
+#define TABLE_DIRECTORY "tables/" // directory in which table files are placed
+#define TABLE_EXTENSION ".tbl" // file extension for table files
 
 typedef struct page_write_order {
 	slotted_page* page;
@@ -76,6 +78,8 @@ typedef struct table {
 	int M; // maximum number of children each node can have
 }table;
 
+// create new table
+table* createTable(char* tablename);
 // load page
 bool readPage(uint64_t address, slotted_page* p, table* t);
 bool loadPage(uint64_t address, table* t);

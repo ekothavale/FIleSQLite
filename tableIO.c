@@ -41,6 +41,7 @@ TODO:
 
 #include "tableIO.h"
 #include <stdbool.h>
+#include <sys/stat.h>
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
@@ -85,7 +86,7 @@ static bool jumpRel(long offset, table* t) {
 	}
 }
 
-// UNTESTED
+
 /*
 UNSAFE FUNCTION - assumes there's enough space in the array for the long
 big endian
@@ -209,7 +210,33 @@ static void copyNode(node* source, node* target) {
 	*target = *source;
 }
 
-bool loadMeta(FILE* file, table* table, char* fname) {
+static bool validateTableFile(FILE* file, char* fname) {
+	// Check file extension
+	char* ext = strrchr(fname, '.');
+	if (!ext || strcmp(ext, TABLE_EXTENSION) != 0) {
+		printf("Error: '%s' does not have the %s extension\n", fname, TABLE_EXTENSION);
+		return false;
+	}
+
+	// Check magic number (writeMeta writes MAGIC as a native-endian uint32_t)
+	uint32_t magic;
+	rewind(file);
+	if (fread(&magic, 4, 1, file) != 1) {
+		printf("Error: could not read magic number from '%s'\n", fname);
+		rewind(file);
+		return false;
+	}
+	rewind(file);
+
+	if (magic != MAGIC) {
+		printf("Error: '%s' has magic number 0x%X, expected 0x%X\n", fname, magic, MAGIC);
+		return false;
+	}
+
+	return true;
+}
+
+bool loadMeta(FILE* file, char* fname, table* table) {
 	uint32_t buf[METALEN];
 	fread(&buf, 4, METALEN, file);
 	if(buf[0] != MAGIC) {
@@ -270,16 +297,74 @@ void setStacks(table* t) {
 // ##########################################################################################################################################
 // PUBLIC API FUNCTIONS
 
-bool loadTable(char* fname, table* t) {
+/*
+Creates a new file for a database table and returns the matching table struct
+*/
+table* createTable(char* tablename) {
+	// Build path: "tables/<tablename>.tbl"
+	const char* dir = TABLE_DIRECTORY;
+	const char* ext = TABLE_EXTENSION;
+	size_t pathlen = strlen(dir) + strlen(tablename) + strlen(ext) + 1;
+	char* path = malloc(pathlen);
+	snprintf(path, pathlen, "%s%s%s", dir, tablename, ext);
+
+	mkdir(dir, 0755); // no-op if directory already exists
+
+	FILE* f = fopen(path, "wb+");
+	free(path);
+	if (!f) {
+		printf("Error: failed to create table file for '%s'\n", tablename);
+		return NULL;
+	}
+
+	table* t = malloc(sizeof(table));
+	t->source        = f;
+	t->cursor        = 0;
+	t->metalen       = METALEN * 4;
+	t->pageStripes   = 1;
+	t->nodeStripes   = 1;
+	t->pageStripeLen = 8;
+	t->nodeStripeLen = 8;
+	t->pageNodeRatio = 1;
+	t->pageSize      = PAGE_SIZE;
+	t->nodeSize      = 34 + M_GLOBAL * 12; // 34B fixed header + M children (8B) + M keys (4B)
+	t->M             = M_GLOBAL;
+	t->pageFree      = t->metalen;
+	t->nodeFree      = (uint64_t)t->metalen
+	                 + (uint64_t)t->pageStripes * t->pageStripeLen * t->pageSize;
+	t->root          = 0;
+	t->page          = NULL;
+	t->node          = NULL;
+
+	setStacks(t);
+	writeMeta(f, t);
+	return t;
+}
+
+bool loadTable(char* tablename, table* t) {
+	if (!tablename || !t) {
+		printf("Error: loadTable() recieved a null input\n");
+		return false;
+	}
+	// fname = tables/[tablename].tbl\0
+	// size = 7 + strlen(tablename) + 4 + 1
+	char* dir = TABLE_DIRECTORY;
+	char* ext = TABLE_EXTENSION;
+	size_t lenFName = 7 + strlen(tablename) + 5;
+	char* fname = malloc(lenFName);
+	snprintf(fname, lenFName, "%s%s%s", dir, tablename, ext);
+
 	FILE* tfile = fopen(fname, "rb+");
 	if (!tfile) {
-		printf("Error: Failed to open table %s\n", fname);
+		printf("Error: Failed to open table %s\n", tablename);
+		free(fname);
 		return false;
 	}
 	t->source = tfile;
 	t->cursor = 0;
-	loadMeta(tfile, t, fname);
+	loadMeta(tfile, fname, t);
 	setStacks(t);
+	free(fname);
 	return true;
 }
 
