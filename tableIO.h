@@ -80,35 +80,29 @@ typedef struct table {
 
 // create new table
 table* createTable(char* tablename);
-// load page
+// loading pages
 bool readPage(uint64_t address, slotted_page* p, table* t);
 bool loadPage(uint64_t address, table* t);
-// load node
+// loading nodes
 bool readNode(uint64_t address, node* n, table* t);
 bool loadNode(uint64_t address, table* t);
-// write page
-void writeNextPage(table* t);
-// write node
-void writeNextNode(table* t);
-// load parent
 void loadParent(node* n, node* parent, table* t);
-// load previous node (left node)
 void loadPrev(node* n, node* prev, table* t);
-// load next node (right node)
 void loadNext(node* n, node* next, table* t);
-// add page to dirty queue
+// writing
+void writeNextPage(table* t);
+void writeNextNode(table* t);
+void writeNewTree(slotted_page* p, uint64_t pageAddr, node* n, uint64_t nodeAddr, table* t);
+// marking dirty objects
 void markPage(uint64_t address, slotted_page* p, table* t);
-// add node to dirty queue
 void markNode(uint64_t address, node* n, table* t);
-// mark an object for deletion
-void markDelete(uint64_t address, table* t);
-// allocate new stripe
+void markDelete(uint64_t address, table* t); // can be used for any object type
+// allocate new addresses
 void newStripe(table* t);
 uint64_t allocNode(table* t);
 uint64_t allocPage(table* t);
-// condense a stripe
+// file-level garbage collection (not yet implemented)
 void condenseStripe(table* t);
-// condense all stripes
 void condenseAll(table* t);
 
 #endif

@@ -299,6 +299,7 @@ void setStacks(table* t) {
 
 /*
 Creates a new file for a database table and returns the matching table struct
+mallocs new memory (table)
 */
 table* createTable(char* tablename) {
 	// Build path: "tables/<tablename>.tbl"
@@ -636,6 +637,15 @@ void writeNextNode(table* t) {
 	t->nodeDirty.count--;
 	jump(order.address, t);
 	writeNode(order.node, order.address, t);
+}
+
+/*
+writes a new tree consisting of one empty page and one empty node directly to a table file
+should be used only on a new file
+*/
+void writeNewTree(slotted_page* p, uint64_t pageAddr, node* n, uint64_t nodeAddr, table* t) {
+	writePage(p, pageAddr, t);
+	writeNode(n, nodeAddr, t);
 }
 
 /*MIGHT NEED THESE TO RETURN TRUE OR FALSE*/

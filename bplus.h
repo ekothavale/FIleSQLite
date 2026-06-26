@@ -44,7 +44,7 @@ typedef struct tree {
 }tree;
 
 void freeTree(tree* t);
-tree* newTree(uint64_t pageAddress, slotted_page* p);
+void createTree(char* tablename);
 
 
 uint64_t findPage(uint32_t pageNum, table* t);

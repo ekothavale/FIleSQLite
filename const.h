@@ -29,8 +29,8 @@ Some combinations of constant values may break the DBMS
 
 // NEED TO PROGRAMMATICALLY CALCULATE THESE BASED ON PAGE SIZE
 // THE VALUES BELOW ARE PLACEHOLDERS
-#define NUM_SLOTS 64 		// Size of slot array within each page (each page can hold 72 tuples)
-#define NUM_ENTRIES 700 		// in reality this will be the size of the page minus the slot array and the header
+#define PAGE_NUM_SLOTS 64 		// Size of slot array within each page (each page can hold 72 tuples)
+#define PAGE_NUM_ENTRIES 700 		// in reality this will be the size of the page minus the slot array and the header
 #define PAGE_ARR_CAP 4000  		// page slot array size
 
 #define DIRTY_STACK_GROWTH_RATE 1.5  // the rate at which the dynamic arrays that hold the stacks for dirty pages and dirty nodes grow

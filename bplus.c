@@ -86,19 +86,32 @@ node* newNode(bool isLeaf, uint64_t parent) {
 }
 
 /*
-creates a new b+ tree starting with just one leaf node and one page
+creates and initializes a new table file and fills it with a new b+ tree, with one empty node and one empty page
+@param pageNum - the page number of the starting page
+@return - table struct containing the necessary data to use the table
+mallocs new memory (table)
 */
-tree* newTree(uint64_t pageAddress, slotted_page* p) {
-	node* new = newNode(true, 0);
-	new->childCount = 1;
+table* createTree(char* tablename, uint32_t pageNum) {
+	// create structs
+	table* t = createTable(tablename);
+	node* root = calloc(1, sizeof(node));
+	uint64_t rootAddr = allocNode(t);
+	slotted_page* page = makeSPage(pageNum, PAGE_NUM_SLOTS, PAGE_NUM_ENTRIES, PAGE_ARR_CAP);
+	uint64_t pageAddr = allocPage(t);
 
-	new->children[0] = pageAddress;
-	new->keys[0] = p->header.pageNum;
-	tree* t = malloc(sizeof(tree));
-	t->root = new;
-	t->pageMaxSlots = p->header.maxSlots;
-	t->pageMaxEntries = p->header.maxEntries;
-	t->pageCap = p->header.arrCap;
+	// initialize struct members (root and page already 0ed out)
+	root->childCount = 1;
+	root->children[0] = pageAddr;
+	root->keys[0] = pageNum;
+	root->isLeaf = true;
+	root->maxPageNumber = pageNum;
+
+	page->header.parent = rootAddr;
+
+	// write structs and clean up
+	writeNewTree(page, pageAddr, root, rootAddr, t);
+	free(root);
+	free(page);
 	return t;
 }
 
@@ -170,7 +183,7 @@ int shiftAddressArrayL(uint64_t* array, int target, int len) {
 }
 
 bool isPageFull(slotted_page* p) {
-	return p->header.numRecords >= NUM_SLOTS;
+	return p->header.numRecords >= PAGE_NUM_SLOTS;
 }
 
 bool isNodeFull(node* n) {
@@ -252,13 +265,13 @@ uint64_t findAndInsert(uint32_t pageNum, table* t) {
         if (key == pageNum) {
             return t->node->children[i];
         } else if (key > pageNum) { // optimization so that we don't have to unnecessarily finish a loop
-			slotted_page* p = makeSPage(pageNum, NUM_SLOTS, NUM_ENTRIES, PAGE_ARR_CAP);
+			slotted_page* p = makeSPage(pageNum, PAGE_NUM_SLOTS, PAGE_NUM_ENTRIES, PAGE_ARR_CAP);
 			uint64_t pageAddr = allocPage(t);
 			addPage(t->node, t->cursor, p, pageAddr, t);
 			return pageAddr;
 		}
     }
-	slotted_page* p = makeSPage(pageNum, NUM_SLOTS, NUM_ENTRIES, PAGE_ARR_CAP);
+	slotted_page* p = makeSPage(pageNum, PAGE_NUM_SLOTS, PAGE_NUM_ENTRIES, PAGE_ARR_CAP);
 	uint64_t pageAddr = allocPage(t);
     addPage(t->node, t->cursor, p, pageAddr, t);
 	return pageAddr;
