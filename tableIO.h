@@ -77,10 +77,11 @@ typedef struct table {
 }table;
 
 // load page
+bool readPage(uint64_t address, slotted_page* p, table* t);
 bool loadPage(uint64_t address, table* t);
 // load node
 bool readNode(uint64_t address, node* n, table* t);
-void loadNode(uint64_t address, table* t);
+bool loadNode(uint64_t address, table* t);
 // write page
 void writeNextPage(table* t);
 // write node

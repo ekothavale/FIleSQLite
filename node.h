@@ -23,10 +23,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "const.h"
 
 typedef struct node {
-	uint64_t children[M];
+	uint64_t children[M_GLOBAL];
 	// keys = [3, 5] means 1, 2, 3 - left child, 4, 5 - middle child, 6+ - right child
 	// nodes have room for M keys but only leaf nodes will use all M slots
-	uint32_t keys[M];
+	uint32_t keys[M_GLOBAL];
 	uint64_t parent;
 	uint64_t next;
 	uint64_t prev; // remove if two way scanning not necessary

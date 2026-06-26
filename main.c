@@ -137,6 +137,7 @@ void testPagesRandom() {
 int main(int argc, char** argv) {
     //testInsertion();
     //testDeletion();
-    testPages();
-    testPagesRandom();
+    //testPages();
+    //testPagesRandom();
+    test_tableio();
 }

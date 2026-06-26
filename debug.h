@@ -28,11 +28,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 void printTokenizedQuery(TokenizedQuery* tquery);
 void printChunk(Chunk* chunk);
 
-btree_node* generateTestBPlusTree();
+void generateTestBPlusTree(table* t);
 void printIntArray(int* arr, int length);
-void printNode(btree_node* n);
-void printTree(tree* t);
-bool checkTreePointers(tree* t);
+void printNode(node* n);
+void printTree(table* t);
+bool checkTreePointers(table* t);
 
 /* Slotted-page pretty-printers (types defined in page.h) */
 void printEntry(entry* e);

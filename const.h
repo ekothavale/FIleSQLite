@@ -24,7 +24,7 @@ Some combinations of constant values may break the DBMS
 #ifndef CONST_H
 #define CONST_H
 
-const int M = 4;		// order (number of children a node can have) of the tree
+#define M_GLOBAL 4			// order (number of children a node can have) of the tree
 #define PAGE_SIZE 4096 		// size in bytes of each page
 
 // NEED TO PROGRAMMATICALLY CALCULATE THESE BASED ON PAGE SIZE
@@ -33,7 +33,7 @@ const int M = 4;		// order (number of children a node can have) of the tree
 #define NUM_ENTRIES 700 		// in reality this will be the size of the page minus the slot array and the header
 #define PAGE_ARR_CAP 4000  		// page slot array size
 
-const double DIRTY_STACK_GROWTH_RATE = 1.5; // the rate at which the dynamic arrays that hold the stacks for dirty pages and dirty nodes grow
-const double DIRTY_STACK_INTIAL_SIZE = 400; // the initial size of each stack
+#define DIRTY_STACK_GROWTH_RATE 1.5  // the rate at which the dynamic arrays that hold the stacks for dirty pages and dirty nodes grow
+#define DIRTY_STACK_INTIAL_SIZE 400  // the initial size of each stack
 
 #endif

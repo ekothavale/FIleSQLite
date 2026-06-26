@@ -37,84 +37,92 @@ void printChunk(Chunk* chunk) {
 	printf("Total chunks: %d\n", chunk->count);
 }
 
-btree_node* generateTestBPlusTree() {
-    // Create the root node
-    btree_node* root = malloc(sizeof(btree_node));
-    root->isLeaf = false;
-    root->parent = NULL;
-    root->prev = NULL;
-    root->next = NULL;
-    root->childCount = 3; // Root has 3 children
+/*
+Creates a small test B+ tree on disk and sets t->root.
 
-    // Create internal nodes
-    btree_node* internalNodes[3];
-    for (int i = 0; i < 3; i++) {
-        internalNodes[i] = malloc(sizeof(btree_node));
-        internalNodes[i]->isLeaf = false;
-        internalNodes[i]->parent = root;
-        internalNodes[i]->prev = (i > 0) ? internalNodes[i - 1] : NULL;
-        internalNodes[i]->next = NULL;
-        if (i > 0) internalNodes[i - 1]->next = internalNodes[i];
-        root->children[i] = internalNodes[i];
+Structure (with M=4, page numbers incremented by 50):
+                    root [internal, key=51]
+                   /                      \
+      left [leaf, keys=1,51]       right [leaf, keys=101,151]
+        |           |                  |              |
+     Page#1      Page#51           Page#101        Page#151
+
+All nodes and pages are written to disk via the table's dirty queues.
+Requires the table to have a valid source file and configured
+pageSize/nodeSize/pageFree/nodeFree/metalen fields.
+*/
+void generateTestBPlusTree(table* t) {
+    // Allocate disk addresses for the two leaf nodes and the root
+    uint64_t leftAddr  = allocNode(t);
+    uint64_t rightAddr = allocNode(t);
+    uint64_t rootAddr  = allocNode(t);
+
+    // Allocate disk addresses for the four pages
+    uint64_t pageAddrs[4];
+    for (int i = 0; i < 4; i++) pageAddrs[i] = allocPage(t);
+
+    // Write pages to disk
+    uint32_t pageNums[4] = {1, 51, 101, 151};
+    uint64_t pageParents[4] = {leftAddr, leftAddr, rightAddr, rightAddr};
+    for (int i = 0; i < 4; i++) {
+        slotted_page p;
+        memset(&p, 0, sizeof(p));
+        p.header.pageNum    = pageNums[i];
+        p.header.parent     = pageParents[i];
+        p.header.numRecords = 0;
+        p.header.numEntries = 0;
+        markPage(pageAddrs[i], &p, t);
     }
 
-    // Fibonacci sequence initialization
-    uint32_t num = 1;
+    // Left leaf node: pages #1 and #51
+    node left;
+    memset(&left, 0, sizeof(left));
+    left.isLeaf        = true;
+    left.parent        = rootAddr;
+    left.prev          = 0;
+    left.next          = rightAddr;
+    left.childCount    = 2;
+    left.children[0]   = pageAddrs[0];
+    left.children[1]   = pageAddrs[1];
+    left.keys[0]       = 1;
+    left.keys[1]       = 51;
+    left.maxPageNumber = 51;
+    markNode(leftAddr, &left, t);
 
-    // Create leaf nodes
-    int leafNodeCounts[3] = {2, 2, 2}; // Number of leaf nodes per internal node
-    btree_node* prevLeaf = NULL;
-    for (int i = 0; i < 3; i++) {
-        internalNodes[i]->childCount = leafNodeCounts[i];
-        int maxPageNumber = 0; // Track max page number for internal node
-        for (int j = 0; j < leafNodeCounts[i]; j++) {
-            btree_node* leaf = malloc(sizeof(btree_node));
-            leaf->isLeaf = true;
-            leaf->parent = internalNodes[i];
-            leaf->prev = prevLeaf;
-            leaf->next = NULL;
-            if (prevLeaf) prevLeaf->next = leaf;
-            prevLeaf = leaf;
-            internalNodes[i]->children[j] = leaf;
+    // Right leaf node: pages #101 and #151
+    node right;
+    memset(&right, 0, sizeof(right));
+    right.isLeaf        = true;
+    right.parent        = rootAddr;
+    right.prev          = leftAddr;
+    right.next          = 0;
+    right.childCount    = 2;
+    right.children[0]   = pageAddrs[2];
+    right.children[1]   = pageAddrs[3];
+    right.keys[0]       = 101;
+    right.keys[1]       = 151;
+    right.maxPageNumber = 151;
+    markNode(rightAddr, &right, t);
 
-            // Create pages for the leaf node
-            int pageCount = (j % 3) + 1; // Variable, nonzero number of pages
-            leaf->childCount = pageCount;
-            for (int k = 0; k < pageCount; k++) {
-                slotted_page* p = malloc(sizeof(slotted_page));
-                p->header.pageNum = num;
-                num += 50; // increment pageNums by 50
+    // Root node: two children, one separator key
+    node root;
+    memset(&root, 0, sizeof(root));
+    root.isLeaf        = false;
+    root.parent        = 0;
+    root.prev          = 0;
+    root.next          = 0;
+    root.childCount    = 2;
+    root.children[0]   = leftAddr;
+    root.children[1]   = rightAddr;
+    root.keys[0]       = 51;   // max page number of left subtree
+    root.maxPageNumber = 151;
+    markNode(rootAddr, &root, t);
 
-                p->header.numRecords = 0;
-                p->header.parent = leaf;
-                leaf->children[k] = p;
+    // Flush all dirty entries to disk
+    while (t->pageDirty.count > 0) writeNextPage(t);
+    while (t->nodeDirty.count > 0) writeNextNode(t);
 
-                // Update maxPageNumber for the leaf node
-                if (p->header.pageNum > maxPageNumber) {
-                    maxPageNumber = p->header.pageNum;
-                }
-            }
-
-            // Set the key range for the leaf node
-            leaf->keys[0] = ((slotted_page*)leaf->children[0])->header.pageNum;
-            leaf->keys[1] = ((slotted_page*)leaf->children[leaf->childCount - 1])->header.pageNum;
-            leaf->maxPageNumber = maxPageNumber; // Update maxPageNumber for the leaf
-        }
-
-        // Set the keys and maxPageNumber for the internal node
-        internalNodes[i]->keys[0] = ((btree_node*)internalNodes[i]->children[0])->keys[1];
-        if (internalNodes[i]->childCount > 1) {
-            internalNodes[i]->keys[1] = ((btree_node*)internalNodes[i]->children[1])->keys[1];
-        }
-        internalNodes[i]->maxPageNumber = maxPageNumber;
-    }
-
-    // Set keys and maxPageNumber for the root node
-    root->keys[0] = internalNodes[0]->keys[1]; // Pages <= key in the left subtree
-    root->keys[1] = internalNodes[1]->keys[1]; // Pages <= key in the middle subtree
-    root->maxPageNumber = internalNodes[2]->maxPageNumber; // Max page number in the entire tree
-
-    return root;
+    t->root = rootAddr;
 }
 
 void printIntArray(int* arr, int length) {
@@ -130,115 +138,136 @@ void printIntArray(int* arr, int length) {
     printf("]\n");
 }
 
-/* UNTESTED
-incomplete
+/*
+Pretty-prints a single in-memory node struct. Leaf nodes show one key per
+child; internal nodes show childCount-1 separator keys. All parent/prev/next
+and child values are disk addresses printed as decimal.
 */
-void printNode(btree_node* n) {
-    printf(n->isLeaf ? "Leaf" : "Internal");
-    printf(" node with\nKeys:");
-    for (int i = 0; i < n->childCount-1; i++) {
-        printf(" %d", n->keys[i]);
+void printNode(node* n) {
+    if (n == NULL) {
+        printf("[NULL node]\n");
+        return;
     }
-    printf("\n%d Children:", n->childCount);
-    for (int i = 0; i < n->childCount; i++) {
-        printf(" %p", n->children[i]);
-    }
-    printf("\nMaximum Page Number: %d\n", n->maxPageNumber);
-    printf("Parent: %p\n", n->parent);
-    printf("Previous: %p\n", n->prev);
-    printf("Next: %p\n\n", n->next);
+    printf("%s node\n", n->isLeaf ? "Leaf" : "Internal");
+    int keyCount = n->isLeaf ? (int)n->childCount : (int)n->childCount - 1;
+    printf("  keys (%d):     ", keyCount);
+    for (int i = 0; i < keyCount; i++) printf("%u ", n->keys[i]);
+    printf("\n");
+    printf("  childCount:    %u\n",  n->childCount);
+    printf("  maxPageNumber: %u\n",  n->maxPageNumber);
+    printf("  children:\n");
+    for (int i = 0; i < (int)n->childCount; i++)
+        printf("    [%d] @%llu\n", i, (unsigned long long)n->children[i]);
+    printf("  parent:        @%llu\n", (unsigned long long)n->parent);
+    printf("  prev:          @%llu\n", (unsigned long long)n->prev);
+    printf("  next:          @%llu\n\n", (unsigned long long)n->next);
 }
 
-void printTreeHelper(btree_node* root, int level) {
-    if (root == NULL) {
-        printf("Tree is empty.\n");
+/*
+Recursively reads nodes from disk and pretty-prints the tree indented by level.
+For leaf nodes also reads and prints the page number of each child page.
+*/
+static void printTreeHelper(uint64_t addr, int level, table* t) {
+    if (addr == 0) return;
+
+    node n;
+    memset(&n, 0, sizeof(n));
+    if (!readNode(addr, &n, t)) {
+        for (int i = 0; i < level; i++) printf("    ");
+        printf("<unreadable node @%llu>\n", (unsigned long long)addr);
         return;
     }
 
-    // Indentation for the current level
-    for (int i = 0; i < level; i++) {
-        printf("    ");
-    }
+    for (int i = 0; i < level; i++) printf("    ");
+    int keyCount = n.isLeaf ? (int)n.childCount : (int)n.childCount - 1;
+    printf("[%s @%llu] keys:", n.isLeaf ? "Leaf" : "Internal",
+           (unsigned long long)addr);
+    for (int i = 0; i < keyCount; i++) printf(" %u", n.keys[i]);
+    printf("  maxPN=%u\n", n.maxPageNumber);
 
-    // Print the current node with its address
-    printf("Node at level %d (Address: %p): ", level, (void*)root);
-    if (root->isLeaf) {
-        printf("[Leaf Node] Keys: ");
-        for (int i = 0; i < root->childCount; i++) {
-            printf("%d ", root->keys[i]);
-        }
-        printf("\n");
-
-        // Print the pages this leaf node points to
-        for (int i = 0; i < root->childCount; i++) {
-            slotted_page* p = (slotted_page*)root->children[i];
-            if (p != NULL) {
-                for (int j = 0; j < level + 1; j++) {
-                    printf("    ");
-                }
-                printf("Page %d\n", p->header.pageNum);
-            }
-        }
-    } else {
-        printf("[Internal Node] Keys: ");
-        for (int i = 0; i < root->childCount - 1; i++) {
-            printf("%d ", root->keys[i]);
-        }
-        printf("\n");
-
-        // Recursively print child nodes
-        for (int i = 0; i < root->childCount; i++) {
-            printTreeHelper((btree_node*)root->children[i], level + 1);
-        }
-    }
-}
-
-void printTree(tree* root) {
-    printTreeHelper(root->root, 1);
-}
-
-
-bool checkTreePointersHelper(btree_node* root) {
-    if (root == NULL) {
-        return true; // An empty tree is valid
-    }
-
-    for (int i = 0; i < root->childCount; i++) {
-        void* child = root->children[i];
-        if (child == NULL) {
-            continue; // Skip null children
-        }
-
-        if (root->isLeaf) {
-            // If the root is a leaf, its children are pages
-            slotted_page* p = (slotted_page*)child;
-            if (p->header.parent != root) {
-                printf("Error: Page %d has incorrect parent pointer. Expected parent: %p, Actual parent: %p\n", 
-                       p->header.pageNum, (void*)root, (void*)p->header.parent);
-                return false;
+    for (int i = 0; i < (int)n.childCount; i++) {
+        if (n.isLeaf) {
+            for (int j = 0; j < level + 1; j++) printf("    ");
+            slotted_page p;
+            memset(&p, 0, sizeof(p));
+            if (readPage(n.children[i], &p, t)) {
+                printf("[Page @%llu] #%u\n",
+                       (unsigned long long)n.children[i], p.header.pageNum);
+                free(p.slots);
+                free(p.entries);
+            } else {
+                printf("<unreadable page @%llu>\n",
+                       (unsigned long long)n.children[i]);
             }
         } else {
-            // If the root is an internal node, its children are nodes
-            btree_node* n = (btree_node*)child;
-            if (n->parent != root) {
-                printf("Error: Node at %p has incorrect parent pointer. Expected parent: %p, Actual parent: %p\n", 
-                       (void*)n, (void*)root, (void*)n->parent);
-                return false;
-            }
-
-            // Recursively check the subtree
-            if (!checkTreePointersHelper(n)) {
-                return false;
-            }
+            printTreeHelper(n.children[i], level + 1, t);
         }
     }
-
-    return true; // All checks passed
 }
 
-bool checkTreePointers(tree* t) {
-    btree_node* root = t->root;
-    return checkTreePointersHelper(root);
+void printTree(table* t) {
+    printf("=== B+ Tree (root @%llu) ===\n", (unsigned long long)t->root);
+    if (t->root == 0) {
+        printf("  (empty tree)\n");
+    } else {
+        printTreeHelper(t->root, 0, t);
+    }
+    printf("===========================\n");
+}
+
+/*
+Recursively reads nodes and pages from disk, checking that every node's
+parent field matches the address of the node that pointed to it, and that
+every page's parent field matches the address of its leaf node.
+*/
+static bool checkTreePointersHelper(uint64_t addr, uint64_t expectedParent,
+                                    table* t) {
+    if (addr == 0) return true;
+
+    node n;
+    memset(&n, 0, sizeof(n));
+    if (!readNode(addr, &n, t)) {
+        printf("Error: failed to read node @%llu\n", (unsigned long long)addr);
+        return false;
+    }
+
+    if (n.parent != expectedParent) {
+        printf("Error: node @%llu has parent @%llu, expected @%llu\n",
+               (unsigned long long)addr,
+               (unsigned long long)n.parent,
+               (unsigned long long)expectedParent);
+        return false;
+    }
+
+    for (int i = 0; i < (int)n.childCount; i++) {
+        if (n.isLeaf) {
+            slotted_page p;
+            memset(&p, 0, sizeof(p));
+            if (!readPage(n.children[i], &p, t)) {
+                printf("Error: failed to read page @%llu\n",
+                       (unsigned long long)n.children[i]);
+                return false;
+            }
+            if (p.header.parent != addr) {
+                printf("Error: page #%u @%llu has parent @%llu, expected @%llu\n",
+                       p.header.pageNum,
+                       (unsigned long long)n.children[i],
+                       (unsigned long long)p.header.parent,
+                       (unsigned long long)addr);
+                free(p.slots); free(p.entries);
+                return false;
+            }
+            free(p.slots);
+            free(p.entries);
+        } else {
+            if (!checkTreePointersHelper(n.children[i], addr, t)) return false;
+        }
+    }
+    return true;
+}
+
+bool checkTreePointers(table* t) {
+    return checkTreePointersHelper(t->root, 0, t);
 }
 
 // ##########################################################################################################################################

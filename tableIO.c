@@ -67,7 +67,8 @@ static bool jump(uint64_t address, table* t) {
 		t->cursor = address;
 		return true;
 	} else {
-		printf("Error: failed to navigate to address: %lu when reading a binary file\n", address);
+		printf("Error: failed to navigate to address: %llu when reading a binary file\n", address);
+		return false;
 	}
 }
 
@@ -79,7 +80,8 @@ static bool jumpRel(long offset, table* t) {
 		t->cursor += offset;
 		return true;
 	} else {
-		printf("Error: failed to make relative jump to address: %lu when reading a binary file\n", t->cursor);
+		printf("Error: failed to make relative jump to address: %llu when reading a binary file\n", t->cursor);
+		return false;
 	}
 }
 
@@ -249,7 +251,6 @@ bool writeMeta(FILE* file, table* t) {
 		(uint32_t) (t->root >> 32),
 		(uint32_t) (t->root & 0xFFFFFFFF),
 		t->M
-
 	};
 	jump(0, t);
 	fwrite(buf, 4, METALEN, file);
@@ -321,7 +322,7 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 	uint64_t prev = t->cursor;
 	jump(address, t);
 	if (readByte(0, t) != 0) {
-		printf("Error: attempted to read page at address %lu but page was invalid\n", address);
+		printf("Error: attempted to read page at address %llu but page was invalid\n", address);
 		return false;
 	}
 	if (p == NULL) {
@@ -400,7 +401,7 @@ bool readNode(uint64_t address, node* n, table* t) {
 	jump(address, t);
 
 	if (readByte(0, t) != 1) {
-		printf("Error: attempted to read page at address %lu but page was invalid\n", address);
+		printf("Error: attempted to read page at address %llu but page was invalid\n", address);
 		return false;
 	}
 	if (n == NULL) {
@@ -434,6 +435,7 @@ bool readNode(uint64_t address, node* n, table* t) {
 
 	// return to original cursor position
 	jump(prev, t);
+	return true;
 }
 /*
 moves a table's cursor to a node and loads it

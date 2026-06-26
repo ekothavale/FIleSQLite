@@ -35,4 +35,7 @@ void test_page_update();
 void test_page_multiple_records();
 void test_page();   /* runs all of the above */
 
+/* TableIO tests */
+void test_tableio(); /* runs all tableIO tests */
+
 #endif

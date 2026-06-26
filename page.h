@@ -42,8 +42,8 @@ each element of the record is proceeded by an escape character representing its 
 \t = time
 */ 
 
-const char DATATYPE_CODES[] = {'i', 's', 'd', 't'};
-const int NUM_DATATYPES = 4;
+static const char DATATYPE_CODES[] = {'i', 's', 'd', 't'};
+#define NUM_DATATYPES 4
 
 typedef struct header {
 	uint64_t parent;

@@ -32,7 +32,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define MIN_KEY(n) \
 	((n)->keys[0])
 
-#define HALF_M (M / 2)
+#define HALF_M (M_GLOBAL / 2)
 
 // struct to control root pointer for a tree
 // this is the RAM equivalent of a table's root pointer when disk storage is implemented
@@ -60,7 +60,7 @@ node* splitNode(node* n, uint64_t address, uint64_t* newAddrOut, table* t);
 void addPage(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, table* t);
 bool deletePage(node* n, uint64_t addr, uint32_t pageNum, table* t);
 node* balanceTreeAdd(node* n, uint64_t address, uint64_t* newAddrOut, table* t);
-node* balanceTreeDelete(node* n, uint64_t addr, table* t);
+uint64_t balanceTreeDelete(node* n, uint64_t addr, table* t);
 bool insertTuple(int tuple, u_int32_t pageNum, tree* t);
 bool writeVal(slotted_page* p, int tuple);
 
