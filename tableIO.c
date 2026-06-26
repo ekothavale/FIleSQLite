@@ -236,13 +236,13 @@ static bool validateTableFile(FILE* file, char* fname) {
 	return true;
 }
 
-bool loadMeta(FILE* file, char* fname, table* table) {
+/*
+Loads the metadata from a file into a table
+Assumes the file has been validated as a correct table file
+*/
+static bool loadMeta(FILE* file, char* fname, table* table) {
 	uint32_t buf[METALEN];
 	fread(&buf, 4, METALEN, file);
-	if(buf[0] != MAGIC) {
-		printf("Error: failed to open table %s because the file was of an incorrect type\n", fname);
-		return false;
-	}
 	table->source = file;
 	table->cursor = 0;
 	table->metalen = buf[1];
@@ -284,7 +284,11 @@ bool writeMeta(FILE* file, table* t) {
 	return true;
 }
 
-void setStacks(table* t) {
+/*
+initializes a table's write stacks
+mallocs new memory (stacks)
+*/
+static void setStacks(table* t) {
 	t->pageDirty.size = DIRTY_STACK_INTIAL_SIZE;
 	t->pageDirty.count = 0;
 	t->pageDirty.stack = malloc(sizeof(page_write_order) * DIRTY_STACK_INTIAL_SIZE);
@@ -293,12 +297,33 @@ void setStacks(table* t) {
 	t->nodeDirty.stack = malloc(sizeof(node_write_order) * DIRTY_STACK_INTIAL_SIZE);
 }
 
+static void freeStacks(table* t) {
+	free(t->pageDirty.stack);
+	free(t->nodeDirty.stack);
+}
+
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // PUBLIC API FUNCTIONS
 
 /*
+frees a table struct, including the struct itself and all of its memory allocated members
+frees allocated memory
+*/
+void freeTable(table* t) {
+	freeStacks(t);
+	free(t->name);
+	if (t->node) {
+		free(t->node);
+	} if (t->page) {
+		free(t->page);
+	}
+	free(t);
+}
+
+/*
 Creates a new file for a database table and returns the matching table struct
+Used to create a new table
 mallocs new memory (table)
 */
 table* createTable(char* tablename) {
@@ -336,12 +361,17 @@ table* createTable(char* tablename) {
 	t->root          = 0;
 	t->page          = NULL;
 	t->node          = NULL;
+	t->name          = strdup(tablename);
 
 	setStacks(t);
 	writeMeta(f, t);
 	return t;
 }
 
+/*
+initializes a table struct from a table file
+used to open an existing table
+*/
 bool loadTable(char* tablename, table* t) {
 	if (!tablename || !t) {
 		printf("Error: loadTable() recieved a null input\n");
@@ -363,9 +393,38 @@ bool loadTable(char* tablename, table* t) {
 	}
 	t->source = tfile;
 	t->cursor = 0;
+	t->name   = strdup(tablename);
 	loadMeta(tfile, fname, t);
 	setStacks(t);
 	free(fname);
+	return true;
+}
+
+/*
+Deletes and frees a table and its table file
+Frees allocated memory (table)
+*/
+bool deleteTable(table* t) {
+	if (!t) {
+		printf("Error: deleteTable was called on a NULL table struct\n");
+		return false;
+	}
+	char* dir = TABLE_DIRECTORY;
+	char* ext = TABLE_EXTENSION;
+	size_t lenFName = 7 + strlen(t->name) + 5;
+	char* fname = malloc(lenFName);
+	snprintf(fname, lenFName, "%s%s%s", dir, t->name, ext);
+	int r = remove(fname);
+	if (r != 0) {
+		printf("Error: failed to delete file for table %s\n", t->name);
+		return false;
+	}
+	r = fclose(t->source);
+	if (r != 0) {
+		printf("Error: failed to close file connection for table %s\n", t->name);
+		return false;
+	}
+	freeTable(t);
 	return true;
 }
 

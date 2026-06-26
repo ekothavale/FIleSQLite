@@ -43,8 +43,8 @@ typedef struct tree {
 	uint32_t pageCap;
 }tree;
 
-void freeTree(tree* t);
-void createTree(char* tablename);
+table* createTree(char* tablename, uint32_t pageNum);
+void deleteTree(table* t);
 
 
 uint64_t findPage(uint32_t pageNum, table* t);

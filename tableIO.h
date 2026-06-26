@@ -61,6 +61,7 @@ typedef struct table {
 	page_stack pageDirty; // stack of dirty pages
 	node_stack nodeDirty; // stack of dirty nodes
 	FILE* source; // physical file
+	char* name; // name of table (corresponding file path is tables/[name].tbl)
 	u_int64_t cursor; // current address
 	u_int64_t pageFree; // address of next free page space
 	u_int64_t nodeFree; // address of next free node space
@@ -78,8 +79,12 @@ typedef struct table {
 	int M; // maximum number of children each node can have
 }table;
 
-// create new table
+// manage table struct
+void freeTable(table* t);
+// manage database tables
 table* createTable(char* tablename);
+bool loadTable(char* tablename, table* t);
+bool deleteTable(table* t);
 // loading pages
 bool readPage(uint64_t address, slotted_page* p, table* t);
 bool loadPage(uint64_t address, table* t);
