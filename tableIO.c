@@ -295,11 +295,15 @@ static void setStacks(table* t) {
 	t->nodeDirty.size = DIRTY_STACK_INTIAL_SIZE;
 	t->nodeDirty.count = 0;
 	t->nodeDirty.stack = malloc(sizeof(node_write_order) * DIRTY_STACK_INTIAL_SIZE);
+	t->delete.size = DIRTY_STACK_INTIAL_SIZE;
+	t->delete.count = 0;
+	t->delete.stack = malloc(sizeof(delete_order) * DIRTY_STACK_INTIAL_SIZE);
 }
 
 static void freeStacks(table* t) {
 	free(t->pageDirty.stack);
 	free(t->nodeDirty.stack);
+	free(t->delete.stack);
 }
 
 // ##########################################################################################################################################
@@ -452,6 +456,13 @@ page_write_order* searchPageStack(uint64_t address, table* t) {
 node_write_order* searchNodeStack(uint64_t address, table* t) {
 	for (int i = 1; i <= t->nodeDirty.count; i++) {
 		if ((t->nodeDirty.stack + t->nodeDirty.count - i)->address == address) return t->nodeDirty.stack-i;
+	}
+	return NULL;
+}
+
+delete_order* searchDeleteStack(uint64_t address, table* t) {
+	for (int i = 1; i <= t->delete.count; i++) {
+		if ((t->delete.stack + t->delete.count - i)->address = address) return t->delete.stack-i;
 	}
 	return NULL;
 }
@@ -764,7 +775,17 @@ void markNode(uint64_t address, node* n, table* t) {
 // NEED TO CREATE NEW STACKS FOR DELETING PAGES AND NODES
 // OBJECTS SHOULD INITIALLY BE MARKED FOR DELETION
 void markDelete(uint64_t address, table* t) {
-	;
+	if (searchDeleteStack(address, t)) return; // skip if already in stack
+	if (t->delete.count == t->delete.size) {
+		uint32_t newSize = t->delete.size * DIRTY_STACK_GROWTH_RATE;
+		delete_order* new = malloc(newSize * sizeof(delete_order));
+		memmove(new, t->delete.stack, t->delete.size * sizeof(delete_order));
+		free(t->delete.stack);
+		t->delete.stack = new;
+		t->delete.size = newSize;
+	}
+	delete_order* order = t->delete.stack + t->delete.count++;
+	order->address = address;
 }
 
 // delete object

@@ -39,6 +39,10 @@ typedef struct node_write_order {
 	uint64_t address;
 }node_write_order;
 
+typedef struct delete_order {
+	uint64_t address;
+}delete_order;
+
 typedef struct page_stack {
 	uint32_t size;
 	uint32_t count;
@@ -54,12 +58,13 @@ typedef struct node_stack {
 typedef struct delete_stack {
 	uint32_t size;
 	uint32_t count;
-	uint64_t* stack;
+	delete_order* stack;
 }delete_stack;
 
 typedef struct table {
 	page_stack pageDirty; // stack of dirty pages
 	node_stack nodeDirty; // stack of dirty nodes
+	delete_stack delete; // stack of objects to be deleted
 	FILE* source; // physical file
 	char* name; // name of table (corresponding file path is tables/[name].tbl)
 	u_int64_t cursor; // current address
