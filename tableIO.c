@@ -796,6 +796,24 @@ void deleteObject(uint64_t address, table* t) {
 }
 
 /*
+Empties a table's write stacks and makes the changes to the file on disk
+*/
+void commit(table* t) {
+	uint32_t pageCount = t->pageDirty.count;
+	for (int i = 0; i < pageCount; i++) {
+		writeNextPage(t);
+	}
+	uint32_t nodeCount = t->nodeDirty.count;
+	for (int i = 0; i < nodeCount; i++) {
+		writeNextNode(t);
+	}
+	while (t->delete.count > 0) {
+		uint64_t addr = t->delete.stack[--t->delete.count].address;
+		deleteObject(addr, t);
+	}
+}
+
+/*
 header
 node | node | ... | node
 page | page | ... | page

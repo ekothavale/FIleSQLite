@@ -107,6 +107,7 @@ void writeNewTree(slotted_page* p, uint64_t pageAddr, node* n, uint64_t nodeAddr
 void markPage(uint64_t address, slotted_page* p, table* t);
 void markNode(uint64_t address, node* n, table* t);
 void markDelete(uint64_t address, table* t); // can be used for any object type
+void commit(table* t);
 // allocate new addresses
 void newStripe(table* t);
 uint64_t allocNode(table* t);
