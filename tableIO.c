@@ -448,21 +448,21 @@ returns the corresponding write order if found else returns NULL
 */
 page_write_order* searchPageStack(uint64_t address, table* t) {
 	for (int i = 1; i <= t->pageDirty.count; i++) {
-		if ((t->pageDirty.stack + t->pageDirty.count - i)->address == address) return t->pageDirty.stack-i;
+		if ((t->pageDirty.stack + t->pageDirty.count - i)->address == address) return t->pageDirty.stack + t->pageDirty.count - i;
 	}
 	return NULL;
 }
 
 node_write_order* searchNodeStack(uint64_t address, table* t) {
 	for (int i = 1; i <= t->nodeDirty.count; i++) {
-		if ((t->nodeDirty.stack + t->nodeDirty.count - i)->address == address) return t->nodeDirty.stack-i;
+		if ((t->nodeDirty.stack + t->nodeDirty.count - i)->address == address) return t->nodeDirty.stack + t->nodeDirty.count - i;
 	}
 	return NULL;
 }
 
 delete_order* searchDeleteStack(uint64_t address, table* t) {
 	for (int i = 1; i <= t->delete.count; i++) {
-		if ((t->delete.stack + t->delete.count - i)->address = address) return t->delete.stack-i;
+		if ((t->delete.stack + t->delete.count - i)->address == address) return t->delete.stack + t->delete.count - i;
 	}
 	return NULL;
 }
@@ -541,6 +541,7 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 moves a table's cursor to a page and loads it
 */
 bool loadPage(uint64_t address, table* t) {
+	if (!t->page) t->page = malloc(sizeof(slotted_page));
 	jump(address, t);
 	return readPage(address, t->page, t);
 }
@@ -603,6 +604,7 @@ moves a table's cursor to a node and loads it
 assumes the current location of the cursor is a valid node
 */
 bool loadNode(uint64_t address, table* t) {
+	if (!t->node) t->node = malloc(sizeof(node));
 	jump(address, t);
 	return readNode(address, t->node, t);
 }
@@ -740,7 +742,11 @@ void loadNext(node* n, node* next, table* t) {
 
 // mark page dirty
 void markPage(uint64_t address, slotted_page* p, table* t) {
-	if (searchPageStack(address, t)) return; // skip if already in stack
+    page_write_order* existing = searchPageStack(address, t);
+    if (existing) {
+        copyPage(p, existing->page);
+        return;
+    }
 	if (t->pageDirty.count == t->pageDirty.size) {
 		uint32_t newSize = t->pageDirty.size * DIRTY_STACK_GROWTH_RATE;
 		page_write_order* new = malloc(newSize * sizeof(page_write_order));
@@ -757,7 +763,11 @@ void markPage(uint64_t address, slotted_page* p, table* t) {
 
 // mark node dirty
 void markNode(uint64_t address, node* n, table* t) {
-	if (searchNodeStack(address, t)) return; // skip if already in stack
+    node_write_order* existing = searchNodeStack(address, t);
+    if (existing) {
+        copyNode(n, existing->node);
+        return;
+    }
 	if (t->nodeDirty.count == t->nodeDirty.size) {
 		uint32_t newSize = t->nodeDirty.size * DIRTY_STACK_GROWTH_RATE;
 		node_write_order* new = malloc(newSize * sizeof(node_write_order));

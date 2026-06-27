@@ -740,7 +740,7 @@ uint64_t balanceTreeDelete(node* n, uint64_t addr, table* t) {
 			free(parent);
 			return addr;
 		}
-		node prev;
+		node prev = {0};
 		loadPrev(n, &prev, t);
 		if (isValidBorrow(n, &prev)) {
 			borrowPrev(n, addr, &prev, n->prev, t);
@@ -758,8 +758,8 @@ uint64_t balanceTreeDelete(node* n, uint64_t addr, table* t) {
 		t->root = n->children[0];
 		r->parent = 0;
 		markNode(n->children[0], r, t);
+		free(r);
 		printf("Collapsing tree\n");
-		free(n);
 		return rAddr;
 	// if n is an internal node
 	} else {

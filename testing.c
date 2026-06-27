@@ -1125,3 +1125,565 @@ void test_table_mgmt(void) {
     test_create_tree_initial_page();
     printf("=== All table and tree management tests passed ===\n");
 }
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// B+ TREE INTEGRATION TESTS
+
+/* Build a single-entry string record.  entry.size is set so writePage
+   serialises the data correctly through the disk roundtrip. */
+static entry make_btree_entry(const char* str) {
+    entry e;
+    e.type = T_STRING;
+    e.size = (uint32_t)(strlen(str) + 1);
+    e.data = malloc(e.size);
+    strcpy(e.data, str);
+    return e;
+}
+
+/* Wrap an array of entries into a record and compute r.size. */
+static sp_record make_btree_record(entry* entries, uint32_t count) {
+    sp_record r;
+    r.entries = entries;
+    r.len = count;
+    r.size = 0;
+    for (uint32_t i = 0; i < count; i++) r.size += entries[i].size;
+    return r;
+}
+
+/* Call findAndInsert for page numbers [first, first+count). */
+static void insert_pages(table* t, uint32_t first, uint32_t count) {
+    for (uint32_t i = 0; i < count; i++)
+        findAndInsert(first + i, t);
+}
+
+/* Free every entry.data still live in p, then the slot/entry arrays. */
+static void free_page_contents(slotted_page* p) {
+    for (uint32_t i = 0; i < p->header.numEntries; i++)
+        free(p->entries[i].data);
+    free(p->slots);
+    free(p->entries);
+}
+
+// ── Group 1: find ──────────────────────────────────────────────────────────
+
+/* findPage must return a non-zero address for the page created by createTree. */
+void test_btree_find_initial(void) {
+    printf("  test_btree_find_initial ... ");
+    table* t = createTree("bt_fi", 1);
+    assert(t != NULL);
+    assert(findPage(1, t) != 0);
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/* findPage must return 0 for a page number not present in the tree. */
+void test_btree_find_nonexistent(void) {
+    printf("  test_btree_find_nonexistent ... ");
+    table* t = createTree("bt_fn", 1);
+    assert(t != NULL);
+    assert(findPage(99, t) == 0);
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+// ── Group 2: in-memory record operations ───────────────────────────────────
+
+/*
+Load the initial page from disk, add a single-entry record, and read it
+back in memory without committing.  Uses single-entry records so that the
+writePage/readPage entry-count convention (numRecords == numEntries) holds.
+*/
+void test_btree_record_add(void) {
+    printf("  test_btree_record_add ... ");
+    table* t = createTree("bt_ra", 1);
+    assert(t != NULL);
+
+    uint64_t addr = findPage(1, t);
+    assert(addr != 0);
+
+    slotted_page p = {0};
+    assert(readPage(addr, &p, t));
+
+    entry e = make_btree_entry("Alice");
+    assert(addRecord(&p, 10, make_btree_record(&e, 1)));
+    assert(p.header.numRecords == 1);
+
+    sp_record r = readRecord(&p, 10);
+    assert(r.len == 1);
+    assert(strcmp(r.entries[0].data, "Alice") == 0);
+
+    // p.entries[0].data == e.data; free once through the entries array
+    free_page_contents(&p);
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/* updateRecord must replace the stored entry; old data must not leak. */
+void test_btree_record_update(void) {
+    printf("  test_btree_record_update ... ");
+    table* t = createTree("bt_ru", 1);
+    assert(t != NULL);
+
+    uint64_t addr = findPage(1, t);
+    slotted_page p = {0};
+    readPage(addr, &p, t);
+
+    entry e1 = make_btree_entry("old");
+    addRecord(&p, 5, make_btree_record(&e1, 1));
+
+    // updateRecord frees the old entry data internally
+    entry e2 = make_btree_entry("new");
+    assert(updateRecord(&p, 5, make_btree_record(&e2, 1)));
+
+    sp_record r = readRecord(&p, 5);
+    assert(strcmp(r.entries[0].data, "new") == 0);
+
+    // e1.data freed by updateRecord; p.entries[0].data == e2.data
+    free_page_contents(&p);
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/* deleteRecord must remove one record while leaving others intact. */
+void test_btree_record_delete(void) {
+    printf("  test_btree_record_delete ... ");
+    table* t = createTree("bt_rd", 1);
+    assert(t != NULL);
+
+    uint64_t addr = findPage(1, t);
+    slotted_page p = {0};
+    readPage(addr, &p, t);
+
+    entry e1 = make_btree_entry("Alice");
+    entry e2 = make_btree_entry("Bob");
+    addRecord(&p, 1, make_btree_record(&e1, 1));
+    addRecord(&p, 2, make_btree_record(&e2, 1));
+    assert(p.header.numRecords == 2);
+
+    // deleteRecord frees e1.data internally
+    assert(deleteRecord(&p, 1));
+    assert(p.header.numRecords == 1);
+    assert(readRecord(&p, 1).entries == NULL);
+    assert(strcmp(readRecord(&p, 2).entries[0].data, "Bob") == 0);
+
+    // e1.data freed by deleteRecord; remaining data lives in p.entries
+    free_page_contents(&p);
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+// ── Group 3: commit ────────────────────────────────────────────────────────
+
+/*
+After marking dirty objects, commit() must drain all three stacks to zero.
+*/
+void test_btree_commit_drains_stacks(void) {
+    printf("  test_btree_commit_drains_stacks ... ");
+    table* t = createTree("bt_cds", 1);
+    assert(t != NULL);
+
+    // findAndInsert dirtifies the root node via markNode
+    findAndInsert(2, t);
+    assert(t->nodeDirty.count > 0);
+
+    commit(t);
+    assert(t->pageDirty.count == 0);
+    assert(t->nodeDirty.count == 0);
+    assert(t->delete.count    == 0);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/*
+A page modified in memory, committed, then reloaded from disk must preserve
+numRecords.  Uses single-entry records so writePage/readPage counts match.
+*/
+void test_btree_commit_persist(void) {
+    printf("  test_btree_commit_persist ... ");
+    table* t = createTree("bt_cp", 1);
+    assert(t != NULL);
+
+    uint64_t addr = findPage(1, t);
+    assert(addr != 0);
+
+    slotted_page p = {0};
+    readPage(addr, &p, t);
+    entry e = make_btree_entry("persist");
+    addRecord(&p, 7, make_btree_record(&e, 1));
+    markPage(addr, &p, t);
+
+    // commit before freeing: writePage will dereference the slot/entry arrays
+    commit(t);
+    free_page_contents(&p);
+    close_table_keep_file(t);
+
+    table* t2 = calloc(1, sizeof(table));
+    assert(loadTable("bt_cp", t2));
+    uint64_t addr2 = findPage(1, t2);
+    assert(addr2 != 0);
+
+    slotted_page p2 = {0};
+    assert(readPage(addr2, &p2, t2));
+    assert(p2.header.numRecords == 1);
+
+    free_page_contents(&p2);
+    deleteTree(t2);
+    printf("PASS\n");
+}
+
+/*
+After commit, an object staged via markDelete must have its first byte set
+to 2 on disk, making a subsequent readPage on that address return false.
+*/
+void test_btree_commit_delete_persist(void) {
+    printf("  test_btree_commit_delete_persist ... ");
+    table* t = createTree("bt_cdp", 1);
+    assert(t != NULL);
+
+    uint64_t pageAddr = findPage(1, t);
+    assert(pageAddr != 0);
+
+    markDelete(pageAddr, t);
+    commit(t);
+
+    // The first byte at pageAddr on disk must now be 2 (garbage marker)
+    fseek(t->source, (long)pageAddr, SEEK_SET);
+    unsigned char firstByte = 0;
+    fread(&firstByte, 1, 1, t->source);
+    assert(firstByte == 2);
+
+    // readPage must reject the deleted address
+    slotted_page p = {0};
+    bool ok = readPage(pageAddr, &p, t);
+    assert(!ok);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+// ── Group 4: insert and split ──────────────────────────────────────────────
+
+/*
+findAndInsert on a new page number must add a child to the root node.
+*/
+void test_btree_insert_new_page(void) {
+    printf("  test_btree_insert_new_page ... ");
+    table* t = createTree("bt_inp", 1);
+    assert(t != NULL);
+
+    node root = {0};
+    readNode(t->root, &root, t);
+    assert(root.childCount == 1);
+
+    findAndInsert(2, t);
+
+    readNode(t->root, &root, t);
+    assert(root.childCount == 2);
+    assert(root.keys[1] == 2);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/*
+findAndInsert on a page number that already exists must not increase
+childCount.
+*/
+void test_btree_insert_existing_page(void) {
+    printf("  test_btree_insert_existing_page ... ");
+    table* t = createTree("bt_iep", 1);
+    assert(t != NULL);
+
+    findAndInsert(2, t);
+    node root = {0};
+    readNode(t->root, &root, t);
+    uint32_t before = root.childCount;
+
+    findAndInsert(2, t);  // duplicate
+
+    readNode(t->root, &root, t);
+    assert(root.childCount == before);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/*
+Inserting M+1 pages must split the root leaf into an internal node with two
+leaf children.  With M_GLOBAL=4 this requires 5 total pages (1 from
+createTree plus 4 more from findAndInsert).
+*/
+void test_btree_split_structure(void) {
+    printf("  test_btree_split_structure ... ");
+    table* t = createTree("bt_ss", 1);
+    assert(t != NULL);
+
+    insert_pages(t, 2, 4);   // pages 2..5 — the 5th insert triggers the split
+
+    node root = {0};
+    readNode(t->root, &root, t);
+    assert(!root.isLeaf);
+    assert(root.childCount == 2);
+
+    node left = {0}, right = {0};
+    readNode(root.children[0], &left,  t);
+    readNode(root.children[1], &right, t);
+    assert(left.isLeaf  && right.isLeaf);
+    assert(left.childCount  == 2);   // pages 1, 2
+    assert(right.childCount == 3);   // pages 3, 4, 5
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/* After a split, every inserted page must still be locatable by findPage. */
+void test_btree_split_find_all(void) {
+    printf("  test_btree_split_find_all ... ");
+    table* t = createTree("bt_sfa", 1);
+    assert(t != NULL);
+
+    insert_pages(t, 2, 4);
+
+    for (uint32_t i = 1; i <= 5; i++)
+        assert(findPage(i, t) != 0);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/*
+After a split the two leaf nodes must be correctly linked: left.next →
+right, right.prev → left, and the outer terminator fields must be 0.
+*/
+void test_btree_split_linked_list(void) {
+    printf("  test_btree_split_linked_list ... ");
+    table* t = createTree("bt_sll", 1);
+    assert(t != NULL);
+
+    insert_pages(t, 2, 4);
+
+    node root = {0};
+    readNode(t->root, &root, t);
+    uint64_t leftAddr  = root.children[0];
+    uint64_t rightAddr = root.children[1];
+
+    node left = {0}, right = {0};
+    readNode(leftAddr,  &left,  t);
+    readNode(rightAddr, &right, t);
+
+    assert(left.next   == rightAddr);
+    assert(right.prev  == leftAddr);
+    assert(left.prev   == 0);
+    assert(right.next  == 0);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+// ── Group 5: page deletion and tree rebalancing ────────────────────────────
+
+/*
+findAndDelete must remove a page from the tree; findPage for that number
+must then return 0 while all other pages remain accessible.
+*/
+void test_btree_delete_page(void) {
+    printf("  test_btree_delete_page ... ");
+    table* t = createTree("bt_dp", 1);
+    assert(t != NULL);
+
+    findAndInsert(2, t);
+    findAndInsert(3, t);
+
+    assert(findAndDelete(2, t));
+    assert(findPage(2, t) == 0);
+    assert(findPage(1, t) != 0);
+    assert(findPage(3, t) != 0);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/*
+When a leaf node sits at exactly HALF_M children and its next sibling has
+more than HALF_M, deleting a page must trigger a borrow rather than a merge.
+
+Setup: 5 pages → split gives left=[1,2] right=[3,4,5].
+Deleting page 1 (left is at HALF_M=2) must borrow page 3 from the right,
+yielding left=[2,3], right=[4,5] and updating the root separator from 2→3.
+*/
+void test_btree_delete_triggers_borrow(void) {
+    printf("  test_btree_delete_triggers_borrow ... ");
+    table* t = createTree("bt_dtb", 1);
+    assert(t != NULL);
+
+    insert_pages(t, 2, 4);  // pages 1..5 — triggers split
+
+    assert(findAndDelete(1, t));
+
+    // Root separator key must be updated to 3 (new max of left leaf)
+    node root = {0};
+    readNode(t->root, &root, t);
+    assert(root.keys[0] == 3);
+
+    // Left leaf must contain pages 2 and 3 (page 3 was borrowed from right)
+    node left = {0};
+    readNode(root.children[0], &left, t);
+    assert(left.childCount == 2);
+    assert(left.keys[0] == 2);
+    assert(left.keys[1] == 3);
+
+    // Right leaf must now hold only pages 4 and 5
+    node right = {0};
+    readNode(root.children[1], &right, t);
+    assert(right.childCount == 2);
+    assert(right.keys[0] == 4);
+    assert(right.keys[1] == 5);
+
+    // Both deleted and surviving pages accessible by findPage
+    assert(findPage(1, t) == 0);
+    assert(findPage(2, t) != 0);
+    assert(findPage(3, t) != 0);
+    assert(findPage(4, t) != 0);
+    assert(findPage(5, t) != 0);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/*
+When no sibling can lend a child, deleting a page must trigger a merge and
+collapse the tree to a single leaf root.
+
+Setup: borrow test state (left=[2,3] right=[4,5]).  Deleting page 2 drops
+the left leaf below HALF_M with no valid borrow target, so left and right
+merge and the now-single-child internal root collapses.
+*/
+void test_btree_delete_triggers_merge(void) {
+    printf("  test_btree_delete_triggers_merge ... ");
+    table* t = createTree("bt_dtm", 1);
+    assert(t != NULL);
+
+    insert_pages(t, 2, 4);   // pages 1..5
+    findAndDelete(1, t);       // borrow: left=[2,3] right=[4,5]
+    assert(findAndDelete(2, t));
+
+    // After merge + root collapse the root must be a leaf
+    node root = {0};
+    readNode(t->root, &root, t);
+    assert(root.isLeaf);
+    assert(root.childCount == 3);
+    assert(root.keys[0] == 3);
+    assert(root.keys[1] == 4);
+    assert(root.keys[2] == 5);
+
+    assert(findPage(1, t) == 0);
+    assert(findPage(2, t) == 0);
+    assert(findPage(3, t) != 0);
+    assert(findPage(4, t) != 0);
+    assert(findPage(5, t) != 0);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+// ── Group 6: full persistence roundtrip ───────────────────────────────────
+
+/*
+Create a tree, insert pages, add a record to the initial page, commit, close,
+reopen, and verify: all pages still findable; the page modification
+(numRecords) survived the disk roundtrip.
+*/
+void test_btree_full_roundtrip(void) {
+    printf("  test_btree_full_roundtrip ... ");
+    table* t = createTree("bt_fr", 1);
+    assert(t != NULL);
+
+    insert_pages(t, 2, 4);  // pages 1..5
+
+    uint64_t addr = findPage(1, t);
+    assert(addr != 0);
+    slotted_page p = {0};
+    readPage(addr, &p, t);
+    entry e = make_btree_entry("hello");
+    addRecord(&p, 42, make_btree_record(&e, 1));
+    markPage(addr, &p, t);
+
+    commit(t);
+    free_page_contents(&p);
+    close_table_keep_file(t);
+
+    table* t2 = calloc(1, sizeof(table));
+    assert(loadTable("bt_fr", t2));
+
+    for (uint32_t i = 1; i <= 5; i++)
+        assert(findPage(i, t2) != 0);
+
+    uint64_t addr2 = findPage(1, t2);
+    slotted_page p2 = {0};
+    assert(readPage(addr2, &p2, t2));
+    assert(p2.header.numRecords == 1);
+
+    free_page_contents(&p2);
+    deleteTree(t2);
+    printf("PASS\n");
+}
+
+// ── Group 7: tree cleanup ──────────────────────────────────────────────────
+
+/* deleteTree must remove the backing file from disk. */
+void test_btree_delete_tree(void) {
+    printf("  test_btree_delete_tree ... ");
+    table* t = createTree("bt_dt", 1);
+    assert(t != NULL);
+    assert(tbl_file_exists("bt_dt"));
+    deleteTree(t);
+    assert(!tbl_file_exists("bt_dt"));
+    printf("PASS\n");
+}
+
+/* After deleteTree, loadTable must fail for the same name. */
+void test_btree_delete_tree_not_reloadable(void) {
+    printf("  test_btree_delete_tree_not_reloadable ... ");
+    table* t = createTree("bt_dtnr", 1);
+    assert(t != NULL);
+    char* name = strdup(t->name);
+    deleteTree(t);
+    table t2;
+    assert(!loadTable(name, &t2));
+    free(name);
+    printf("PASS\n");
+}
+
+/* Run all B+ tree integration tests. */
+void test_btree(void) {
+    printf("=== B+ Tree Integration Tests ===\n");
+    // find
+    test_btree_find_initial();
+    test_btree_find_nonexistent();
+    // in-memory record operations
+    test_btree_record_add();
+    test_btree_record_update();
+    test_btree_record_delete();
+    // commit
+    test_btree_commit_drains_stacks();
+    test_btree_commit_persist();
+    test_btree_commit_delete_persist();
+    // insert and split
+    test_btree_insert_new_page();
+    test_btree_insert_existing_page();
+    test_btree_split_structure();
+    test_btree_split_find_all();
+    test_btree_split_linked_list();
+    // page deletion and rebalancing
+    test_btree_delete_page();
+    test_btree_delete_triggers_borrow();
+    test_btree_delete_triggers_merge();
+    // full persistence roundtrip
+    test_btree_full_roundtrip();
+    // cleanup
+    test_btree_delete_tree();
+    test_btree_delete_tree_not_reloadable();
+    printf("=== All B+ tree tests passed ===\n");
+}
