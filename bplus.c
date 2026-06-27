@@ -604,7 +604,7 @@ uint64_t mergeNode(node* n, uint64_t addr, table* t) {
 	survivor->maxPageNumber = source->maxPageNumber;
 	markNode(survAddr, survivor, t);
 	// update parents
-	node* parent = malloc(t->nodeSize);
+	node* parent = calloc(1, sizeof(node));
 	loadParent(n, parent, t);
 	for (int i = 1; i < parent->childCount; i++) {
 		if (parent->children[i] == sourceAddr) {
