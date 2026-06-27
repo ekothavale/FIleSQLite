@@ -18,6 +18,41 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "testing.h"
 
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// SHARED TEST HELPERS
+
+/* Build the full path "tables/<name>.tbl" into a heap-allocated string. */
+static char* build_tbl_path(const char* name) {
+    size_t len = strlen(TABLE_DIRECTORY) + strlen(name) + strlen(TABLE_EXTENSION) + 1;
+    char* path = malloc(len);
+    snprintf(path, len, "%s%s%s", TABLE_DIRECTORY, name, TABLE_EXTENSION);
+    return path;
+}
+
+/* Return true if the table file for <name> currently exists on disk. */
+static bool tbl_file_exists(const char* name) {
+    char* path = build_tbl_path(name);
+    FILE* f = fopen(path, "rb");
+    free(path);
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
+/* Close a table's file handle and free its memory without deleting the file. */
+static void close_table_keep_file(table* t) {
+    fclose(t->source);
+    freeTable(t);
+}
+
+/* Compute the file offset at which the current stripes end — the boundary
+   at which allocPage/allocNode triggers a new stripe. */
+static uint64_t stripe_boundary(table* t) {
+    return (uint64_t)t->metalen
+         + (uint64_t)t->pageStripes * t->pageStripeLen * t->pageSize
+         + (uint64_t)t->nodeStripes * t->nodeStripeLen * t->nodeSize;
+}
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
@@ -542,9 +577,7 @@ void test_alloc_page_stripe(void) {
     printf("  test_alloc_page_stripe ... ");
     table t = make_test_table();
 
-    uint64_t boundary = (uint64_t)t.metalen
-        + (uint64_t)t.pageStripes * t.pageStripeLen * t.pageSize
-        + (uint64_t)t.nodeStripes * t.nodeStripeLen * t.nodeSize;
+    uint64_t boundary = stripe_boundary(&t);
     t.pageFree = boundary;
     int old_stripes = t.pageStripes;
 
@@ -565,9 +598,7 @@ void test_alloc_page_after_stripe(void) {
     printf("  test_alloc_page_after_stripe ... ");
     table t = make_test_table();
 
-    uint64_t boundary = (uint64_t)t.metalen
-        + (uint64_t)t.pageStripes * t.pageStripeLen * t.pageSize
-        + (uint64_t)t.nodeStripes * t.nodeStripeLen * t.nodeSize;
+    uint64_t boundary = stripe_boundary(&t);
     t.pageFree = boundary;
 
     allocPage(&t);                       // crosses boundary, pageStripes++
@@ -600,9 +631,7 @@ void test_alloc_node_stripe(void) {
     printf("  test_alloc_node_stripe ... ");
     table t = make_test_table();
 
-    uint64_t boundary = (uint64_t)t.metalen
-        + (uint64_t)t.pageStripes * t.pageStripeLen * t.pageSize
-        + (uint64_t)t.nodeStripes * t.nodeStripeLen * t.nodeSize;
+    uint64_t boundary = stripe_boundary(&t);
     t.nodeFree = boundary;
     int old_stripes = t.nodeStripes;
 
@@ -619,9 +648,7 @@ void test_alloc_node_after_stripe(void) {
     printf("  test_alloc_node_after_stripe ... ");
     table t = make_test_table();
 
-    uint64_t boundary = (uint64_t)t.metalen
-        + (uint64_t)t.pageStripes * t.pageStripeLen * t.pageSize
-        + (uint64_t)t.nodeStripes * t.nodeStripeLen * t.nodeSize;
+    uint64_t boundary = stripe_boundary(&t);
     t.nodeFree = boundary;
 
     allocNode(&t);
@@ -860,33 +887,6 @@ void test_tableio(void) {
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // TABLE AND TREE MANAGEMENT TESTS
-
-/* Build the full path "tables/<name>.tbl" into a heap-allocated string. */
-static char* build_tbl_path(const char* name) {
-    size_t len = strlen(TABLE_DIRECTORY) + strlen(name) + strlen(TABLE_EXTENSION) + 1;
-    char* path = malloc(len);
-    snprintf(path, len, "%s%s%s", TABLE_DIRECTORY, name, TABLE_EXTENSION);
-    return path;
-}
-
-/* Return true if the table file for <name> currently exists on disk. */
-static bool tbl_file_exists(const char* name) {
-    char* path = build_tbl_path(name);
-    FILE* f = fopen(path, "rb");
-    free(path);
-    if (!f) return false;
-    fclose(f);
-    return true;
-}
-
-/*
-Close a table's file handle and free its memory without deleting the file.
-Used to test reloading an existing file fresh via loadTable.
-*/
-static void close_table_keep_file(table* t) {
-    fclose(t->source);
-    freeTable(t);  // freeTable does not call fclose, so this is safe
-}
 
 // --- createTable ---
 
@@ -1165,6 +1165,29 @@ static void free_page_contents(slotted_page* p) {
     free(p->entries);
 }
 
+/* Return a tree pre-loaded with pages 1..5 and one split already performed. */
+static table* create_split_tree(const char* name) {
+    table* t = createTree(name, 1);
+    assert(t != NULL);
+    insert_pages(t, 2, 4);
+    return t;
+}
+
+/* Find page 1, assert it exists, read it into p, and return its address. */
+static address load_initial_page(table* t, slotted_page* p) {
+    address addr = findPage(1, t);
+    assert(addr != 0);
+    readPage(addr, p, t);
+    return addr;
+}
+
+/* Read the root node and both of its immediate leaf children. */
+static void read_root_leaves(table* t, node* root, node* left, node* right) {
+    readNode(t->root, root, t);
+    readNode(root->children[0], left, t);
+    readNode(root->children[1], right, t);
+}
+
 // ── Group 1: find ──────────────────────────────────────────────────────────
 
 /* findPage must return a non-zero address for the page created by createTree. */
@@ -1199,11 +1222,8 @@ void test_btree_record_add(void) {
     table* t = createTree("bt_ra", 1);
     assert(t != NULL);
 
-    address addr = findPage(1, t);
-    assert(addr != 0);
-
     slotted_page p = {0};
-    assert(readPage(addr, &p, t));
+    address addr = load_initial_page(t, &p);
 
     entry e = make_btree_entry("Alice");
     assert(addRecord(&p, 10, make_btree_record(&e, 1)));
@@ -1225,9 +1245,8 @@ void test_btree_record_update(void) {
     table* t = createTree("bt_ru", 1);
     assert(t != NULL);
 
-    address addr = findPage(1, t);
     slotted_page p = {0};
-    readPage(addr, &p, t);
+    address addr = load_initial_page(t, &p);
 
     entry e1 = make_btree_entry("old");
     addRecord(&p, 5, make_btree_record(&e1, 1));
@@ -1251,9 +1270,8 @@ void test_btree_record_delete(void) {
     table* t = createTree("bt_rd", 1);
     assert(t != NULL);
 
-    address addr = findPage(1, t);
     slotted_page p = {0};
-    readPage(addr, &p, t);
+    address addr = load_initial_page(t, &p);
 
     entry e1 = make_btree_entry("Alice");
     entry e2 = make_btree_entry("Bob");
@@ -1305,11 +1323,8 @@ void test_btree_commit_persist(void) {
     table* t = createTree("bt_cp", 1);
     assert(t != NULL);
 
-    address addr = findPage(1, t);
-    assert(addr != 0);
-
     slotted_page p = {0};
-    readPage(addr, &p, t);
+    address addr = load_initial_page(t, &p);
     entry e = make_btree_entry("persist");
     addRecord(&p, 7, make_btree_record(&e, 1));
     markPage(addr, &p, t);
@@ -1417,19 +1432,12 @@ createTree plus 4 more from findAndInsert).
 */
 void test_btree_split_structure(void) {
     printf("  test_btree_split_structure ... ");
-    table* t = createTree("bt_ss", 1);
-    assert(t != NULL);
+    table* t = create_split_tree("bt_ss");
 
-    insert_pages(t, 2, 4);   // pages 2..5 — the 5th insert triggers the split
-
-    node root = {0};
-    readNode(t->root, &root, t);
+    node root = {0}, left = {0}, right = {0};
+    read_root_leaves(t, &root, &left, &right);
     assert(!root.isLeaf);
     assert(root.childCount == 2);
-
-    node left = {0}, right = {0};
-    readNode(root.children[0], &left,  t);
-    readNode(root.children[1], &right, t);
     assert(left.isLeaf  && right.isLeaf);
     assert(left.childCount  == 2);   // pages 1, 2
     assert(right.childCount == 3);   // pages 3, 4, 5
@@ -1441,10 +1449,7 @@ void test_btree_split_structure(void) {
 /* After a split, every inserted page must still be locatable by findPage. */
 void test_btree_split_find_all(void) {
     printf("  test_btree_split_find_all ... ");
-    table* t = createTree("bt_sfa", 1);
-    assert(t != NULL);
-
-    insert_pages(t, 2, 4);
+    table* t = create_split_tree("bt_sfa");
 
     for (uint32_t i = 1; i <= 5; i++)
         assert(findPage(i, t) != 0);
@@ -1459,19 +1464,12 @@ right, right.prev → left, and the outer terminator fields must be 0.
 */
 void test_btree_split_linked_list(void) {
     printf("  test_btree_split_linked_list ... ");
-    table* t = createTree("bt_sll", 1);
-    assert(t != NULL);
+    table* t = create_split_tree("bt_sll");
 
-    insert_pages(t, 2, 4);
-
-    node root = {0};
-    readNode(t->root, &root, t);
+    node root = {0}, left = {0}, right = {0};
+    read_root_leaves(t, &root, &left, &right);
     address leftAddr  = root.children[0];
     address rightAddr = root.children[1];
-
-    node left = {0}, right = {0};
-    readNode(leftAddr,  &left,  t);
-    readNode(rightAddr, &right, t);
 
     assert(left.next   == rightAddr);
     assert(right.prev  == leftAddr);
@@ -1515,10 +1513,7 @@ yielding left=[2,3], right=[4,5] and updating the root separator from 2→3.
 */
 void test_btree_delete_triggers_borrow(void) {
     printf("  test_btree_delete_triggers_borrow ... ");
-    table* t = createTree("bt_dtb", 1);
-    assert(t != NULL);
-
-    insert_pages(t, 2, 4);  // pages 1..5 — triggers split
+    table* t = create_split_tree("bt_dtb");
 
     assert(findAndDelete(1, t));
 
@@ -1562,10 +1557,7 @@ merge and the now-single-child internal root collapses.
 */
 void test_btree_delete_triggers_merge(void) {
     printf("  test_btree_delete_triggers_merge ... ");
-    table* t = createTree("bt_dtm", 1);
-    assert(t != NULL);
-
-    insert_pages(t, 2, 4);   // pages 1..5
+    table* t = create_split_tree("bt_dtm");
     findAndDelete(1, t);       // borrow: left=[2,3] right=[4,5]
     assert(findAndDelete(2, t));
 
@@ -1597,15 +1589,10 @@ reopen, and verify: all pages still findable; the page modification
 */
 void test_btree_full_roundtrip(void) {
     printf("  test_btree_full_roundtrip ... ");
-    table* t = createTree("bt_fr", 1);
-    assert(t != NULL);
+    table* t = create_split_tree("bt_fr");
 
-    insert_pages(t, 2, 4);  // pages 1..5
-
-    address addr = findPage(1, t);
-    assert(addr != 0);
     slotted_page p = {0};
-    readPage(addr, &p, t);
+    address addr = load_initial_page(t, &p);
     entry e = make_btree_entry("hello");
     addRecord(&p, 42, make_btree_record(&e, 1));
     markPage(addr, &p, t);
