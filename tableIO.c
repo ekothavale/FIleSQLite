@@ -387,7 +387,12 @@ bool loadTable(char* tablename, table* t) {
 
 	FILE* tfile = fopen(fname, "rb+");
 	if (!tfile) {
-		printf("Error: Failed to open table %s\n", tablename);
+		printf("Error: failed to open table %s\n", tablename);
+		free(fname);
+		return false;
+	}
+	if (!validateTableFile(tfile, fname)) {
+		printf("Error: tried to load a table from %s but file was invalid\n", fname);
 		free(fname);
 		return false;
 	}
