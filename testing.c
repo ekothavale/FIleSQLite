@@ -317,7 +317,7 @@ void test_meta_roundtrip(void) {
     fclose(t->source);
     freeTable(t);
 
-    table* t2 = malloc(sizeof(table));
+    table* t2 = calloc(1, sizeof(table));
     bool ok = loadTable("_mt_rt", t2);
     assert(ok);
     assert(t2->pageStripes   == 3);
@@ -348,7 +348,7 @@ void test_meta_large_addr(void) {
     fclose(t->source);
     freeTable(t);
 
-    table* t2 = malloc(sizeof(table));
+    table* t2 = calloc(1, sizeof(table));
     bool ok = loadTable("_mt_la", t2);
     assert(ok);
     assert(t2->pageFree == 0x0000000100000000ULL);
@@ -375,7 +375,7 @@ void test_meta_bad_magic(void) {
     fwrite(buf, 4, METALEN, f);
     fclose(f);
 
-    table* t2 = malloc(sizeof(table));
+    table* t2 = calloc(1, sizeof(table));
     bool ok = loadTable("_mt_badmag", t2);
     assert(!ok);
     free(t2);
@@ -952,7 +952,7 @@ void test_load_table_roundtrip(void) {
     assert(t != NULL);
     close_table_keep_file(t);  // close without deleting
 
-    table* t2 = malloc(sizeof(table));
+    table* t2 = calloc(1, sizeof(table));
     bool ok = loadTable("mgmt_l1", t2);
     assert(ok);
     assert(strcmp(t2->name, "mgmt_l1") == 0);

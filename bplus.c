@@ -108,6 +108,8 @@ table* createTree(char* tablename, uint32_t pageNum) {
 
 	page->header.parent = rootAddr;
 
+	t->root = rootAddr;
+
 	// write structs and clean up
 	writeNewTree(page, pageAddr, root, rootAddr, t);
 	free(root);

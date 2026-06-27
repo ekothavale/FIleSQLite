@@ -684,8 +684,10 @@ static void writeNode(node* n, uint64_t address, table* t) {
 		writeULongBytewise(buffer+offset, n->children[i]);
 		offset += 8;
 	}
-	// write keys
-	for (int i = 0; i < n->childCount-1; i++) {
+	// write keys (leaf: one key per child; internal: one fewer key than children)
+	int keylim = n->childCount;
+	if (!n->isLeaf) keylim--;
+	for (int i = 0; i < keylim; i++) {
 		writeUIntBytewise(buffer+offset, n->keys[i]);
 		offset += 4;
 	}
