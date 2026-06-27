@@ -110,4 +110,7 @@ uint64_t allocPage(table* t);
 void condenseStripe(table* t);
 void condenseAll(table* t);
 
+// for testing purposes
+
+
 #endif

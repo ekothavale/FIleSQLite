@@ -18,9 +18,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "testing.h"
 
-void test_btree() {
-	;
-}
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
@@ -228,10 +225,8 @@ void test_page(void) {
 // NOTE: test_page_roundtrip, test_node_roundtrip, test_page_write_lifo, and
 // test_node_write_lifo verify field values that pass through writePage/writeNode.
 
-// Forward declarations for tableIO-internal functions not declared in tableIO.h
-bool loadMeta(FILE* file, table* t, char* fname);
+// writeMeta is non-static but not in tableIO.h; forward-declare it here
 bool writeMeta(FILE* file, table* t);
-void setStacks(table* t);
 
 #define TEST_PAGE_SIZE 512
 #define TEST_NODE_SIZE 128
@@ -256,7 +251,13 @@ static table make_test_table(void) {
     t.M = M_GLOBAL;
     t.page = NULL;
     t.node = NULL;
-    setStacks(&t);
+    // Inline stack initialisation (setStacks is static in tableIO.c)
+    t.pageDirty.size  = DIRTY_STACK_INTIAL_SIZE;
+    t.pageDirty.count = 0;
+    t.pageDirty.stack = malloc(sizeof(page_write_order) * DIRTY_STACK_INTIAL_SIZE);
+    t.nodeDirty.size  = DIRTY_STACK_INTIAL_SIZE;
+    t.nodeDirty.count = 0;
+    t.nodeDirty.stack = malloc(sizeof(node_write_order) * DIRTY_STACK_INTIAL_SIZE);
     writeMeta(t.source, &t);
     return t;
 }
@@ -297,87 +298,89 @@ static void free_io_page(slotted_page* p) {
 // --- writeMeta / loadMeta ---
 
 /*
-Write metadata to a fresh table, rewind the file, read it back via
-loadMeta, and verify every field survives the round-trip.
+Write modified metadata fields to a table file and reload it via loadTable,
+verifying every field survives the round-trip through writeMeta / loadMeta.
 */
 void test_meta_roundtrip(void) {
     printf("  test_meta_roundtrip ... ");
-    table t = make_test_table();
-    t.pageStripes    = 3;
-    t.nodeStripes    = 2;
-    t.pageStripeLen  = 6;
-    t.nodeStripeLen  = 4;
-    t.pageNodeRatio  = 3;
-    t.pageFree       = 0x00002000;
-    t.nodeFree       = 0x00006000;
-    t.root           = 0x0000A000;
-    t.M              = 4;
-    writeMeta(t.source, &t);
+    table* t = createTable("_mt_rt");
+    assert(t != NULL);
+    t->pageStripes    = 3;
+    t->nodeStripes    = 2;
+    t->pageStripeLen  = 6;
+    t->nodeStripeLen  = 4;
+    t->pageNodeRatio  = 3;
+    t->pageFree       = 0x00002000;
+    t->nodeFree       = 0x00006000;
+    t->root           = 0x0000A000;
+    writeMeta(t->source, t);
+    fclose(t->source);
+    freeTable(t);
 
-    table t2;
-    memset(&t2, 0, sizeof(t2));
-    rewind(t.source);
-    bool ok = loadMeta(t.source, &t2, "test");
-
+    table* t2 = malloc(sizeof(table));
+    bool ok = loadTable("_mt_rt", t2);
     assert(ok);
-    assert(t2.metalen       == t.metalen);
-    assert(t2.pageStripes   == 3);
-    assert(t2.nodeStripes   == 2);
-    assert(t2.pageStripeLen == 6);
-    assert(t2.nodeStripeLen == 4);
-    assert(t2.pageNodeRatio == 3);
-    assert(t2.pageSize      == TEST_PAGE_SIZE);
-    assert(t2.nodeSize      == TEST_NODE_SIZE);
-    assert(t2.pageFree      == 0x00002000);
-    assert(t2.nodeFree      == 0x00006000);
-    assert(t2.root          == 0x0000A000);
-    assert(t2.M             == 4);
-
-    free_test_table(&t);
+    assert(t2->pageStripes   == 3);
+    assert(t2->nodeStripes   == 2);
+    assert(t2->pageStripeLen == 6);
+    assert(t2->nodeStripeLen == 4);
+    assert(t2->pageNodeRatio == 3);
+    assert(t2->pageFree      == 0x00002000);
+    assert(t2->nodeFree      == 0x00006000);
+    assert(t2->root          == 0x0000A000);
+    assert(t2->M             == M_GLOBAL);
+    deleteTable(t2);
     printf("PASS\n");
 }
 
 /*
-Verify that 64-bit addresses with non-zero upper 32 bits survive writeMeta
-/ loadMeta intact (tests the high/low word split-and-reconstruct logic).
+64-bit addresses with non-zero upper 32 bits must survive the
+writeMeta / loadMeta round-trip (tests the high/low 32-bit split logic).
 */
 void test_meta_large_addr(void) {
     printf("  test_meta_large_addr ... ");
-    table t = make_test_table();
-    t.pageFree = 0x0000000100000000ULL;
-    t.nodeFree = 0x00000001ABCDEF12ULL;
-    t.root     = 0x00000002FEEDBEEFULL;
-    writeMeta(t.source, &t);
+    table* t = createTable("_mt_la");
+    assert(t != NULL);
+    t->pageFree = 0x0000000100000000ULL;
+    t->nodeFree = 0x00000001ABCDEF12ULL;
+    t->root     = 0x00000002FEEDBEEFULL;
+    writeMeta(t->source, t);
+    fclose(t->source);
+    freeTable(t);
 
-    table t2;
-    memset(&t2, 0, sizeof(t2));
-    rewind(t.source);
-    loadMeta(t.source, &t2, "test");
-
-    assert(t2.pageFree == 0x0000000100000000ULL);
-    assert(t2.nodeFree == 0x00000001ABCDEF12ULL);
-    assert(t2.root     == 0x00000002FEEDBEEFULL);
-
-    free_test_table(&t);
+    table* t2 = malloc(sizeof(table));
+    bool ok = loadTable("_mt_la", t2);
+    assert(ok);
+    assert(t2->pageFree == 0x0000000100000000ULL);
+    assert(t2->nodeFree == 0x00000001ABCDEF12ULL);
+    assert(t2->root     == 0x00000002FEEDBEEFULL);
+    deleteTable(t2);
     printf("PASS\n");
 }
 
 /*
-loadMeta must return false when the file's first four bytes are not MAGIC.
+loadTable must reject any .tbl file whose first four bytes are not MAGIC.
+(Tests the magic-number check in validateTableFile via the public loadTable path.)
 */
 void test_meta_bad_magic(void) {
     printf("  test_meta_bad_magic ... ");
-    FILE* f = tmpfile();
+    // Use createTable to guarantee the tables/ directory exists, then remove it
+    table* dir = createTable("_mt_dir");
+    if (dir) deleteTable(dir);
+
+    FILE* f = fopen("tables/_mt_badmag.tbl", "wb");
+    assert(f != NULL);
     uint32_t buf[METALEN];
-    memset(buf, 0, sizeof(buf)); // magic = 0, which != MAGIC
+    memset(buf, 0, sizeof(buf));  // magic = 0 != MAGIC
     fwrite(buf, 4, METALEN, f);
-    rewind(f);
-
-    table t2;
-    bool ok = loadMeta(f, &t2, "bad_file");
-    assert(!ok);
-
     fclose(f);
+
+    table* t2 = malloc(sizeof(table));
+    bool ok = loadTable("_mt_badmag", t2);
+    assert(!ok);
+    free(t2);
+
+    remove("tables/_mt_badmag.tbl");
     printf("PASS\n");
 }
 
@@ -852,4 +855,273 @@ void test_tableio(void) {
     test_node_roundtrip();
     test_node_write_lifo();
     printf("=== All tableIO tests passed ===\n");
+}
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// TABLE AND TREE MANAGEMENT TESTS
+
+/* Build the full path "tables/<name>.tbl" into a heap-allocated string. */
+static char* build_tbl_path(const char* name) {
+    size_t len = strlen(TABLE_DIRECTORY) + strlen(name) + strlen(TABLE_EXTENSION) + 1;
+    char* path = malloc(len);
+    snprintf(path, len, "%s%s%s", TABLE_DIRECTORY, name, TABLE_EXTENSION);
+    return path;
+}
+
+/* Return true if the table file for <name> currently exists on disk. */
+static bool tbl_file_exists(const char* name) {
+    char* path = build_tbl_path(name);
+    FILE* f = fopen(path, "rb");
+    free(path);
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
+/*
+Close a table's file handle and free its memory without deleting the file.
+Used to test reloading an existing file fresh via loadTable.
+*/
+static void close_table_keep_file(table* t) {
+    fclose(t->source);
+    freeTable(t);  // freeTable does not call fclose, so this is safe
+}
+
+// --- createTable ---
+
+/*
+createTable must create the file at tables/<name>.tbl.
+*/
+void test_create_table_file_exists(void) {
+    printf("  test_create_table_file_exists ... ");
+    table* t = createTable("mgmt_c1");
+    assert(t != NULL);
+    assert(tbl_file_exists("mgmt_c1"));
+    deleteTable(t);
+    printf("PASS\n");
+}
+
+/*
+Every field in the returned table struct must be correctly initialised.
+*/
+void test_create_table_fields(void) {
+    printf("  test_create_table_fields ... ");
+    table* t = createTable("mgmt_c2");
+    assert(t != NULL);
+    assert(strcmp(t->name, "mgmt_c2") == 0);
+    assert(t->source    != NULL);
+    assert(t->pageSize  == PAGE_SIZE);
+    assert(t->nodeSize  == 34 + M_GLOBAL * 12);
+    assert(t->M         == M_GLOBAL);
+    assert(t->root      == 0);
+    assert(t->metalen   == METALEN * 4);
+    assert(t->pageFree  == (uint64_t)(METALEN * 4));
+    assert(t->nodeFree  == (uint64_t)(METALEN * 4)
+                         + (uint64_t)t->pageStripes * t->pageStripeLen * t->pageSize);
+    assert(t->page      == NULL);
+    assert(t->node      == NULL);
+    deleteTable(t);
+    printf("PASS\n");
+}
+
+/*
+The file written by createTable must start with the correct magic number.
+*/
+void test_create_table_valid_magic(void) {
+    printf("  test_create_table_valid_magic ... ");
+    table* t = createTable("mgmt_c3");
+    assert(t != NULL);
+    rewind(t->source);
+    uint32_t magic = 0;
+    fread(&magic, 4, 1, t->source);
+    assert(magic == MAGIC);
+    deleteTable(t);
+    printf("PASS\n");
+}
+
+// --- loadTable ---
+
+/*
+A file produced by createTable must be loadable by loadTable with matching
+metadata fields.
+*/
+void test_load_table_roundtrip(void) {
+    printf("  test_load_table_roundtrip ... ");
+    table* t = createTable("mgmt_l1");
+    assert(t != NULL);
+    close_table_keep_file(t);  // close without deleting
+
+    table* t2 = malloc(sizeof(table));
+    bool ok = loadTable("mgmt_l1", t2);
+    assert(ok);
+    assert(strcmp(t2->name, "mgmt_l1") == 0);
+    assert(t2->pageSize == PAGE_SIZE);
+    assert(t2->M        == M_GLOBAL);
+    assert(t2->metalen  == METALEN * 4);
+    deleteTable(t2);
+    printf("PASS\n");
+}
+
+/*
+loadTable must return false when the named file does not exist.
+*/
+void test_load_table_nonexistent(void) {
+    printf("  test_load_table_nonexistent ... ");
+    table t;
+    bool ok = loadTable("mgmt_no_such_table_xyz", &t);
+    assert(!ok);
+    printf("PASS\n");
+}
+
+/*
+loadTable must reject a .tbl file whose first four bytes are not MAGIC.
+*/
+void test_load_table_bad_magic(void) {
+    printf("  test_load_table_bad_magic ... ");
+    // Use createTable to ensure the tables/ directory exists, then remove it
+    table* tmp = createTable("mgmt_tmpdir");
+    if (tmp) deleteTable(tmp);
+
+    char* path = build_tbl_path("mgmt_badmag");
+    FILE* f = fopen(path, "wb");
+    assert(f != NULL);
+    uint32_t wrong = 0xDEADBEEF;
+    fwrite(&wrong, 4, 1, f);
+    fclose(f);
+    free(path);
+
+    table t;
+    bool ok = loadTable("mgmt_badmag", &t);
+    assert(!ok);
+
+    char* cleanup = build_tbl_path("mgmt_badmag");
+    remove(cleanup);
+    free(cleanup);
+    printf("PASS\n");
+}
+
+// --- deleteTable ---
+
+/*
+deleteTable must remove the file from disk.
+*/
+void test_delete_table_removes_file(void) {
+    printf("  test_delete_table_removes_file ... ");
+    table* t = createTable("mgmt_d1");
+    assert(t != NULL);
+    assert(tbl_file_exists("mgmt_d1"));
+    bool ok = deleteTable(t);
+    assert(ok);
+    assert(!tbl_file_exists("mgmt_d1"));
+    printf("PASS\n");
+}
+
+/*
+deleteTable(NULL) must return false without crashing.
+*/
+void test_delete_table_null(void) {
+    printf("  test_delete_table_null ... ");
+    bool ok = deleteTable(NULL);
+    assert(!ok);
+    printf("PASS\n");
+}
+
+/*
+After deleteTable, the same table name must no longer be loadable.
+*/
+void test_delete_table_not_reloadable(void) {
+    printf("  test_delete_table_not_reloadable ... ");
+    table* t = createTable("mgmt_d2");
+    assert(t != NULL);
+    char* saved = strdup(t->name);
+    deleteTable(t);
+
+    table t2;
+    bool ok = loadTable(saved, &t2);
+    assert(!ok);
+    free(saved);
+    printf("PASS\n");
+}
+
+// --- createTree ---
+
+/*
+createTree must return a non-NULL, properly initialised table.
+*/
+void test_create_tree_not_null(void) {
+    printf("  test_create_tree_not_null ... ");
+    table* t = createTree("mgmt_t1", 1);
+    assert(t != NULL);
+    assert(t->root != 0);
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/*
+The root node written by createTree must be a leaf with one child and the
+correct key and maxPageNumber.
+*/
+void test_create_tree_root_node(void) {
+    printf("  test_create_tree_root_node ... ");
+    table* t = createTree("mgmt_t2", 42);
+    assert(t != NULL);
+
+    node n = {0};
+    bool ok = readNode(t->root, &n, t);
+    assert(ok);
+    assert(n.isLeaf     == true);
+    assert(n.childCount == 1);
+    assert(n.keys[0]    == 42);
+    assert(n.maxPageNumber == 42);
+    assert(n.parent     == 0);
+
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/*
+The initial page pointed to by the root must be readable and have the
+pageNum and parent address passed to createTree.
+*/
+void test_create_tree_initial_page(void) {
+    printf("  test_create_tree_initial_page ... ");
+    table* t = createTree("mgmt_t3", 99);
+    assert(t != NULL);
+
+    node n = {0};
+    readNode(t->root, &n, t);
+
+    slotted_page p = {0};
+    bool ok = readPage(n.children[0], &p, t);
+    assert(ok);
+    assert(p.header.pageNum == 99);
+    assert(p.header.parent  == t->root);
+
+    free(p.slots);
+    free(p.entries);
+    deleteTree(t);
+    printf("PASS\n");
+}
+
+/* Run all table and tree management tests. */
+void test_table_mgmt(void) {
+    printf("=== Table and Tree Management Tests ===\n");
+    // createTable
+    test_create_table_file_exists();
+    test_create_table_fields();
+    test_create_table_valid_magic();
+    // loadTable
+    test_load_table_roundtrip();
+    test_load_table_nonexistent();
+    test_load_table_bad_magic();
+    // deleteTable
+    test_delete_table_removes_file();
+    test_delete_table_null();
+    test_delete_table_not_reloadable();
+    // createTree
+    test_create_tree_not_null();
+    test_create_tree_root_node();
+    test_create_tree_initial_page();
+    printf("=== All table and tree management tests passed ===\n");
 }

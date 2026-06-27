@@ -38,4 +38,7 @@ void test_page();   /* runs all of the above */
 /* TableIO tests */
 void test_tableio(); /* runs all tableIO tests */
 
+/* Table and tree management tests */
+void test_table_mgmt(); /* runs all table/tree management tests */
+
 #endif

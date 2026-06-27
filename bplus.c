@@ -115,7 +115,7 @@ table* createTree(char* tablename, uint32_t pageNum) {
 	return t;
 }
 
-table* deleteTree(table* t) {
+void deleteTree(table* t) {
 	deleteTable(t);
 }
 

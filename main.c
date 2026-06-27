@@ -140,4 +140,5 @@ int main(int argc, char** argv) {
     //testPages();
     //testPagesRandom();
     test_tableio();
+    test_table_mgmt();
 }
