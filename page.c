@@ -133,7 +133,6 @@ more complicated version:
 Currently doesn't account for full pages
 */
 bool addRecord(slotted_page* p, uint32_t offset, sp_record r) {
-	printf("Add size: %d\n", r.size);
 	if (!hasSpace(p, r.size)) {
 		printf("Tried to add record to page %d but it was full\n", p->header.pageNum);
 		return false;

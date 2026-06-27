@@ -141,5 +141,5 @@ int main(int argc, char** argv) {
     //testPagesRandom();
     test_tableio();
     test_table_mgmt();
-    test_btree_full_roundtrip();
+    test_btree();
 }

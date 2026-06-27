@@ -515,7 +515,7 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 	int entryOffset = 0;
 	jump(address + t->pageSize, t); // navigating to 1 byte after the end of the page
 	if(!p->entries) {
-		p->entries = malloc(calcEntriesSize(t));
+		p->entries = calloc(1, calcEntriesSize(t));
 	}
 	for (int i = 0; i < p->header.numEntries; i++) {
 		// entry: <--  data | size (4B) | type (2B)  <--
@@ -821,6 +821,7 @@ void commit(table* t) {
 		uint64_t addr = t->delete.stack[--t->delete.count].address;
 		deleteObject(addr, t);
 	}
+	writeMeta(t->source, t);
 }
 
 /*

@@ -213,7 +213,6 @@ uint64_t findPage(uint32_t pageNum, table* t) {
         printf("Attempted to find page in invalid tree\n");
         return 0; // input was an invalid tree
     }
-	if (pageNum > t->node->maxPageNumber) return 0;
     // Compare pageNum against keys in node
     while (!t->node->isLeaf) {
         int found = 0;
@@ -527,6 +526,13 @@ void addPage(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, tab
 		node* new = balanceTreeAdd(n, nodeAddr, &newNodeAddr, t);
 		if (p->header.pageNum > n->maxPageNumber) {
 			insertPageIntoChildren(new, newNodeAddr, p, pageAddr, t);
+			// Propagate the new max up to the root so findPage stays accurate
+			if (p->header.pageNum > t->node->maxPageNumber) {
+				node root;
+				readNode(t->root, &root, t);
+				root.maxPageNumber = p->header.pageNum;
+				markNode(t->root, &root, t);
+			}
 			return;
 		}
 	}
