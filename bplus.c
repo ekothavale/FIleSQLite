@@ -57,7 +57,7 @@ which is implemented in another file.
 creates a new root node
 */
 node* newRoot(node* child, uint64_t childAddr, table* t) {
-	node* new = malloc(t->nodeSize);
+	node* new = calloc(1, sizeof(node));
 	new->childCount = 1;
 	new->children[0] = childAddr;
 	new->parent = 0;
@@ -545,9 +545,9 @@ uint64_t mergeNode(node* n, uint64_t addr, table* t) {
 	printf("Merging nodes\n");
 	node* survivor = n;
 	uint64_t survAddr = addr;
-	node* source = malloc(t->nodeSize);
+	node* source = calloc(1, sizeof(node));
 	uint64_t sourceAddr;
-	node* prev = malloc(t->nodeSize);
+	node* prev = calloc(1, sizeof(node));
 	// some operations differ whether n is a leaf node or not
 	if (n->isLeaf) {
 		// determine source and survivor
