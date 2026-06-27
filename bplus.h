@@ -47,20 +47,20 @@ table* createTree(char* tablename, uint32_t pageNum);
 void deleteTree(table* t);
 
 
-uint64_t findPage(uint32_t pageNum, table* t);
-uint64_t findAndInsert(uint32_t pageNum, table* t);
+address findPage(uint32_t pageNum, table* t);
+address findAndInsert(uint32_t pageNum, table* t);
 bool findAndDelete(uint32_t pageNum, table* tree);
-node* newNode(bool isLeaf, uint64_t parent);
+node* newNode(bool isLeaf, address parent);
 uint32_t findNextPageNum(slotted_page* p);
 void freePage(slotted_page* p);
 
 // Insertion functions
-void insertPageIntoChildren(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, table* t);
-node* splitNode(node* n, uint64_t address, uint64_t* newAddrOut, table* t);
-void addPage(node* n, uint64_t nodeAddr, slotted_page* p, uint64_t pageAddr, table* t);
-bool deletePage(node* n, uint64_t addr, uint32_t pageNum, table* t);
-node* balanceTreeAdd(node* n, uint64_t address, uint64_t* newAddrOut, table* t);
-uint64_t balanceTreeDelete(node* n, uint64_t addr, table* t);
+void insertPageIntoChildren(node* n, address nodeAddr, slotted_page* p, address pageAddr, table* t);
+node* splitNode(node* n, address addr, address* newAddrOut, table* t);
+void addPage(node* n, address nodeAddr, slotted_page* p, address pageAddr, table* t);
+bool deletePage(node* n, address addr, uint32_t pageNum, table* t);
+node* balanceTreeAdd(node* n, address addr, address* newAddrOut, table* t);
+address balanceTreeDelete(node* n, address addr, table* t);
 bool insertTuple(int tuple, u_int32_t pageNum, tree* t);
 bool writeVal(slotted_page* p, int tuple);
 

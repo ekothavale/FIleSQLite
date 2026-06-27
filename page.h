@@ -46,7 +46,7 @@ static const char DATATYPE_CODES[] = {'i', 's', 'd', 't'};
 #define NUM_DATATYPES 4
 
 typedef struct header {
-	uint64_t parent;
+	address parent;
 	uint32_t pageNum;
 	uint32_t usedData; // total amount of data used by records
 	uint32_t numRecords; // number of records in array at a time

@@ -53,17 +53,17 @@ pageSize/nodeSize/pageFree/nodeFree/metalen fields.
 */
 void generateTestBPlusTree(table* t) {
     // Allocate disk addresses for the two leaf nodes and the root
-    uint64_t leftAddr  = allocNode(t);
-    uint64_t rightAddr = allocNode(t);
-    uint64_t rootAddr  = allocNode(t);
+    address leftAddr  = allocNode(t);
+    address rightAddr = allocNode(t);
+    address rootAddr  = allocNode(t);
 
     // Allocate disk addresses for the four pages
-    uint64_t pageAddrs[4];
+    address pageAddrs[4];
     for (int i = 0; i < 4; i++) pageAddrs[i] = allocPage(t);
 
     // Write pages to disk
     uint32_t pageNums[4] = {1, 51, 101, 151};
-    uint64_t pageParents[4] = {leftAddr, leftAddr, rightAddr, rightAddr};
+    address pageParents[4] = {leftAddr, leftAddr, rightAddr, rightAddr};
     for (int i = 0; i < 4; i++) {
         slotted_page p;
         memset(&p, 0, sizeof(p));
@@ -167,7 +167,7 @@ void printNode(node* n) {
 Recursively reads nodes from disk and pretty-prints the tree indented by level.
 For leaf nodes also reads and prints the page number of each child page.
 */
-static void printTreeHelper(uint64_t addr, int level, table* t) {
+static void printTreeHelper(address addr, int level, table* t) {
     if (addr == 0) return;
 
     node n;
@@ -220,7 +220,7 @@ Recursively reads nodes and pages from disk, checking that every node's
 parent field matches the address of the node that pointed to it, and that
 every page's parent field matches the address of its leaf node.
 */
-static bool checkTreePointersHelper(uint64_t addr, uint64_t expectedParent,
+static bool checkTreePointersHelper(address addr, address expectedParent,
                                     table* t) {
     if (addr == 0) return true;
 

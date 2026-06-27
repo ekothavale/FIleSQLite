@@ -31,16 +31,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 typedef struct page_write_order {
 	slotted_page* page;
-	uint64_t address;
+	address address;
 }page_write_order;
 
 typedef struct node_write_order {
 	node* node;
-	uint64_t address;
+	address address;
 }node_write_order;
 
 typedef struct delete_order {
-	uint64_t address;
+	address address;
 }delete_order;
 
 typedef struct page_stack {
@@ -67,10 +67,10 @@ typedef struct table {
 	delete_stack delete; // stack of objects to be deleted
 	FILE* source; // physical file
 	char* name; // name of table (corresponding file path is tables/[name].tbl)
-	u_int64_t cursor; // current address
-	u_int64_t pageFree; // address of next free page space
-	u_int64_t nodeFree; // address of next free node space
-	u_int64_t root; // pointer to the root of the tree
+	address cursor; // current address
+	address pageFree; // address of next free page space
+	address nodeFree; // address of next free node space
+	address root; // pointer to the root of the tree
 	slotted_page* page; // pointer to current object if it's a page
 	node* node; // pointer to current object if it's a node
 	int metalen; // size of the metadata in the table file in bytes
@@ -91,27 +91,27 @@ table* createTable(char* tablename);
 bool loadTable(char* tablename, table* t);
 bool deleteTable(table* t);
 // loading pages
-bool readPage(uint64_t address, slotted_page* p, table* t);
-bool loadPage(uint64_t address, table* t);
+bool readPage(address address, slotted_page* p, table* t);
+bool loadPage(address address, table* t);
 // loading nodes
-bool readNode(uint64_t address, node* n, table* t);
-bool loadNode(uint64_t address, table* t);
+bool readNode(address address, node* n, table* t);
+bool loadNode(address address, table* t);
 void loadParent(node* n, node* parent, table* t);
 void loadPrev(node* n, node* prev, table* t);
 void loadNext(node* n, node* next, table* t);
 // writing
 void writeNextPage(table* t);
 void writeNextNode(table* t);
-void writeNewTree(slotted_page* p, uint64_t pageAddr, node* n, uint64_t nodeAddr, table* t);
+void writeNewTree(slotted_page* p, address pageAddr, node* n, address nodeAddr, table* t);
 // marking dirty objects
-void markPage(uint64_t address, slotted_page* p, table* t);
-void markNode(uint64_t address, node* n, table* t);
-void markDelete(uint64_t address, table* t); // can be used for any object type
+void markPage(address address, slotted_page* p, table* t);
+void markNode(address address, node* n, table* t);
+void markDelete(address address, table* t); // can be used for any object type
 void commit(table* t);
 // allocate new addresses
 void newStripe(table* t);
-uint64_t allocNode(table* t);
-uint64_t allocPage(table* t);
+address allocNode(table* t);
+address allocPage(table* t);
 // file-level garbage collection (not yet implemented)
 void condenseStripe(table* t);
 void condenseAll(table* t);

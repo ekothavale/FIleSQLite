@@ -36,7 +36,6 @@ TODO:
  - MarkDelete
  - Garbage collection
  - Change array shifting to address
- - change t->nodeSize to sizeof(node) when appropriate since nodeSize represents size on disk, not size in memory
 */
 
 #include "tableIO.h"
@@ -63,7 +62,7 @@ static size_t calcEntriesSize(table* t) {
 /*
 jumps to a specific address in the table's source
 */
-static bool jump(uint64_t address, table* t) {
+static bool jump(address address, table* t) {
 	if (fseek(t->source, address, SEEK_SET) == 0) {
 		t->cursor = address;
 		return true;
@@ -446,21 +445,21 @@ After first draft of back end is done the stacks should be changed to hashmaps
 searches the table's page dirty stack for a page at the given address
 returns the corresponding write order if found else returns NULL
 */
-page_write_order* searchPageStack(uint64_t address, table* t) {
+page_write_order* searchPageStack(address address, table* t) {
 	for (int i = 1; i <= t->pageDirty.count; i++) {
 		if ((t->pageDirty.stack + t->pageDirty.count - i)->address == address) return t->pageDirty.stack + t->pageDirty.count - i;
 	}
 	return NULL;
 }
 
-node_write_order* searchNodeStack(uint64_t address, table* t) {
+node_write_order* searchNodeStack(address address, table* t) {
 	for (int i = 1; i <= t->nodeDirty.count; i++) {
 		if ((t->nodeDirty.stack + t->nodeDirty.count - i)->address == address) return t->nodeDirty.stack + t->nodeDirty.count - i;
 	}
 	return NULL;
 }
 
-delete_order* searchDeleteStack(uint64_t address, table* t) {
+delete_order* searchDeleteStack(address address, table* t) {
 	for (int i = 1; i <= t->delete.count; i++) {
 		if ((t->delete.stack + t->delete.count - i)->address == address) return t->delete.stack + t->delete.count - i;
 	}
@@ -471,19 +470,19 @@ delete_order* searchDeleteStack(uint64_t address, table* t) {
 reads a page from an address into a chunk of memory
 @param: p - a slotted page to load the data from disk into
 */
-bool readPage(uint64_t address, slotted_page* p, table* t) {
+bool readPage(address addr, slotted_page* p, table* t) {
 	// checking write stack
-	page_write_order* search = searchPageStack(address, t);
+	page_write_order* search = searchPageStack(addr, t);
 	if (search) {
 		copyPage(search->page, p);
 		return true;
 	}
 
 	// otherwise read from disk
-	uint64_t prev = t->cursor;
-	jump(address, t);
+	address prev = t->cursor;
+	jump(addr, t);
 	if (readByte(0, t) != 0) {
-		printf("Error: attempted to read page at address %llu but page was invalid\n", address);
+		printf("Error: attempted to read page at address %llu but page was invalid\n", addr);
 		return false;
 	}
 	if (p == NULL) {
@@ -513,7 +512,7 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 	}
 	// records
 	int entryOffset = 0;
-	jump(address + t->pageSize, t); // navigating to 1 byte after the end of the page
+	jump(addr + t->pageSize, t); // navigating to 1 byte after the end of the page
 	if(!p->entries) {
 		p->entries = calloc(1, calcEntriesSize(t));
 	}
@@ -540,7 +539,7 @@ bool readPage(uint64_t address, slotted_page* p, table* t) {
 /*
 moves a table's cursor to a page and loads it
 */
-bool loadPage(uint64_t address, table* t) {
+bool loadPage(address address, table* t) {
 	if (!t->page) t->page = malloc(sizeof(slotted_page));
 	jump(address, t);
 	return readPage(address, t->page, t);
@@ -550,20 +549,20 @@ bool loadPage(uint64_t address, table* t) {
 reads a page from an address into a chunk of memory
 @param: p - a slotted page to load the data from disk into
 */
-bool readNode(uint64_t address, node* n, table* t) {
+bool readNode(address addr, node* n, table* t) {
 	// checking write stack
-	node_write_order* search = searchNodeStack(address, t);
+	node_write_order* search = searchNodeStack(addr, t);
 	if (search) {
 		copyNode(search->node, n);
 		return true;
 	}
 
 	// otherwise search disk
-	uint64_t prev = t->cursor;
-	jump(address, t);
+	address prev = t->cursor;
+	jump(addr, t);
 
 	if (readByte(0, t) != 1) {
-		printf("Error: attempted to read page at address %llu but page was invalid\n", address);
+		printf("Error: attempted to read page at address %llu but page was invalid\n", addr);
 		return false;
 	}
 	if (n == NULL) {
@@ -603,7 +602,7 @@ bool readNode(uint64_t address, node* n, table* t) {
 moves a table's cursor to a node and loads it
 assumes the current location of the cursor is a valid node
 */
-bool loadNode(uint64_t address, table* t) {
+bool loadNode(address address, table* t) {
 	if (!t->node) t->node = malloc(sizeof(node));
 	jump(address, t);
 	return readNode(address, t->node, t);
@@ -618,7 +617,7 @@ page layout:
 
 REVERSE ORDER IN WHICH RECORDS ARE ADDED SINCE WE NEED TO READ THE ARRAY BACKWARDS
 */
-static void writePage(slotted_page* p, uint64_t address, table* t) {
+static void writePage(slotted_page* p, address address, table* t) {
 	// setup
 	jump(address, t);
 	char* buffer = calloc(t->pageSize, 1);
@@ -679,7 +678,7 @@ void writeNextPage(table* t) { // all pages will be looked up in the dirty queue
 /*
 writes the given node to the given address
 */
-static void writeNode(node* n, uint64_t address, table* t) {
+static void writeNode(node* n, address address, table* t) {
 	// setup
 	jump(address, t);
 	char* buffer = calloc(t->nodeSize, 1);
@@ -722,7 +721,7 @@ void writeNextNode(table* t) {
 writes a new tree consisting of one empty page and one empty node directly to a table file
 should be used only on a new file
 */
-void writeNewTree(slotted_page* p, uint64_t pageAddr, node* n, uint64_t nodeAddr, table* t) {
+void writeNewTree(slotted_page* p, address pageAddr, node* n, address nodeAddr, table* t) {
 	writePage(p, pageAddr, t);
 	writeNode(n, nodeAddr, t);
 }
@@ -741,7 +740,7 @@ void loadNext(node* n, node* next, table* t) {
 }
 
 // mark page dirty
-void markPage(uint64_t address, slotted_page* p, table* t) {
+void markPage(address address, slotted_page* p, table* t) {
     page_write_order* existing = searchPageStack(address, t);
     if (existing) {
         copyPage(p, existing->page);
@@ -762,7 +761,7 @@ void markPage(uint64_t address, slotted_page* p, table* t) {
 }
 
 // mark node dirty
-void markNode(uint64_t address, node* n, table* t) {
+void markNode(address address, node* n, table* t) {
     node_write_order* existing = searchNodeStack(address, t);
     if (existing) {
         copyNode(n, existing->node);
@@ -784,7 +783,7 @@ void markNode(uint64_t address, node* n, table* t) {
 
 // NEED TO CREATE NEW STACKS FOR DELETING PAGES AND NODES
 // OBJECTS SHOULD INITIALLY BE MARKED FOR DELETION
-void markDelete(uint64_t address, table* t) {
+void markDelete(address address, table* t) {
 	if (searchDeleteStack(address, t)) return; // skip if already in stack
 	if (t->delete.count == t->delete.size) {
 		uint32_t newSize = t->delete.size * DIRTY_STACK_GROWTH_RATE;
@@ -799,7 +798,7 @@ void markDelete(uint64_t address, table* t) {
 }
 
 // delete object
-void deleteObject(uint64_t address, table* t) {
+void deleteObject(address address, table* t) {
 	char code = 2; // a two in the first byte of an obejct means it's garbage
 	jump(address, t);
 	fwrite(&code, 1, 1, t->source);
@@ -818,7 +817,7 @@ void commit(table* t) {
 		writeNextNode(t);
 	}
 	while (t->delete.count > 0) {
-		uint64_t addr = t->delete.stack[--t->delete.count].address;
+		address addr = t->delete.stack[--t->delete.count].address;
 		deleteObject(addr, t);
 	}
 	writeMeta(t->source, t);
@@ -850,8 +849,8 @@ static void newNodeStripe(table* t) {
 	t->nodeStripes++;
 }
 
-uint64_t allocPage(table* t) {
-	uint64_t out = t->pageFree;
+address allocPage(table* t) {
+	address out = t->pageFree;
 	if (t->pageFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize) {
 		newPageStripe(t);
 	}
@@ -859,8 +858,8 @@ uint64_t allocPage(table* t) {
 	return out;
 }
 
-uint64_t allocNode(table* t) {
-	uint64_t out = t->nodeFree;
+address allocNode(table* t) {
+	address out = t->nodeFree;
 	if (t->nodeFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize) {
 		newNodeStripe(t);
 	}
@@ -875,10 +874,10 @@ moves a node from the source disk address to the dest disk address
 writes directly to disk without using the write queue
 trusts that both addresses given are correct
 */
-static void moveNode(uint64_t source, uint64_t dest, table* t) {
+static void moveNode(address source, address dest, table* t) {
 	slotted_page* p = t->page;
 	node* n = t->node;
-	uint64_t addr = t->cursor;
+	address addr = t->cursor;
 	loadNode(source, t);
 	writeNode(t->node, dest, t);
 	jump(addr, t);
@@ -891,10 +890,10 @@ moves a page from the source disk address to the dest disk address
 writes directly to disk without using the write queue
 trusts that both addresses given are correct
 */
-static void movePage(uint64_t source, uint64_t dest, table* t) {
+static void movePage(address source, address dest, table* t) {
 	slotted_page* p = t->page;
 	node* n = t->node;
-	uint64_t addr = t->cursor;
+	address addr = t->cursor;
 	loadPage(source, t);
 	writePage(t->page, dest, t);
 	jump(addr, t);

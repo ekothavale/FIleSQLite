@@ -274,7 +274,7 @@ static void free_test_table(table* t) {
 }
 
 /* Build a page with the given pageNum and parent, zeroed slot/entry arrays. */
-static slotted_page* make_io_page(uint32_t pageNum, uint64_t parent) {
+static slotted_page* make_io_page(uint32_t pageNum, address parent) {
     slotted_page* p = calloc(1, sizeof(slotted_page));
     p->header.pageNum    = pageNum;
     p->header.parent     = parent;
@@ -444,7 +444,7 @@ void test_mark_page_growth(void) {
 
     slotted_page* p = make_io_page(1, 0);
     for (int i = 0; i < 6; i++)         // 6 > initial size of 4
-        markPage((uint64_t)(1000 + i), p, &t);
+        markPage((address)(1000 + i), p, &t);
 
     assert(t.pageDirty.count == 6);
     assert(t.pageDirty.size  >  4);     // stack was reallocated
@@ -501,7 +501,7 @@ void test_mark_node_growth(void) {
 
     node n = {0};
     for (int i = 0; i < 5; i++)
-        markNode((uint64_t)(2000 + i), &n, &t);
+        markNode((address)(2000 + i), &n, &t);
 
     assert(t.nodeDirty.count == 5);
     assert(t.nodeDirty.size  >  3);
@@ -519,11 +519,11 @@ by exactly pageSize.
 void test_alloc_page(void) {
     printf("  test_alloc_page ... ");
     table t = make_test_table();
-    uint64_t base = t.pageFree;
+    address base = t.pageFree;
 
-    uint64_t a1 = allocPage(&t);
-    uint64_t a2 = allocPage(&t);
-    uint64_t a3 = allocPage(&t);
+    address a1 = allocPage(&t);
+    address a2 = allocPage(&t);
+    address a3 = allocPage(&t);
 
     assert(a1 == base);
     assert(a2 == base + TEST_PAGE_SIZE);
@@ -548,7 +548,7 @@ void test_alloc_page_stripe(void) {
     t.pageFree = boundary;
     int old_stripes = t.pageStripes;
 
-    uint64_t addr = allocPage(&t);
+    address addr = allocPage(&t);
 
     assert(addr           == boundary);
     assert(t.pageStripes  == old_stripes + 1);
@@ -571,7 +571,7 @@ void test_alloc_page_after_stripe(void) {
     t.pageFree = boundary;
 
     allocPage(&t);                       // crosses boundary, pageStripes++
-    uint64_t next = allocPage(&t);       // should be boundary + pageSize
+    address next = allocPage(&t);       // should be boundary + pageSize
 
     assert(next == boundary + TEST_PAGE_SIZE);
 
@@ -582,11 +582,11 @@ void test_alloc_page_after_stripe(void) {
 void test_alloc_node(void) {
     printf("  test_alloc_node ... ");
     table t = make_test_table();
-    uint64_t base = t.nodeFree;
+    address base = t.nodeFree;
 
-    uint64_t a1 = allocNode(&t);
-    uint64_t a2 = allocNode(&t);
-    uint64_t a3 = allocNode(&t);
+    address a1 = allocNode(&t);
+    address a2 = allocNode(&t);
+    address a3 = allocNode(&t);
 
     assert(a1 == base);
     assert(a2 == base + TEST_NODE_SIZE);
@@ -606,7 +606,7 @@ void test_alloc_node_stripe(void) {
     t.nodeFree = boundary;
     int old_stripes = t.nodeStripes;
 
-    uint64_t addr = allocNode(&t);
+    address addr = allocNode(&t);
 
     assert(addr          == boundary);
     assert(t.nodeStripes == old_stripes + 1);
@@ -625,7 +625,7 @@ void test_alloc_node_after_stripe(void) {
     t.nodeFree = boundary;
 
     allocNode(&t);
-    uint64_t next = allocNode(&t);
+    address next = allocNode(&t);
 
     assert(next == boundary + TEST_NODE_SIZE);
 
@@ -664,7 +664,7 @@ void test_page_roundtrip(void) {
     p->header.maxEntries = 10;
     p->header.maxSlots   = 5;
 
-    uint64_t addr = allocPage(&t);
+    address addr = allocPage(&t);
     markPage(addr, p, &t);
     writeNextPage(&t);
     assert(t.pageDirty.count == 0);
@@ -701,9 +701,9 @@ void test_page_write_lifo(void) {
     slotted_page* p1 = make_io_page(1, 0);
     slotted_page* p2 = make_io_page(2, 0);
     slotted_page* p3 = make_io_page(3, 0);
-    uint64_t a1 = allocPage(&t);
-    uint64_t a2 = allocPage(&t);
-    uint64_t a3 = allocPage(&t);
+    address a1 = allocPage(&t);
+    address a2 = allocPage(&t);
+    address a3 = allocPage(&t);
 
     markPage(a1, p1, &t);
     markPage(a2, p2, &t);
@@ -766,7 +766,7 @@ void test_node_roundtrip(void) {
     n.keys[1]       = 20;
     n.keys[2]       = 30;
 
-    uint64_t addr = allocNode(&t);
+    address addr = allocNode(&t);
     markNode(addr, &n, &t);
     writeNextNode(&t);
     assert(t.nodeDirty.count == 0);
@@ -801,9 +801,9 @@ void test_node_write_lifo(void) {
     node n1 = {0}; n1.childCount = 1; n1.maxPageNumber = 10;
     node n2 = {0}; n2.childCount = 2; n2.maxPageNumber = 20;
     node n3 = {0}; n3.childCount = 3; n3.maxPageNumber = 30;
-    uint64_t a1 = allocNode(&t);
-    uint64_t a2 = allocNode(&t);
-    uint64_t a3 = allocNode(&t);
+    address a1 = allocNode(&t);
+    address a2 = allocNode(&t);
+    address a3 = allocNode(&t);
 
     markNode(a1, &n1, &t);
     markNode(a2, &n2, &t);
@@ -916,9 +916,9 @@ void test_create_table_fields(void) {
     assert(t->M         == M_GLOBAL);
     assert(t->root      == 0);
     assert(t->metalen   == METALEN * 4);
-    assert(t->pageFree  == (uint64_t)(METALEN * 4));
-    assert(t->nodeFree  == (uint64_t)(METALEN * 4)
-                         + (uint64_t)t->pageStripes * t->pageStripeLen * t->pageSize);
+    assert(t->pageFree  == (address)(METALEN * 4));
+    assert(t->nodeFree  == (address)(METALEN * 4)
+                         + (address)t->pageStripes * t->pageStripeLen * t->pageSize);
     assert(t->page      == NULL);
     assert(t->node      == NULL);
     deleteTable(t);
@@ -1199,7 +1199,7 @@ void test_btree_record_add(void) {
     table* t = createTree("bt_ra", 1);
     assert(t != NULL);
 
-    uint64_t addr = findPage(1, t);
+    address addr = findPage(1, t);
     assert(addr != 0);
 
     slotted_page p = {0};
@@ -1225,7 +1225,7 @@ void test_btree_record_update(void) {
     table* t = createTree("bt_ru", 1);
     assert(t != NULL);
 
-    uint64_t addr = findPage(1, t);
+    address addr = findPage(1, t);
     slotted_page p = {0};
     readPage(addr, &p, t);
 
@@ -1251,7 +1251,7 @@ void test_btree_record_delete(void) {
     table* t = createTree("bt_rd", 1);
     assert(t != NULL);
 
-    uint64_t addr = findPage(1, t);
+    address addr = findPage(1, t);
     slotted_page p = {0};
     readPage(addr, &p, t);
 
@@ -1305,7 +1305,7 @@ void test_btree_commit_persist(void) {
     table* t = createTree("bt_cp", 1);
     assert(t != NULL);
 
-    uint64_t addr = findPage(1, t);
+    address addr = findPage(1, t);
     assert(addr != 0);
 
     slotted_page p = {0};
@@ -1321,7 +1321,7 @@ void test_btree_commit_persist(void) {
 
     table* t2 = calloc(1, sizeof(table));
     assert(loadTable("bt_cp", t2));
-    uint64_t addr2 = findPage(1, t2);
+    address addr2 = findPage(1, t2);
     assert(addr2 != 0);
 
     slotted_page p2 = {0};
@@ -1342,7 +1342,7 @@ void test_btree_commit_delete_persist(void) {
     table* t = createTree("bt_cdp", 1);
     assert(t != NULL);
 
-    uint64_t pageAddr = findPage(1, t);
+    address pageAddr = findPage(1, t);
     assert(pageAddr != 0);
 
     markDelete(pageAddr, t);
@@ -1466,8 +1466,8 @@ void test_btree_split_linked_list(void) {
 
     node root = {0};
     readNode(t->root, &root, t);
-    uint64_t leftAddr  = root.children[0];
-    uint64_t rightAddr = root.children[1];
+    address leftAddr  = root.children[0];
+    address rightAddr = root.children[1];
 
     node left = {0}, right = {0};
     readNode(leftAddr,  &left,  t);
@@ -1602,7 +1602,7 @@ void test_btree_full_roundtrip(void) {
 
     insert_pages(t, 2, 4);  // pages 1..5
 
-    uint64_t addr = findPage(1, t);
+    address addr = findPage(1, t);
     assert(addr != 0);
     slotted_page p = {0};
     readPage(addr, &p, t);
@@ -1620,7 +1620,7 @@ void test_btree_full_roundtrip(void) {
     for (uint32_t i = 1; i <= 5; i++)
         assert(findPage(i, t2) != 0);
 
-    uint64_t addr2 = findPage(1, t2);
+    address addr2 = findPage(1, t2);
     slotted_page p2 = {0};
     assert(readPage(addr2, &p2, t2));
     assert(p2.header.numRecords == 1);

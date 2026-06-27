@@ -60,5 +60,7 @@ typedef struct TokenizedQuery {
     int capacity;
 } TokenizedQuery;
 
+typedef uint64_t address;
+
 #endif // COMMON_H
 
