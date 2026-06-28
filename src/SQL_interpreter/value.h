@@ -16,29 +16,22 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef DEBUG_H
-#define DEBUG_H
+#ifndef clox_value_h
+#define clox_value_h
 
-#include <stdio.h>
 #include "common.h"
-#include "chunk.h"
-#include "storage_engine/page.h"
-#include "storage_engine/bplus.h"
 
-void printTokenizedQuery(TokenizedQuery* tquery);
-void printChunk(Chunk* chunk);
-void disassembleChunk(Chunk* chunk, const char* name);
-int disassembleInstruction(Chunk* chunk, int offset);
+typedef double Value;
 
-void generateTestBPlusTree(table* t);
-void printIntArray(int* arr, int length);
-void printNode(node* n);
-void printTree(table* t);
-bool checkTreePointers(table* t);
+typedef struct ValueArray {
+	int capacity;
+	int count;
+	Value* values;
+} ValueArray;
 
-/* Slotted-page pretty-printers (types defined in page.h) */
-void printEntry(entry* e);
-void printSPSlot(sp_slot* s);
-void printSlottedPage(slotted_page* p);
+void initValueArray(ValueArray* array);
+void writeValueArray(ValueArray* array, Value value);
+void freeValueArray(ValueArray* array);
+void printValue(Value value);
 
-#endif // DEBUG_H
+#endif

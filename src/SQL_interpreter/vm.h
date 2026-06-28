@@ -16,12 +16,31 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef SCANNER_H
-#define SCANNER_H
+#ifndef VM_H
+#define VM_H
 
-#include "common.h"
-#include "memory.h"
+#include "chunk.h"
+#include "value.h"
 
-TokenizedQuery* scan(char* input);
+#define STACK_MAX 256
 
-#endif // SCANNER_H
+typedef struct VM {
+	Chunk* chunk;
+	uint8_t* ip; // instruction pointer
+	Value stack[STACK_MAX]; // where values are stored
+	Value* stackTop;
+} VM;
+
+typedef enum {
+	INTERPRET_OK,
+	INTERPRET_COMPILE_ERROR,
+	INTERPRET_RUNTIME_ERROR,
+} interpret_result;
+
+void initVM();
+void freeVM();
+interpret_result interpret(Chunk* chunk);
+void push(Value value);
+Value pop();
+
+#endif // VM_H

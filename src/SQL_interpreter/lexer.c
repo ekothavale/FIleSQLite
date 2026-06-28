@@ -19,7 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 // NOTE: function scanNumber assumes max length of number literal is 255 characters
 // NOTE: function parse assumes max length of query is 2048 tokens
 
-#include "scanner.h"
+#include "lexer.h"
 
 typedef struct scanner {
     char query[2048];

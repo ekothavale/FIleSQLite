@@ -16,29 +16,12 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef DEBUG_H
-#define DEBUG_H
+#ifndef LEXER_H
+#define LEXER_H
 
-#include <stdio.h>
 #include "common.h"
-#include "chunk.h"
-#include "storage_engine/page.h"
-#include "storage_engine/bplus.h"
+#include "memory.h"
 
-void printTokenizedQuery(TokenizedQuery* tquery);
-void printChunk(Chunk* chunk);
-void disassembleChunk(Chunk* chunk, const char* name);
-int disassembleInstruction(Chunk* chunk, int offset);
+TokenizedQuery* scan(char* input);
 
-void generateTestBPlusTree(table* t);
-void printIntArray(int* arr, int length);
-void printNode(node* n);
-void printTree(table* t);
-bool checkTreePointers(table* t);
-
-/* Slotted-page pretty-printers (types defined in page.h) */
-void printEntry(entry* e);
-void printSPSlot(sp_slot* s);
-void printSlottedPage(slotted_page* p);
-
-#endif // DEBUG_H
+#endif // SCANNER_H

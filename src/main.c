@@ -18,7 +18,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "common.h"
 #include "debug.h"
-#include "SQL_interpreter/scanner.h"
+#include "SQL_interpreter/lexer.h"
 #include "SQL_interpreter/chunk.h"
 #include "storage_engine/bplus.h"
 #include "storage_engine/testing.h"
@@ -32,42 +32,6 @@ void execute(char* input) {
     //run(bytecode);
 }
 
-/*void testInsertion() {
-    // B+ Tree Testing
-    // current issue: there should be a way to find where a page should go, that way new entries can be put there
-    tree* t = newTree(100);
-    //printTree(q, 1);
-    int random[] = {3, 16, 7, 20, 90, 101, 88, 2, 76, 32, 10, 66, 71, 45, 22, 91};
-    for (int j = 0; j < 16; j++) {
-        int i = random[j];
-        printf("I = %d\n", i);
-        findAndInsert(i, t);
-        printTree(t);
-        //printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
-        //printTree(q, 1);
-    }
-    printTree(t);
-    checkTreePointers(t);
-    freeTree(t);
-}
-
-void testDeletion() {
-    tree* q = newTree(1);
-    for (int i = 19; i > 1; i-=2) {
-        findAndInsert(i, q);
-    }
-    printTree(q);
-    checkTreePointers(q);
-    for (int i = 1; i < 20; i+=2) {
-        bool d = findAndDelete(i, q);
-        printf("Page %d deleted ", i);
-        printf(d ? "successfully\n" : "unsuccessfully\n");
-        printTree(q);
-    }
-    printTree(q);
-    checkTreePointers(q);
-    freeTree(q);
-}*/
 
 static entry makeEntry(const char* str, datatype t) {
     entry e;
@@ -144,11 +108,11 @@ void testTree() {
 }
 
 int main(int argc, char** argv) {
-    //testInsertion();
-    //testDeletion();
     //testPages();
     //testPagesRandom();
-    test_tableio();
-    test_table_mgmt();
-    test_btree();
+    //test_tableio();
+    //test_table_mgmt();
+    //test_btree();
+
+    writeChunk(&chunk, OP_NEGATE, 123);
 }

@@ -21,22 +21,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "common.h"
 #include "memory.h"
+#include "value.h"
 
 typedef struct Chunk {
-    uint8_t* code;
-    int capacity;
-    int count;
+    uint8_t* code; // pointer to the start of bytecode dynamic array
+    int capacity; // bytecode dynamic array size
+    int count; // bytecode dynamic array count (grow when count >= capacity)
+    int* lines; // line numbers corresponding to each opcode
+    ValueArray constants;
 } Chunk;
 
 // bytecode
 typedef enum opcode {
     OP_SELECT,
-    OP_INSERT // OP_INSERT <page_num, int> <record, int>
+    OP_INSERT,
+    OP_CONSTANT,
+    OP_ADD,
+    OP_SUBTRACT,
+    OP_MULTIPLY,
+    OP_DIVIDE,
+    OP_NEGATE,
+    OP_RETURN,
 }opcode;
 
 void initChunk(Chunk* chunk);
-void writeChunk(Chunk* chunk, uint8_t byte);
+void writeChunk(Chunk* chunk, uint8_t byte, int line);
 void freeChunk(Chunk* chunk);
+int addConstant(Chunk* chunk, Value value);
 
 
 #endif // CHUNK_H

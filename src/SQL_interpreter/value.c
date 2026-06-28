@@ -16,29 +16,35 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef DEBUG_H
-#define DEBUG_H
-
 #include <stdio.h>
-#include "common.h"
-#include "chunk.h"
-#include "storage_engine/page.h"
-#include "storage_engine/bplus.h"
 
-void printTokenizedQuery(TokenizedQuery* tquery);
-void printChunk(Chunk* chunk);
-void disassembleChunk(Chunk* chunk, const char* name);
-int disassembleInstruction(Chunk* chunk, int offset);
+#include "memory.h"
+#include "value.h"
 
-void generateTestBPlusTree(table* t);
-void printIntArray(int* arr, int length);
-void printNode(node* n);
-void printTree(table* t);
-bool checkTreePointers(table* t);
+void initValueArray(ValueArray* array) {
+	array->values = NULL;
+	array->capacity = 0;
+	array->count = 0;
+}
 
-/* Slotted-page pretty-printers (types defined in page.h) */
-void printEntry(entry* e);
-void printSPSlot(sp_slot* s);
-void printSlottedPage(slotted_page* p);
+void writeValueArray(ValueArray* array, Value value) {
+	// if array is full, grow the array
+	if (array->capacity < array->count + 1) {
+		int oldCapacity = array->capacity;
+		array->capacity = GROW_CAPACITY(oldCapacity);
+		array->values = GROW_ARRAY(Value, array->values, oldCapacity, array->capacity);
+	}
 
-#endif // DEBUG_H
+	// write to array
+	array->values[array->count] = value;
+	array->count++;
+}
+
+void freeValueArray(ValueArray* array) {
+	FREE_ARRAY(Value, array->values, array->capacity);
+	initValueArray(array);
+}
+
+void printValue(Value value) {
+	print("%g", value);
+}
