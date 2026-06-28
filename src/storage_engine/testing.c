@@ -1166,7 +1166,7 @@ static void free_page_contents(slotted_page* p) {
 }
 
 /* Return a tree pre-loaded with pages 1..5 and one split already performed. */
-static table* create_split_tree(const char* name) {
+static table* create_split_tree(char* name) {
     table* t = createTree(name, 1);
     assert(t != NULL);
     insert_pages(t, 2, 4);

@@ -19,7 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #ifndef BPLUS_H
 #define BPLUS_H
 
-#include "common.h"
+#include "../common.h"
 #include "page.h"
 #include "node.h"
 #include "tableIO.h"

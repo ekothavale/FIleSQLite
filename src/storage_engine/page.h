@@ -24,7 +24,7 @@ This representation is not the same used to store pages on disk; the translation
 #ifndef PAGE_H
 #define PAGE_H
 
-#include "common.h"
+#include "../common.h"
 
 typedef enum datatype {
 	T_INT,

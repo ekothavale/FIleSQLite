@@ -17,11 +17,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 */
 
 #include "common.h"
-#include "scanner.h"
 #include "debug.h"
-#include "chunk.h"
-#include "bplus.h"
-#include "testing.h"
+#include "SQL_interpreter/scanner.h"
+#include "SQL_interpreter/chunk.h"
+#include "storage_engine/bplus.h"
+#include "storage_engine/testing.h"
 
 void execute(char* input) {
     TokenizedQuery* tquery = scan(input);
@@ -132,6 +132,15 @@ void testPagesRandom() {
         deleteRecord(p, deletionOrder[i]);
     }
     printSlottedPage(p);
+}
+
+/*
+TO BE CONTINUED
+FULL BACK END SIMULATION
+*/
+void testTree() {
+    table* t = createTree("People", 300);
+    address p = findPage(300, t);
 }
 
 int main(int argc, char** argv) {

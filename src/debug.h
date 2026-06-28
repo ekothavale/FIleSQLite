@@ -21,9 +21,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include <stdio.h>
 #include "common.h"
-#include "page.h"
 #include "chunk.h"
-#include "bplus.h"
+#include "storage_engine/page.h"
+#include "storage_engine/bplus.h"
 
 void printTokenizedQuery(TokenizedQuery* tquery);
 void printChunk(Chunk* chunk);
