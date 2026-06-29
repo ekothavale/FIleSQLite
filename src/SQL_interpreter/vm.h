@@ -39,7 +39,7 @@ typedef enum {
 
 void initVM();
 void freeVM();
-interpret_result interpret(Chunk* chunk);
+interpret_result interpret(const char* source);
 void push(Value value);
 Value pop();
 

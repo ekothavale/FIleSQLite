@@ -1,5 +1,6 @@
 #include "../common.h"
 #include "../debug.h"
+#include "parser.h"
 #include "vm.h"
 
 VM vm;
@@ -63,7 +64,7 @@ static interpret_result run() {
 			}
 			case OP_CONSTANT: {
 				Value constant = READ_CONSTANT();
-				push(constant)
+				push(constant);
 				break;
 			}
 			case OP_ADD: BINARY_OP(+); break;
@@ -78,8 +79,7 @@ static interpret_result run() {
 	#undef BINARY_OP
 }
 
-interpret_result interpret(Chunk* chunk) {
-	vm.chunk = chunk;
-	vm.ip = vm.chunk->code;
-	return run();
+interpret_result interpret(const char* source) {
+	compile(source);
+	return INTERPRET_OK;
 }

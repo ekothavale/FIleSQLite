@@ -36,4 +36,6 @@ Some combinations of constant values may break the DBMS
 #define DIRTY_STACK_GROWTH_RATE 1.5  // the rate at which the dynamic arrays that hold the stacks for dirty pages and dirty nodes grow
 #define DIRTY_STACK_INTIAL_SIZE 400  // the initial size of each stack
 
+#define MAX_REPL_INPUT_LEN 1024
+
 #endif

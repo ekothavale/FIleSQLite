@@ -18,10 +18,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "common.h"
 #include "chunk.h"
+#include "lexer.h"
 
-void parse(TokenizedQuery* query) {
-	Chunk* chunk = malloc(sizeof(chunk));
-	for (int i = 0; i < query->count; i++) {
-		
-	}
+bool compile(const char* source, Chunk* chunk) {
+	initScanner(source);
+	advance();
+	expression();
+	consume(TOKEN_EOF, "Expect end of expression.");
 }

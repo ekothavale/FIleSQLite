@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "common.h"
 #include "memory.h"
 
-TokenizedQuery* scan(char* input);
+void initScanner(const char* source);
+
 
 #endif // SCANNER_H

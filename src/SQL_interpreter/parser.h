@@ -15,23 +15,12 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
+#ifndef PARSER_H
+#define PARSER_H
 
-// NOTE: function scanNumber assumes max length of number literal is 255 characters
-// NOTE: function parse assumes max length of query is 2048 tokens
+#include "vm.h"
 
-#include "lexer.h"
-#include "common.h"
+bool compile(const char* source, Chunk* chunk);
 
-typedef struct scanner {
-    const char* start;
-    const char* current;
-    int line;
-} scanner;
+#endif
 
-scanner s;
-
-void initScanner(const char* source) {
-    s.start = source;
-    s.current = source;
-    s.line = 1;
-}
