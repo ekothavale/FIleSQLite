@@ -19,9 +19,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "common.h"
 #include "chunk.h"
 #include "lexer.h"
+#include "compiler.h"
 
 bool compile(const char* source, Chunk* chunk) {
 	initScanner(source);
+	int line = -1;
+	for (;;) {
+		token token = scanToken();
+		if (token.line != line) {
+			printf("%4d ", token.line);
+			line = token.line;
+		} else {
+			printf("    | ");
+		}
+		printf("%2d '%.*s'\n", token.type, token.length, token.start);
+
+		if (token.type == TOKEN_EOF) break;
+	}
 	advance();
 	expression();
 	consume(TOKEN_EOF, "Expect end of expression.");
