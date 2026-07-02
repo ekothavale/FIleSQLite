@@ -22,8 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "common.h"
 #include "memory.h"
 
-void initScanner(const char* source);
-token scanToken();
+#define INITIAL_TOKEN_COUNT 128
 
 typedef enum {
 	// Single-character tokens
@@ -52,7 +51,7 @@ typedef enum {
 	TOKEN_KEY,
 	TOKEN_LEFT, TOKEN_LIKE, TOKEN_LIMIT,
 	TOKEN_NOT, TOKEN_NULL,
-	TOKEN_OR, TOKEN_ORDER, TOKEN_OUTER,
+	TOKEN_ON, TOKEN_OR, TOKEN_ORDER, TOKEN_OUTER,
 	TOKEN_PRIMARY, TOKEN_PROCEDURE,
 	TOKEN_REPLACE, TOKEN_RIGHT, TOKEN_ROWNUM,
 	TOKEN_SELECT, TOKEN_SET,
@@ -61,7 +60,7 @@ typedef enum {
 	TOKEN_VALUES, TOKEN_VIEW,
 	TOKEN_WHERE,
 	// Signals
-	TOKEN_ERROR, TOKEN_EOF
+	TOKEN_ERROR, TOKEN_EOF, TOKEN_EMPTY
 } token_type;
 
 typedef struct token {
@@ -70,5 +69,16 @@ typedef struct token {
 	int length;
 	int line;
 } token;
+
+// dynamic array to hold tokens
+typedef struct tokenized {
+    token* tokens; // pointer to the start of token dynamic array
+    int capacity; // token dynamic array size
+    int count; // token dynamic array count (grow when count >= capacity)
+} tokenized;
+
+void initLexer(const char* source);
+token scanToken();
+tokenized lexQuery(const char* source);
 
 #endif // SCANNER_H

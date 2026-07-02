@@ -18,26 +18,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "memory.h"
 
-Token* allocTokens(int numTokens) {
-	Token* tokens = (Token*) calloc(numTokens, sizeof(Token));
-	if (tokens == NULL) {
-		fprintf(stderr, "Could not access memory to tokenize input\n");
-		exit(1);
-	}
-	return tokens;
-}
-
-static void freeToken(Token* token) {
-    free(token->payload);
-}
-
-void freeTokenizedQuery(TokenizedQuery* tquery) {
-    for (int i = 0; i < tquery->count; i++) {
-        freeToken(&(tquery->tokens[i]));
-    }
-    free(tquery);
-}
-
 void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
   if (newSize == 0) {
     free(pointer);

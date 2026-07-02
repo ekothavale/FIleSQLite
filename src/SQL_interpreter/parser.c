@@ -1,0 +1,640 @@
+/*
+Copyright (c) 2026 Ethan Kothavale
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+/*
+Recursive descent parser
+*/
+
+#include "common.h"
+#include "chunk.h"
+#include "lexer.h"
+#include "parser.h"
+
+
+/*
+query      → select_stmt | insert_stmt | update_stmt | delete_stmt
+           | create_stmt | drop_stmt | alter_stmt
+
+select_stmt  → SELECT [DISTINCT] select_list FROM identifier
+               [where_clause] [group_clause] [having_clause]
+               [order_clause] [limit_clause]
+select_list  → * | select_item (, select_item)*
+select_item  → expr [AS identifier]
+
+where_clause  → WHERE expr
+group_clause  → GROUP BY expr_list
+having_clause → HAVING expr
+order_clause  → ORDER BY expr [ASC | DESC]
+limit_clause  → LIMIT NUMBER
+
+Expressions:
+expr           → or_expr
+or_expr        → and_expr  (OR  and_expr)*
+and_expr       → not_expr  (AND not_expr)*
+not_expr       → NOT not_expr | comparison
+comparison     → additive ((= | != | < | <= | > | >= | LIKE | IS [NOT] NULL) additive
+                          | BETWEEN additive AND additive
+                          | [NOT] IN ( expr_list ))*
+additive       → multiplicative ((+ | -) multiplicative)*
+multiplicative → unary ((* | /) unary)*
+unary          → - unary | primary
+primary        → NUMBER | STRING | IDENTIFIER | IDENTIFIER ( expr_list )
+               | ( expr ) | *
+
+insert_stmt → INSERT INTO identifier ( col_list ) VALUES ( val_list )
+            | INSERT INTO identifier VALUES ( val_list )
+col_list    → identifier (, identifier)*
+val_list    → expr (, expr)*
+
+update_stmt → UPDATE identifier SET assignment_list [where_clause]
+assignment_list → assignment (, assignment)*
+assignment  → identifier = expr
+
+delete_stmt → DELETE FROM identifier [where_clause]
+
+create_stmt → CREATE TABLE identifier ( col_def_list )
+            | CREATE [UNIQUE] INDEX identifier ON identifier ( col_list )
+            | CREATE VIEW identifier AS select_stmt
+col_def_list → col_def (, col_def)*
+col_def     → identifier identifier [NOT NULL]
+
+drop_stmt   → DROP (TABLE | INDEX | VIEW | DATABASE) identifier
+
+alter_stmt  → ALTER TABLE identifier ADD [COLUMN] col_def
+            | ALTER TABLE identifier DROP COLUMN identifier
+            | ALTER TABLE identifier ALTER COLUMN identifier identifier
+*/
+
+typedef struct parser {
+    token* start;
+    token* current;
+	int numCurrent;
+	int total;
+} parser;
+
+parser p;
+
+static void initParser(tokenized t) {
+	p.current = t.tokens;
+	p.start = t.tokens;
+	p.numCurrent = 0;
+	p.total = t.count;
+}
+
+/*
+returns the type of the current token without consuming it
+*/
+static token_type peek() {
+	return (*p.current).type;
+}
+
+/*
+returns the type of the current token and advances to the next one
+*/
+static token advance() {
+	p.current++;
+	p.numCurrent++;
+	return p.current[-1];
+}
+
+/*
+checks to see if the current token is of a certain type.
+if so, consumes it, else returns an error
+*/
+static token expect(token_type type) {
+	if (p.total - p.numCurrent > 0 && type == (*p.current).type) {
+		return advance();
+	} else {
+		perror("Error: unexpected token encountered");
+		exit(74);
+	}
+}
+
+/*
+allocates and zero-initializes an ast_node of the given type
+*/
+static ast_node* makeNode(ast_type type) {
+	ast_node* node = calloc(1, sizeof(ast_node));
+	node->type = type;
+	return node;
+}
+
+/*
+identifier → IDENTIFIER
+tok: the consumed IDENTIFIER token
+*/
+static ast_node* identifier() {
+	ast_node* node = makeNode(TYPE_IDENTIFIER);
+	node->tok = expect(TOKEN_IDENTIFIER);
+	return node;
+}
+
+static ast_node* primary() {
+
+}
+
+static ast_node* unary() {
+
+}
+
+static ast_node* multiplicative() {
+
+}
+
+static ast_node* additive() {
+
+}
+
+static ast_node* comparison() {
+
+}
+
+static ast_node* notExpr() {
+
+}
+
+static ast_node* andExpr() {
+
+}
+
+static ast_node* orExpr() {
+
+}
+
+static ast_node* expr() {
+
+}
+
+/*
+limit_clause → [LIMIT] NUMBER
+consumed by caller: LIMIT
+tok: the NUMBER token
+*/
+static ast_node* limitClause() {
+	ast_node* node = makeNode(TYPE_LIMIT_CLAUSE);
+	node->tok = expect(TOKEN_NUMBER);
+	return node;
+}
+
+/*
+order_clause → [ORDER] [BY] expr [ASC|DESC] (, expr [ASC|DESC])*
+consumed by caller: ORDER, BY
+flag on each list node: false = ASC (default), true = DESC
+*/
+static ast_node* orderClause() {
+	ast_node* node = makeNode(TYPE_ORDER_CLAUSE);
+	ast_node* item = makeNode(TYPE_LIST_NODE);
+	item->children[0] = expr();
+	if (peek() == TOKEN_DESC) { advance(); item->flag = true; }
+	else if (peek() == TOKEN_ASC) { advance(); }
+	ast_node* head = item;
+	ast_node* tail = item;
+	while (peek() == TOKEN_COMMA) {
+		advance();
+		ast_node* next = makeNode(TYPE_LIST_NODE);
+		next->children[0] = expr();
+		if (peek() == TOKEN_DESC) { advance(); next->flag = true; }
+		else if (peek() == TOKEN_ASC) { advance(); }
+		tail->children[1] = next;
+		tail = next;
+	}
+	node->children[0] = head;
+	return node;
+}
+
+/*
+having_clause → [HAVING] expr
+consumed by caller: HAVING
+*/
+static ast_node* havingClause() {
+	ast_node* node = makeNode(TYPE_HAVING_CLAUSE);
+	node->children[0] = expr();
+	return node;
+}
+
+/*
+group_clause → [GROUP] [BY] expr (, expr)*
+consumed by caller: GROUP, BY
+*/
+static ast_node* groupClause() {
+	ast_node* node = makeNode(TYPE_GROUP_CLAUSE);
+	ast_node* head = listNode(expr(), NULL);
+	ast_node* tail = head;
+	while (peek() == TOKEN_COMMA) {
+		advance();
+		ast_node* next = listNode(expr(), NULL);
+		tail->children[1] = next;
+		tail = next;
+	}
+	node->children[0] = head;
+	return node;
+}
+
+/*
+where_clause → [WHERE] expr
+consumed by caller: WHERE
+*/
+static ast_node* whereClause() {
+	ast_node* node = makeNode(TYPE_WHERE_CLAUSE);
+	node->children[0] = expr();
+	return node;
+}
+
+static ast_node* selectStmt();  // forward declaration for CREATE VIEW
+
+/*
+creates a TYPE_LIST_NODE with item as children[0] and next as children[1]
+*/
+static ast_node* listNode(ast_node* item, ast_node* next) {
+	ast_node* node = makeNode(TYPE_LIST_NODE);
+	node->children[0] = item;
+	node->children[1] = next;
+	return node;
+}
+
+/*
+col_list → identifier (, identifier)*
+consumed by caller: surrounding ( )
+*/
+static ast_node* colList() {
+	ast_node* head = listNode(identifier(), NULL);
+	ast_node* tail = head;
+	while (peek() == TOKEN_COMMA) {
+		advance();
+		ast_node* next = listNode(identifier(), NULL);
+		tail->children[1] = next;
+		tail = next;
+	}
+	return head;
+}
+
+/*
+val_list → expr (, expr)*
+consumed by caller: surrounding ( )
+*/
+static ast_node* valList() {
+	ast_node* head = listNode(expr(), NULL);
+	ast_node* tail = head;
+	while (peek() == TOKEN_COMMA) {
+		advance();
+		ast_node* next = listNode(expr(), NULL);
+		tail->children[1] = next;
+		tail = next;
+	}
+	return head;
+}
+
+/*
+col_def → identifier identifier [NOT NULL]
+flag: true if NOT NULL constraint is present
+*/
+static ast_node* colDef() {
+	ast_node* node = makeNode(TYPE_COL_DEF);
+	node->children[0] = identifier();  // column name
+	node->children[1] = identifier();  // type name
+	if (peek() == TOKEN_NOT) {
+		advance();
+		expect(TOKEN_NULL);
+		node->flag = true;
+	}
+	return node;
+}
+
+/*
+col_def_list → col_def (, col_def)*
+consumed by caller: surrounding ( )
+*/
+static ast_node* colDefList() {
+	ast_node* head = listNode(colDef(), NULL);
+	ast_node* tail = head;
+	while (peek() == TOKEN_COMMA) {
+		advance();
+		ast_node* next = listNode(colDef(), NULL);
+		tail->children[1] = next;
+		tail = next;
+	}
+	return head;
+}
+
+/*
+assignment → identifier = expr
+*/
+static ast_node* assignment() {
+	ast_node* node = makeNode(TYPE_ASSIGNMENT);
+	node->children[0] = identifier();
+	expect(TOKEN_EQUAL);
+	node->children[1] = expr();
+	return node;
+}
+
+/*
+assignment_list → assignment (, assignment)*
+consumed by caller: SET
+*/
+static ast_node* assignmentList() {
+	ast_node* head = listNode(assignment(), NULL);
+	ast_node* tail = head;
+	while (peek() == TOKEN_COMMA) {
+		advance();
+		ast_node* next = listNode(assignment(), NULL);
+		tail->children[1] = next;
+		tail = next;
+	}
+	return head;
+}
+
+/*
+alter_stmt → [ALTER] TABLE identifier ADD [COLUMN] col_def
+           | [ALTER] TABLE identifier DROP COLUMN identifier
+           | [ALTER] TABLE identifier ALTER COLUMN identifier identifier
+consumed by caller: ALTER
+tok: the action keyword (ADD, DROP, or ALTER) identifying the alter variant
+*/
+static ast_node* alterStmt() {
+	ast_node* node = makeNode(TYPE_ALTER_STMT);
+	expect(TOKEN_TABLE);
+	node->children[0] = identifier();
+	if (peek() == TOKEN_ADD) {
+		node->tok = advance();
+		if (peek() == TOKEN_COLUMN) advance();
+		node->children[1] = colDef();
+	} else if (peek() == TOKEN_DROP) {
+		node->tok = advance();
+		expect(TOKEN_COLUMN);
+		node->children[1] = identifier();
+	} else if (peek() == TOKEN_ALTER) {
+		node->tok = advance();
+		expect(TOKEN_COLUMN);
+		node->children[1] = identifier();  // column name
+		node->children[2] = identifier();  // new type
+	} else {
+		printf("Error: expected ADD, DROP, or ALTER after ALTER TABLE <name>\n");
+		exit(74);
+	}
+	return node;
+}
+
+/*
+drop_stmt → [DROP] (TABLE | INDEX | VIEW | DATABASE) identifier
+consumed by caller: DROP
+tok: the object type keyword (TABLE, INDEX, VIEW, or DATABASE)
+*/
+static ast_node* dropStmt() {
+	ast_node* node = makeNode(TYPE_DROP_STMT);
+	token_type t = peek();
+	if (t == TOKEN_TABLE || t == TOKEN_INDEX || t == TOKEN_VIEW || t == TOKEN_DATABASE) {
+		node->tok = advance();  // store TABLE/INDEX/VIEW/DATABASE token to identify what is dropped
+	} else {
+		printf("Error: expected TABLE, INDEX, VIEW, or DATABASE after DROP\n");
+		exit(74);
+	}
+	node->children[0] = identifier();
+	return node;
+}
+
+/*
+create_stmt → [CREATE] TABLE identifier ( col_def_list )
+            | [CREATE] [UNIQUE] INDEX identifier ON identifier ( col_list )
+            | [CREATE] VIEW identifier AS select_stmt
+consumed by caller: CREATE
+tok: the object type keyword (TABLE, INDEX, or VIEW)
+flag: true if CREATE UNIQUE INDEX
+*/
+static ast_node* createStmt() {
+	ast_node* node = makeNode(TYPE_CREATE_STMT);
+	if (peek() == TOKEN_TABLE) {
+		node->tok = advance();
+		node->children[0] = identifier();
+		expect(TOKEN_LEFT_PAREN);
+		node->children[1] = colDefList();
+		expect(TOKEN_RIGHT_PAREN);
+	} else if (peek() == TOKEN_UNIQUE || peek() == TOKEN_INDEX) {
+		if (peek() == TOKEN_UNIQUE) {
+			node->flag = true;
+			advance();
+		}
+		node->tok = expect(TOKEN_INDEX);
+		node->children[0] = identifier();  // index name
+		expect(TOKEN_ON);
+		node->children[1] = identifier();  // table name
+		expect(TOKEN_LEFT_PAREN);
+		node->children[2] = colList();
+		expect(TOKEN_RIGHT_PAREN);
+	} else if (peek() == TOKEN_VIEW) {
+		node->tok = advance();
+		node->children[0] = identifier();  // view name
+		expect(TOKEN_AS);
+		node->children[1] = selectStmt();
+	} else {
+		printf("Error: expected TABLE, INDEX, or VIEW after CREATE\n");
+		exit(74);
+	}
+	return node;
+}
+
+/*
+delete_stmt → [DELETE] FROM identifier [where_clause]
+consumed by caller: DELETE
+*/
+static ast_node* deleteStmt() {
+	ast_node* node = makeNode(TYPE_DELETE_STMT);
+	expect(TOKEN_FROM);
+	node->children[0] = identifier();
+	if (peek() == TOKEN_WHERE) {
+		advance();
+		node->children[1] = whereClause();
+	}
+	return node;
+}
+
+/*
+update_stmt → [UPDATE] identifier SET assignment_list [where_clause]
+consumed by caller: UPDATE
+*/
+static ast_node* updateStmt() {
+	ast_node* node = makeNode(TYPE_UPDATE_STMT);
+	node->children[0] = identifier();
+	expect(TOKEN_SET);
+	node->children[1] = assignmentList();
+	if (peek() == TOKEN_WHERE) {
+		advance();
+		node->children[2] = whereClause();
+	}
+	return node;
+}
+
+/*
+insert_stmt → [INSERT] INTO identifier ( col_list ) VALUES ( val_list )
+            | [INSERT] INTO identifier VALUES ( val_list )
+consumed by caller: INSERT
+flag: true if an explicit column list is present
+*/
+static ast_node* insertStmt() {
+	ast_node* node = makeNode(TYPE_INSERT_STMT);
+	expect(TOKEN_INTO);
+	node->children[0] = identifier();
+	if (peek() == TOKEN_LEFT_PAREN) {
+		advance();
+		node->children[1] = colList();
+		expect(TOKEN_RIGHT_PAREN);
+		node->flag = true;  // explicit column list present
+	}
+	expect(TOKEN_VALUES);
+	expect(TOKEN_LEFT_PAREN);
+	node->children[2] = valList();
+	expect(TOKEN_RIGHT_PAREN);
+	return node;
+}
+
+/*
+select_item → expr [AS identifier]
+*/
+static ast_node* selectItem() {
+	ast_node* node = makeNode(TYPE_SELECT_ITEM);
+	node->children[0] = expr();
+	if (peek() == TOKEN_AS) {
+		advance();
+		node->children[1] = identifier();
+	}
+	return node;
+}
+
+/*
+select_list → * | select_item (, select_item)*
+flag on the star node: true signals SELECT * (wildcard — no expression children)
+*/
+static ast_node* selectList() {
+	if (peek() == TOKEN_STAR) {
+		advance();
+		ast_node* star = makeNode(TYPE_SELECT_ITEM);
+		star->flag = true;  // flag signals SELECT *
+		return listNode(star, NULL);
+	}
+	ast_node* head = listNode(selectItem(), NULL);
+	ast_node* tail = head;
+	while (peek() == TOKEN_COMMA) {
+		advance();
+		ast_node* next = listNode(selectItem(), NULL);
+		tail->children[1] = next;
+		tail = next;
+	}
+	return head;
+}
+
+/*
+select_stmt → [SELECT] [DISTINCT] select_list FROM identifier
+              [where_clause] [group_clause] [having_clause]
+              [order_clause] [limit_clause]
+consumed by caller: SELECT
+flag: true if DISTINCT is present
+*/
+static ast_node* selectStmt() {
+	ast_node* out = calloc(1, sizeof(ast_node));
+	token_type type = peek();
+	if (type == TOKEN_DISTINCT) {
+		advance();
+		out->flag = true;
+	}
+	out->children[0] = selectList();
+	expect(TOKEN_FROM);
+	out->children[1] = identifier();
+	while(true) {
+		type = peek();
+			switch(type) {
+				case TOKEN_WHERE: {
+					advance();
+					out->children[2] = whereClause();
+					break;
+				}
+				case TOKEN_GROUP: {
+					advance();
+					expect(TOKEN_BY);
+					out->children[3] = groupClause();
+					break;
+				}
+				case TOKEN_HAVING: {
+					advance();
+					out->children[4] = havingClause();
+					break;
+				}
+				case TOKEN_ORDER: {
+					advance();
+					expect(TOKEN_BY);
+					out->children[5] = orderClause();
+					break;
+				}
+				case TOKEN_LIMIT: {
+					advance();
+					out->children[6] = limitClause();
+					break;
+				}
+				default: {
+					return out;
+				}
+			}
+		}
+		return out;
+}
+
+/*
+query → select_stmt | insert_stmt | update_stmt | delete_stmt
+      | create_stmt | drop_stmt | alter_stmt
+consumes the leading statement keyword and dispatches to the appropriate stmt function
+*/
+static ast_node* query() {
+	ast_node* out = calloc(1, sizeof(ast_node));
+	out->type = TYPE_QUERY;
+	out->flag = false;
+	token tok = advance();
+	switch(tok.type) {
+		case TOKEN_SELECT: {
+			out->children[0] = selectStmt();
+			break;
+		}
+		case TOKEN_INSERT: {
+			out->children[0] = insertStmt();
+			break;
+		}
+		case TOKEN_UPDATE: {
+			out->children[0] = updateStmt();
+			break;
+		}
+		case TOKEN_DELETE: {
+			out->children[0] = deleteStmt();
+			break;
+		}
+		case TOKEN_CREATE: {
+			out->children[0] = createStmt();
+			break;
+		}
+		case TOKEN_DROP: {
+			out->children[0] = dropStmt();
+			break;
+		}
+		case TOKEN_ALTER: {
+			out->children[0] = alterStmt();
+			break;
+		}
+		default: {
+			printf("Error: query is of invalid statment type\n");
+		}
+	}
+	return out;
+
+}
+

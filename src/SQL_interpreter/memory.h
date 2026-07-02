@@ -31,9 +31,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define FREE_ARRAY(type, pointer, oldCount) \
     reallocate(pointer, sizeof(type) * (oldCount), 0)
 
-Token* allocTokens(int numTokens);
-
-void freeTokenizedQuery(TokenizedQuery* tokens);
 
 void* reallocate(void* pointer, size_t oldSize, size_t newSize);
 

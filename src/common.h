@@ -26,42 +26,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <stdbool.h>
 #include <string.h>
 
-
-typedef enum TokenType {
-    TOKEN_SELECT,
-    TOKEN_INSERT,
-    TOKEN_IDENTIFIER,
-    TOKEN_NUMBER,
-    TOKEN_STRING,
-    TOKEN_STAR,
-    TOKEN_PLUS,
-    TOKEN_MINUS,
-    TOKEN_SLASH,
-    TOKEN_BANG,
-    TOKEN_EQUALS,
-    TOKEN_QUESTION,
-    TOKEN_RIGHT_PAREN,
-    TOKEN_LEFT_PAREN,
-    TOKEN_COMMA,
-    TOKEN_DOT,
-    TOKEN_AND,
-    TOKEN_PIPE,
-    TOKEN_UNKNOWN
-}TokenType;
-
-// token representation
-// all literal tokens will have payload represented as a string, even numericals and booleans
-typedef struct Token {
-    TokenType type;
-    char* payload;
-}Token;
-
-typedef struct TokenizedQuery {
-    Token* tokens;
-    int count;
-    int capacity;
-} TokenizedQuery;
-
 typedef uint64_t address;
 
 #endif // COMMON_H

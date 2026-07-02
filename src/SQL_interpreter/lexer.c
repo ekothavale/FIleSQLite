@@ -21,6 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "lexer.h"
 #include "common.h"
+#include "value.h"
 
 typedef struct lexer {
     const char* start;
@@ -30,7 +31,7 @@ typedef struct lexer {
 
 lexer lex;
 
-void initScanner(const char* source) {
+void initLexer(const char* source) {
     lex.start = source;
     lex.current = source;
     lex.line = 1;
@@ -43,7 +44,6 @@ static bool isAlpha(char c) {
 static bool isDigit(char c) {
     return c >= '0' && c <= '9';
 } 
-
 
 
 static bool isAtEnd() {
@@ -128,6 +128,7 @@ static token_type checkKeyword(int start, int length, const char* rest, token_ty
 scans the next sequence of letters in the SQL query to determine
 if the characters represent a keyword or an identifier
 AS OF NOW, keywords are case sensitive (only lowercase matched)
+INSTEAD OF PATTERN MATCHING, DFA COULD BE REPRESENTED WITH A TABLE INSTEAD
 */
 static token_type identifierType() {
     switch (lex.start[0]) {
@@ -240,6 +241,7 @@ static token_type identifierType() {
             break;
         case 'o':
             switch (lex.start[1]) {
+                case 'n': return checkKeyword(1, 1, "n", TOKEN_ON);
                 case 'r':
                     switch (lex.start[2]) {
                         case 'd': return checkKeyword(1, 4, "rder", TOKEN_ORDER);
@@ -382,4 +384,40 @@ token scanToken() {
     }
 
     return errorToken("Unexpected character.");
+}
+
+void initTokenized(tokenized* t) {
+    t->tokens = (token*) malloc(sizeof(token) * INITIAL_TOKEN_COUNT);
+    t->capacity = INITIAL_TOKEN_COUNT;
+    t->count = 0;
+}
+
+void addToken(tokenized* t, token tok) {
+    if (t->capacity < t->count + 1) {
+        // Resize the token array if necessary
+        printf("Growing tokenized array (for debugging purposes)\n");
+        int oldCapacity = t->capacity;
+        t->capacity = GROW_CAPACITY(oldCapacity);
+        t->tokens = GROW_ARRAY(token, t->tokens, oldCapacity, t->capacity);
+    }
+    t->tokens[t->count] = tok;
+    t->count++;
+}
+
+tokenized lexQuery(const char* source) {
+    initLexer(source);
+    tokenized t;
+    initTokenized(&t);
+    token tok;
+    tok.type = TOKEN_EMPTY;
+    while(tok.type != TOKEN_EOF) {
+        tok = scanToken();
+        if (tok.type == TOKEN_ERROR) {
+            printf("Error: unrecognized token\n");
+            // can do other cleanup
+        } else {
+            addToken(&t, tok);
+        }
+    }
+    return t;
 }
