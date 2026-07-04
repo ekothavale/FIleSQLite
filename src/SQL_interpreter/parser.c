@@ -144,40 +144,205 @@ static ast_node* identifier() {
 	return node;
 }
 
+static ast_node* valList();  // forward declaration: defined after the clause helpers
+
+/*
+primary → NUMBER | STRING | IDENTIFIER [( val_list )] | ( expr ) | *
+tok: the NUMBER, STRING, IDENTIFIER, or * token
+flag: true if this primary is a function call (IDENTIFIER followed by ( val_list ))
+*/
 static ast_node* primary() {
-
+	token_type t = peek();
+	if (t == TOKEN_NUMBER || t == TOKEN_STRING) {
+		ast_node* node = makeNode(TYPE_PRIMARY);
+		node->tok = advance();
+		return node;
+	}
+	if (t == TOKEN_IDENTIFIER) {
+		ast_node* node = makeNode(TYPE_PRIMARY);
+		node->tok = advance();
+		if (peek() == TOKEN_LEFT_PAREN) {
+			advance();
+			node->flag = true;  // function call
+			if (peek() != TOKEN_RIGHT_PAREN) node->children[0] = valList();
+			expect(TOKEN_RIGHT_PAREN);
+		}
+		return node;
+	}
+	if (t == TOKEN_LEFT_PAREN) {
+		advance();
+		ast_node* node = expr();
+		expect(TOKEN_RIGHT_PAREN);
+		return node;  // parentheses are grouping only — no wrapper node
+	}
+	if (t == TOKEN_STAR) {
+		ast_node* node = makeNode(TYPE_PRIMARY);
+		node->tok = advance();
+		return node;
+	}
+	printf("Error: expected a primary expression\n");
+	exit(74);
 }
 
+/*
+unary → - unary | primary
+tok: the - token
+*/
 static ast_node* unary() {
-
+	if (peek() == TOKEN_MINUS) {
+		ast_node* node = makeNode(TYPE_UNARY);
+		node->tok = advance();
+		node->children[0] = unary();
+		return node;
+	}
+	return primary();
 }
 
+/*
+multiplicative → unary ((* | /) unary)*
+tok on TYPE_MULTIPLICATIVE node: the * or / token
+*/
 static ast_node* multiplicative() {
-
+	ast_node* left = unary();
+	while (peek() == TOKEN_STAR || peek() == TOKEN_SLASH) {
+		ast_node* node = makeNode(TYPE_MULTIPLICATIVE);
+		node->tok = advance();
+		node->children[0] = left;
+		node->children[1] = unary();
+		left = node;
+	}
+	return left;
 }
 
+/*
+additive → multiplicative ((+ | -) multiplicative)*
+tok on TYPE_ADDITIVE node: the + or - token
+*/
 static ast_node* additive() {
-
+	ast_node* left = multiplicative();
+	while (peek() == TOKEN_PLUS || peek() == TOKEN_MINUS) {
+		ast_node* node = makeNode(TYPE_ADDITIVE);
+		node->tok = advance();
+		node->children[0] = left;
+		node->children[1] = multiplicative();
+		left = node;
+	}
+	return left;
 }
 
+/*
+comparison → additive ((= | != | < | <= | > | >= | LIKE) additive
+                      | IS [NOT] NULL
+                      | BETWEEN additive AND additive
+                      | [NOT] IN ( val_list ))*
+tok: the comparison operator token (=, !=, <, etc., IS, BETWEEN, or IN)
+flag on IS node: true = IS NOT NULL, false = IS NULL
+flag on IN node: true = NOT IN, false = IN
+*/
 static ast_node* comparison() {
-
+	ast_node* left = additive();
+	for (;;) {
+		token_type t = peek();
+		if (t == TOKEN_EQUAL     || t == TOKEN_BANG_EQUAL ||
+		    t == TOKEN_LESS      || t == TOKEN_LESS_EQUAL  ||
+		    t == TOKEN_GREATER   || t == TOKEN_GREATER_EQUAL ||
+		    t == TOKEN_LIKE) {
+			ast_node* node = makeNode(TYPE_COMPARISON);
+			node->tok = advance();
+			node->children[0] = left;
+			node->children[1] = additive();
+			left = node;
+		} else if (t == TOKEN_IS) {
+			ast_node* node = makeNode(TYPE_COMPARISON);
+			node->tok = advance();
+			node->children[0] = left;
+			if (peek() == TOKEN_NOT) { advance(); node->flag = true; }
+			expect(TOKEN_NULL);
+			left = node;
+		} else if (t == TOKEN_BETWEEN) {
+			ast_node* node = makeNode(TYPE_COMPARISON);
+			node->tok = advance();
+			node->children[0] = left;
+			node->children[1] = additive();
+			expect(TOKEN_AND);
+			node->children[2] = additive();
+			left = node;
+		} else if (t == TOKEN_IN) {
+			ast_node* node = makeNode(TYPE_COMPARISON);
+			node->tok = advance();
+			node->children[0] = left;
+			expect(TOKEN_LEFT_PAREN);
+			node->children[1] = valList();
+			expect(TOKEN_RIGHT_PAREN);
+			left = node;
+		} else if (t == TOKEN_NOT) {
+			ast_node* node = makeNode(TYPE_COMPARISON);
+			advance();
+			node->tok = expect(TOKEN_IN);
+			node->flag = true;  // NOT IN
+			node->children[0] = left;
+			expect(TOKEN_LEFT_PAREN);
+			node->children[1] = valList();
+			expect(TOKEN_RIGHT_PAREN);
+			left = node;
+		} else {
+			break;
+		}
+	}
+	return left;
 }
 
+/*
+not_expr → NOT not_expr | comparison
+tok: the NOT token
+*/
 static ast_node* notExpr() {
-
+	if (peek() == TOKEN_NOT) {
+		ast_node* node = makeNode(TYPE_NOT_EXPR);
+		node->tok = advance();
+		node->children[0] = notExpr();
+		return node;
+	}
+	return comparison();
 }
 
+/*
+and_expr → not_expr (AND not_expr)*
+tok on TYPE_AND_EXPR node: the AND token
+*/
 static ast_node* andExpr() {
-
+	ast_node* left = notExpr();
+	while (peek() == TOKEN_AND) {
+		ast_node* node = makeNode(TYPE_AND_EXPR);
+		node->tok = advance();
+		node->children[0] = left;
+		node->children[1] = notExpr();
+		left = node;
+	}
+	return left;
 }
 
+/*
+or_expr → and_expr (OR and_expr)*
+tok on TYPE_OR_EXPR node: the OR token
+*/
 static ast_node* orExpr() {
-
+	ast_node* left = andExpr();
+	while (peek() == TOKEN_OR) {
+		ast_node* node = makeNode(TYPE_OR_EXPR);
+		node->tok = advance();
+		node->children[0] = left;
+		node->children[1] = andExpr();
+		left = node;
+	}
+	return left;
 }
 
+/*
+expr → or_expr
+*/
 static ast_node* expr() {
-
+	return orExpr();
 }
 
 /*
