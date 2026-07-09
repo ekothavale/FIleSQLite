@@ -21,14 +21,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "chunk.h"
 #include "value.h"
+#include "../storage_engine/bplus.h"
+#include "../storage_engine/tableIO.h"
 
 #define STACK_MAX 256
+#define MAX_CURSORS 4 // maximum amount of concurrent cursors
 
+typedef struct cursor {
+	table* tbl; // state representing a database table stored in a local file
+	bool open; // if the cursor is connected to table
+	// add more state (position, etc) here
+} cursor;
+
+typedef struct result_buffer {
+	Value** rows;
+	int count;
+	int capacity;
+	int cols;
+} result_buffer;
+
+// a virtual computer to manage a local database
 typedef struct VM {
 	Chunk* chunk;
 	uint8_t* ip; // instruction pointer
 	Value stack[STACK_MAX]; // where values are stored
 	Value* stackTop;
+	cursor cursors[MAX_CURSORS]; // concurrent database processes
+	result_buffer results;
 } VM;
 
 typedef enum {
