@@ -31,17 +31,59 @@ typedef struct Chunk {
     ValueArray constants;
 } Chunk;
 
-// bytecode
+/*
+bytecode for VM
+each opcode is one byte and can be followed by 1 or 2 byte optional arguments
+*/
 typedef enum opcode {
     OP_SELECT,
-    OP_INSERT,
+    // constants
     OP_CONSTANT,
+    OP_NULL,
+    OP_TRUE,
+    OP_FALSE,
+    // stack ops
+    OP_POP,
+    // arithmetic
     OP_ADD,
     OP_SUBTRACT,
     OP_MULTIPLY,
     OP_DIVIDE,
     OP_NEGATE,
-    OP_RETURN,
+    // comparison & logic
+    OP_EQUAL,
+    OP_NOT_EQUAL,
+    OP_LESS,
+    OP_LESS_EQUAL,
+    OP_GREATER,
+    OP_GREATER_EQUAL,
+    OP_LIKE,
+    OP_IS_NULL,
+    OP_NOT_NULL,
+    OP_NOT,
+    // control flow
+    OP_JUMP,
+    OP_JUMP_FALSE,
+    OP_JUMP_TRUE,
+    // cursor ops
+    OP_OPEN_SCAN,
+    OP_CLOSE_SCAN,
+    OP_NEXT,
+    OP_REWIND,
+    OP_COLUMN,
+    // database management
+    OP_EMIT_ROW,
+    OP_INSERT_ROW,
+    OP_UPDATE_COL,
+    OP_DELETE_ROW,
+    // table management
+    OP_CREATE_TABLE,
+    OP_DROP_TABLE,
+    // result set ops
+    OP_SORT,
+    OP_LIMIT,
+    // execution management
+    OP_HALT
 }opcode;
 
 void initChunk(Chunk* chunk);
