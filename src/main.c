@@ -24,15 +24,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "storage_engine/bplus.h"
 #include "storage_engine/testing.h"
 
-void execute(char* input) {
-    TokenizedQuery* tquery = scan(input);
-    printTokenizedQuery(tquery);
-    freeTokenizedQuery(tquery);
-
-    //opcode* bytecode = compile(tokens);
-    //run(bytecode);
-}
-
 
 static entry makeEntry(const char* str, datatype t) {
     entry e;

@@ -16,28 +16,30 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef DEBUG_H
-#define DEBUG_H
+#ifndef HASHTABLE_H
+#define HASHTABLE_H
 
-#include <stdio.h>
-#include "common.h"
-#include "chunk.h"
-#include "storage_engine/page.h"
-#include "storage_engine/bplus.h"
+#include "../common.h"
 
-void printChunk(Chunk* chunk);
-void disassembleChunk(Chunk* chunk, const char* name);
-int disassembleInstruction(Chunk* chunk, int offset);
+#define MAX_LOAD_FACTOR 0.8 // load factor at which the hash table is resized
 
-void generateTestBPlusTree(table* t);
-void printIntArray(int* arr, int length);
-void printNode(node* n);
-void printTree(table* t);
-bool checkTreePointers(table* t);
+typedef struct entry {
+	char** cols; // names of columns
+	uint32_t hash; // hash of key to id the entry
+	int count; // number of rows in the entry
+} entry;
 
-/* Slotted-page pretty-printers (types defined in page.h) */
-void printEntry(entry* e);
-void printSPSlot(sp_slot* s);
-void printSlottedPage(slotted_page* p);
+typedef struct hashtable {
+	int count;
+	int capacity;
+	entry* entries;
+} hashtable;
 
-#endif // DEBUG_H
+void initHashTable(hashtable* table);
+void freeHashTable(hashtable* table);
+uint32_t hashString(const char* key, int len);
+void insertHT(entry* e, hashtable* table);
+entry* readHT(uint32_t, hashtable* table);
+void deleteHT(uint32_t, hashtable* table);
+
+#endif
