@@ -25,13 +25,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "../storage_engine/tableIO.h"
 
 #define STACK_MAX 256
-#define MAX_CURSORS 4 // maximum amount of concurrent cursors
+#define MAX_SCANNERS 4 // maximum amount of concurrent scanners
 
-typedef struct cursor {
-	table* tbl; // state representing a database table stored in a local file
-	bool open; // if the cursor is connected to table
-	// add more state (position, etc) here
-} cursor;
+// state for scanning over a btree
+typedef struct scanner {
+	table* tbl;          // open table
+	bool open;           // whether scanner is connected to a table
+	bool started;        // whether OP_NEXT has been called at least once
+	bool atEnd;          // whether all rows have been exhausted
+
+	node* leafNode;      // currently loaded leaf node (scanner-owned)
+	address leafAddr;    // disk address of leafNode
+	uint32_t childIdx;   // which child of leafNode is the current page
+
+	slotted_page* page;  // currently loaded page (scanner-owned)
+	address pageAddr;    // disk address of page
+	uint32_t slotIdx;    // which slot (row) within page is current
+} scanner;
 
 typedef struct result_buffer {
 	Value** rows;
@@ -46,7 +56,7 @@ typedef struct VM {
 	uint8_t* ip; // instruction pointer
 	Value stack[STACK_MAX]; // where values are stored
 	Value* stackTop;
-	cursor cursors[MAX_CURSORS]; // concurrent database processes
+	scanner scanners[MAX_SCANNERS]; // concurrent database processes
 	result_buffer results;
 } VM;
 
