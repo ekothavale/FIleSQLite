@@ -16,48 +16,25 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef clox_value_h
-#define clox_value_h
+/*
+manages .scma files which map table names to column names
+each entry is stored as such:
+ table name | # columns | column name 0 | ...
 
-#include "common.h"
+table names are stored as hashes and all column names are length prefixed
+*/
 
-typedef enum {
-	VAL_NULL,
-	VAL_BOOL,
-	VAL_INT,
-	VAL_FLOAT,
-	VAL_TEXT,
-	VAL_U32,
-} value_type;
+#ifndef SCHEMA_H
+#define SCHEMA_H
 
-// tagged union
-typedef struct Value {
-	value_type type;
-	union {
-		bool boolean;
-		int64_t integer;
-		double floating;
-		char* text; // heap allocated, VM responsible for lifetime
-		uint32_t u32;
-	} as;
-} Value;
+#include "../common.h"
+#include "hashtable.h"
 
-#define NULL_VAL(v)   ((Value){VAL_NULL, {.integer = 0}})
-#define BOOL_VAL(v)   ((Value){VAL_BOOL, {.boolean = v}})
-#define INTEGER_VAL(v)   ((Value){VAL_INT, {.integer = v}})
-#define FLOAT_VAL(v)   ((Value){VAL_FLOAT, {.floating = v}})
-#define TEXT_VAL(v)   ((Value){VAL_TEXT, {.text = v}})
-#define UINT_VAL(v)   ((Value){VAL_U32, {.u32 = v}})
+#define SCHEMA_EXT ".scma"
+#define SCHEMA_DIR "../../tables"
+#define SCHEMA_MAGIC 0xFFBB8844
 
-typedef struct ValueArray {
-	int capacity;
-	int count;
-	Value* values;
-} ValueArray;
-
-void initValueArray(ValueArray* array);
-void writeValueArray(ValueArray* array, Value value);
-void freeValueArray(ValueArray* array);
-void printValue(Value value);
+hashtable* loadSchema();
+void saveSchema(hashtable* schema);
 
 #endif

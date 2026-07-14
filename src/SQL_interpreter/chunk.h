@@ -65,7 +65,7 @@ typedef enum opcode {
     OP_JUMP,
     OP_JUMP_FALSE,
     OP_JUMP_TRUE,
-    // cursor ops
+    // scanner ops
     OP_OPEN_SCAN,
     OP_CLOSE_SCAN,
     OP_NEXT,

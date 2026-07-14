@@ -5,6 +5,19 @@
 
 VM vm;
 
+static void runtimeError(const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  vfprintf(stderr, format, args);
+  va_end(args);
+  fputs("\n", stderr);
+
+  size_t instruction = vm.ip - vm.chunk->code - 1;
+  int line = vm.chunk->lines[instruction];
+  fprintf(stderr, "[line %d] in script\n", line);
+  resetStack();
+}
+
 static void resetStack(){
 	vm.stackTop = vm.stack;
 }
@@ -157,7 +170,7 @@ static interpret_result run() {
 		do { \
 			int64_t b = pop().as.integer; \
 			int64_t a = pop().as.integer; \
-			push(a op b); \
+			push(INTEGER_VAL(a op b)); \
 		} while (false)
 
 	for (;;) {
@@ -187,7 +200,49 @@ static interpret_result run() {
 			case OP_SUBTRACT: BINARY_OP(-); break;
 			case OP_MULTIPLY: BINARY_OP(*); break;
 			case OP_DIVIDE: BINARY_OP(/); break;
-			case OP_NEGATE: push(-pop()); break;
+			case OP_NEGATE: {
+				Value v = pop();
+				if (v.type != VAL_INT && v.type != VAL_FLOAT) {
+					printf("Error: attempted to negate a non-number at bytecode level\n");
+				}
+				if (v.type == VAL_INT) {
+					push(INTEGER_VAL(-v.as.integer));
+				} else if (v.type == VAL_FLOAT) {
+					push(FLOAT_VAL(v.as.floating));
+				}
+				break;
+			}
+			case OP_EQUAL: {
+				break;
+			}
+			case OP_NOT_EQUAL: {
+				break;
+			}
+			case OP_LESS: {
+				break;
+			}
+			case OP_LESS_EQUAL: {
+				break;
+			}
+			case OP_GREATER: {
+				break;
+			}
+			case OP_GREATER_EQUAL: {
+				break;
+			}
+			case OP_LIKE: {
+				break;
+			}
+			case OP_IS_NULL: {
+				break;
+			}
+			case OP_NOT_NULL: {
+				break;
+			}
+			case OP_NOT: {
+				push(!pop().as.boolean);
+				break;
+			}
 			case OP_OPEN_SCAN: {
 				Value v = pop();
 				openScanner(*v.as.text);
