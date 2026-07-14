@@ -241,9 +241,12 @@ static interpret_result run() {
 	// somewhat dubious macro that takes operators as arguments
 	#define BINARY_OP(op) \
 		do { \
-			int64_t b = pop().as.integer; \
-			int64_t a = pop().as.integer; \
-			push(INTEGER_VAL(a op b)); \
+			value b = pop(); \
+			value a = pop(); \
+			if (a.type == VAL_FLOAT && b.type == VAL_FLOAT) push(FLOAT_VAL(a.as.floating op b.as.floating)); \
+			else if (a.type == VAL_FLOAT) push(FLOAT_VAL(a.as.floating op b.as.integer)); \
+			else if (b.type == VAL_FLOAT) push(FLOAT_VAL(a.as.integer op b.as.floating)); \
+			else push(INTEGER_VAL(a.as.integer op b.as.integer)); \
 		} while (false)
 
 	for (;;) {
