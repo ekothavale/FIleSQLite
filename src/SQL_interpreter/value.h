@@ -31,7 +31,7 @@ typedef enum {
 } value_type;
 
 // tagged union
-typedef struct Value {
+typedef struct value {
 	value_type type;
 	union {
 		bool boolean;
@@ -40,24 +40,24 @@ typedef struct Value {
 		char* text; // heap allocated, VM responsible for lifetime
 		uint32_t u32;
 	} as;
-} Value;
+} value;
 
-#define NULL_VAL(v)   ((Value){VAL_NULL, {.integer = 0}})
-#define BOOL_VAL(v)   ((Value){VAL_BOOL, {.boolean = v}})
-#define INTEGER_VAL(v)   ((Value){VAL_INT, {.integer = v}})
-#define FLOAT_VAL(v)   ((Value){VAL_FLOAT, {.floating = v}})
-#define TEXT_VAL(v)   ((Value){VAL_TEXT, {.text = v}})
-#define UINT_VAL(v)   ((Value){VAL_U32, {.u32 = v}})
+#define NULL_VAL(v)   ((value){VAL_NULL, {.integer = 0}})
+#define BOOL_VAL(v)   ((value){VAL_BOOL, {.boolean = v}})
+#define INTEGER_VAL(v)   ((value){VAL_INT, {.integer = v}})
+#define FLOAT_VAL(v)   ((value){VAL_FLOAT, {.floating = v}})
+#define TEXT_VAL(v)   ((value){VAL_TEXT, {.text = v}})
+#define UINT_VAL(v)   ((value){VAL_U32, {.u32 = v}})
 
 typedef struct ValueArray {
 	int capacity;
 	int count;
-	Value* values;
+	value* values;
 } ValueArray;
 
 void initValueArray(ValueArray* array);
-void writeValueArray(ValueArray* array, Value value);
+void writeValueArray(ValueArray* array, value value);
 void freeValueArray(ValueArray* array);
-void printValue(Value value);
+void printValue(value value);
 
 #endif

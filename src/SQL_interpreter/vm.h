@@ -44,7 +44,7 @@ typedef struct scanner {
 } scanner;
 
 typedef struct result_buffer {
-	Value** rows;
+	value** rows;
 	int count;
 	int capacity;
 	int cols;
@@ -54,8 +54,8 @@ typedef struct result_buffer {
 typedef struct VM {
 	Chunk* chunk;
 	uint8_t* ip; // instruction pointer
-	Value stack[STACK_MAX]; // where values are stored
-	Value* stackTop;
+	value stack[STACK_MAX]; // where values are stored
+	value* stackTop;
 	scanner scanners[MAX_SCANNERS]; // concurrent database processes
 	result_buffer results;
 } VM;
@@ -69,7 +69,7 @@ typedef enum {
 void initVM();
 void freeVM();
 interpret_result interpret(const char* source);
-void push(Value value);
-Value pop();
+void push(value value);
+value pop();
 
 #endif // VM_H

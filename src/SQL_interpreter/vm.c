@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include "../common.h"
 #include "../debug.h"
 #include "parser.h"
@@ -84,9 +85,64 @@ static void closeScanner(scanner* c) {
 }
 
 /*
+determines if two values are equal
+*/
+static bool equal(value a, value b) {
+	if (a.type != b.type) return false;
+	switch (a.type) {
+		case VAL_BOOL: return a.as.boolean == b.as.boolean;
+		case VAL_FLOAT: return a.as.floating == b.as.floating;
+		case VAL_INT: return a.as.integer == b.as.integer;
+		case VAL_NULL: return true;
+		case VAL_TEXT: return strcmp(a.as.text, b.as.text) ? 1 : 0;
+		case VAL_U32: return a.as.u32 == b.as.u32;
+		default: {
+			runtimeError("Equality not supported for type %i", a.type);
+			break;
+		}
+	}
+}
+
+static bool lessThan(value a, value b) {
+	if (a.type != b.type) {
+		runtimeError("Operands of less than comparison must have the same type");
+	}
+	switch (a.type) {
+		case VAL_BOOL: return a.as.boolean < b.as.boolean;
+		case VAL_FLOAT: return a.as.floating < b.as.floating;
+		case VAL_INT: return a.as.integer < b.as.integer;
+		case VAL_NULL: return false;
+		//case VAL_TEXT: return strcmp(a.as.text, b.as.text) ? 1 : 0;
+		case VAL_U32: return a.as.u32 < b.as.u32;
+		default: {
+			runtimeError("Less than not supported for type %i", a.type);
+			break;
+		}
+	}
+}
+
+static bool greaterThan(value a, value b) {
+	if (a.type != b.type) {
+		runtimeError("Operands of greater than comparison must have the same type");
+	}
+	switch (a.type) {
+		case VAL_BOOL: return a.as.boolean > b.as.boolean;
+		case VAL_FLOAT: return a.as.floating > b.as.floating;
+		case VAL_INT: return a.as.integer > b.as.integer;
+		case VAL_NULL: return false;
+		//case VAL_TEXT: return strcmp(a.as.text, b.as.text) ? 1 : 0;
+		case VAL_U32: return a.as.u32 > b.as.u32;
+		default: {
+			runtimeError("Greater than not supported for type %i", a.type);
+			break;
+		}
+	}
+}
+
+/*
 Push value to VM's stack
 */
-void push(Value value) {
+void push(value value) {
 	*vm.stackTop = value;
 	vm.stackTop++;
 }
@@ -94,7 +150,7 @@ void push(Value value) {
 /*
 Pop value from top of VM's stack
 */
-Value pop() {
+value pop() {
 	vm.stackTop--;
 	return *vm.stackTop;
 }
@@ -161,6 +217,23 @@ static bool advanceScanner(scanner* s) {
 	return loadFirstValidPage(s);
 }
 
+/*
+SQL LIKE pattern matching: % matches any sequence of characters, _ matches exactly one.
+Returns true if str matches pattern.
+*/
+static bool likeMatch(const char* str, const char* pattern) {
+	if (*pattern == '\0') return *str == '\0';
+	if (*pattern == '%') {
+		do {
+			if (likeMatch(str, pattern + 1)) return true;
+		} while (*str++ != '\0');
+		return false;
+	}
+	if (*str == '\0') return false;
+	if (*pattern == '_' || *pattern == *str) return likeMatch(str + 1, pattern + 1);
+	return false;
+}
+
 static interpret_result run() {
 	#define READ_BYTE() (*vm.ip++)
 	#define READ_TWO_BYTES() (((uint16_t) *vm.ip++ << 8) | (uint16_t) *vm.ip++)
@@ -176,7 +249,7 @@ static interpret_result run() {
 	for (;;) {
 		#ifdef DEBUG_TRACE_EXECUTION
 			printf("        ");
-			for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
+			for (value* slot = vm.stack; slot < vm.stackTop; slot++) {
 				printf("[ ");
 				printValue(*slot);
 				printf(" ]");
@@ -192,7 +265,7 @@ static interpret_result run() {
 				return INTERPRET_OK;
 			}
 			case OP_CONSTANT: {
-				Value constant = READ_CONSTANT();
+				value constant = READ_CONSTANT();
 				push(constant);
 				break;
 			}
@@ -201,9 +274,9 @@ static interpret_result run() {
 			case OP_MULTIPLY: BINARY_OP(*); break;
 			case OP_DIVIDE: BINARY_OP(/); break;
 			case OP_NEGATE: {
-				Value v = pop();
+				value v = pop();
 				if (v.type != VAL_INT && v.type != VAL_FLOAT) {
-					printf("Error: attempted to negate a non-number at bytecode level\n");
+					runtimeError("Operand must be a number");
 				}
 				if (v.type == VAL_INT) {
 					push(INTEGER_VAL(-v.as.integer));
@@ -213,38 +286,53 @@ static interpret_result run() {
 				break;
 			}
 			case OP_EQUAL: {
+				push(BOOL_VAL(equal(pop(), pop())));
 				break;
 			}
 			case OP_NOT_EQUAL: {
+				push(BOOL_VAL(!equal(pop(), pop())));
 				break;
 			}
 			case OP_LESS: {
+				push(BOOL_VAL(lessThan(pop(), pop())));
 				break;
 			}
 			case OP_LESS_EQUAL: {
+				push(BOOL_VAL(!greaterThan(pop(), pop())));
 				break;
 			}
 			case OP_GREATER: {
+				push(BOOL_VAL(greaterThan(pop(), pop())));
 				break;
 			}
 			case OP_GREATER_EQUAL: {
+				push(BOOL_VAL(!lessThan(pop(), pop())));
 				break;
 			}
 			case OP_LIKE: {
+				value pattern = pop();
+				value str = pop();
+				if (str.type == VAL_NULL || pattern.type == VAL_NULL) {
+					push(NULL_VAL(0));
+				} else {
+					push(BOOL_VAL(likeMatch(str.as.text, pattern.as.text)));
+				}
 				break;
 			}
 			case OP_IS_NULL: {
+				push(BOOL_VAL(pop().type == VAL_NULL));
 				break;
 			}
 			case OP_NOT_NULL: {
+				push(BOOL_VAL(!pop().type == VAL_NULL));
 				break;
 			}
 			case OP_NOT: {
-				push(!pop().as.boolean);
+				push(BOOL_VAL(!pop().as.boolean));
 				break;
 			}
 			case OP_OPEN_SCAN: {
-				Value v = pop();
+				value v = pop();
 				openScanner(*v.as.text);
 				break;
 			}
@@ -272,7 +360,7 @@ static interpret_result run() {
 				scanner* s = &vm.scanners[0];
 				sp_slot slot = s->page->slots[s->slotIdx];
 				entry e = s->page->entries[slot.ptr + col_idx];
-				Value v;
+				value v;
 				switch (e.type) {
 					case T_INT: {
 						int32_t raw;

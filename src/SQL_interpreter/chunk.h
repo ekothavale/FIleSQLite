@@ -89,7 +89,7 @@ typedef enum opcode {
 void initChunk(Chunk* chunk);
 void writeChunk(Chunk* chunk, uint8_t byte, int line);
 void freeChunk(Chunk* chunk);
-int addConstant(Chunk* chunk, Value value);
+int addConstant(Chunk* chunk, value value);
 
 
 #endif // CHUNK_H

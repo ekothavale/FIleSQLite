@@ -27,24 +27,24 @@ void initValueArray(ValueArray* array) {
 	array->count = 0;
 }
 
-void writeValueArray(ValueArray* array, Value value) {
+void writeValueArray(ValueArray* array, value v) {
 	// if array is full, grow the array
 	if (array->capacity < array->count + 1) {
 		int oldCapacity = array->capacity;
 		array->capacity = GROW_CAPACITY(oldCapacity);
-		array->values = GROW_ARRAY(Value, array->values, oldCapacity, array->capacity);
+		array->values = GROW_ARRAY(v, array->values, oldCapacity, array->capacity);
 	}
 
 	// write to array
-	array->values[array->count] = value;
+	array->values[array->count] = v;
 	array->count++;
 }
 
 void freeValueArray(ValueArray* array) {
-	FREE_ARRAY(Value, array->values, array->capacity);
+	FREE_ARRAY(value, array->values, array->capacity);
 	initValueArray(array);
 }
 
-void printValue(Value value) {
+void printValue(value value) {
 	print("%g", value);
 }
