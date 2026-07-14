@@ -334,6 +334,28 @@ static interpret_result run() {
 				push(BOOL_VAL(!pop().as.boolean));
 				break;
 			}
+			case OP_JUMP: {
+				// assumes offset factors in the two bytes taken up by the offset itself
+				uint16_t offset = READ_TWO_BYTES();
+				vm.ip += offset;
+				break;
+			}
+			case OP_JUMP_FALSE: {
+				value v = pop();
+				if ((v.type == VAL_BOOL && !v.as.boolean) || v.type == VAL_NULL) {
+					uint16_t offset = READ_TWO_BYTES();
+					vm.ip += offset;
+					break;
+				}
+			}
+			case OP_JUMP_TRUE: {
+				value v = pop();
+				if (v.type == VAL_BOOL && v.as.boolean) {
+					uint16_t offset = READ_TWO_BYTES();
+					vm.ip += offset;
+					break;
+				}
+			}
 			case OP_OPEN_SCAN: {
 				value v = pop();
 				openScanner(*v.as.text);

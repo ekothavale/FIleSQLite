@@ -4,7 +4,7 @@ TODO:
  - implement separate hashing function to map pks to internal
    keys (pagenum | offset) - DONE
  - implement scanner opcodes - DONE
- - implement logical opcodes
+ - implement logical opcodes - DONE
  - implement control flow opcodes
  - implement database opcodes
  - write compiler second pass to generate code from AST
