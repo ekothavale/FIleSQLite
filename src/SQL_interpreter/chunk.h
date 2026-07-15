@@ -71,12 +71,12 @@ typedef enum opcode {
     OP_NEXT,
     OP_REWIND,
     OP_COLUMN,
-    // database management
+    // database management language
     OP_EMIT_ROW,
     OP_INSERT_ROW,
     OP_UPDATE_COL,
     OP_DELETE_ROW,
-    // table management
+    // database definition language
     OP_CREATE_TABLE,
     OP_DROP_TABLE,
     // result set ops

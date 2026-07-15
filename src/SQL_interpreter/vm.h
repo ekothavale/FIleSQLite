@@ -21,6 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "chunk.h"
 #include "value.h"
+#include "hashtable.h"
 #include "../storage_engine/bplus.h"
 #include "../storage_engine/tableIO.h"
 
@@ -54,10 +55,11 @@ typedef struct result_buffer {
 typedef struct VM {
 	Chunk* chunk;
 	uint8_t* ip; // instruction pointer
-	value stack[STACK_MAX]; // where values are stored
 	value* stackTop;
-	scanner scanners[MAX_SCANNERS]; // concurrent database processes
+	hashtable* schema; // contains the schema for each table
 	result_buffer results;
+	scanner scanners[MAX_SCANNERS]; // concurrent database processes
+	value stack[STACK_MAX]; // where values are stored
 } VM;
 
 typedef enum {

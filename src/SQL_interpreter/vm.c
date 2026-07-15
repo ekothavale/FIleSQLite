@@ -29,6 +29,11 @@ void initVM() {
 		vm.scanners[i].open = false;
 		vm.scanners[i].tbl = NULL;
 	}
+	vm.results.rows     = NULL;
+	vm.results.count    = 0;
+	vm.results.capacity = 0;
+	vm.results.cols     = 0;
+	vm.schema           = NULL;
 }
 
 void freeVM() {
@@ -44,6 +49,12 @@ void freeVM() {
 			vm.scanners[i].page = NULL;
 			vm.scanners[i].open = false;
 		}
+	}
+	if (vm.results.rows) {
+		for (int i = 0; i < vm.results.count; i++) free(vm.results.rows[i]);
+		free(vm.results.rows);
+		vm.results.rows  = NULL;
+		vm.results.count = 0;
 	}
 }
 
@@ -215,6 +226,54 @@ static bool advanceScanner(scanner* s) {
 	// move to next page
 	s->childIdx++;
 	return loadFirstValidPage(s);
+}
+
+/*
+Converts a VM value to a heap-allocated storage engine entry.
+Caller must eventually free e.data (or transfer ownership to a slotted_page).
+VAL_FLOAT is stored as raw IEEE 754 bytes under T_STRING — no T_FLOAT type exists yet.
+*/
+static entry valueToEntry(value v) {
+	entry e;
+	switch (v.type) {
+		case VAL_INT: {
+			int32_t raw = (int32_t)v.as.integer;
+			e.type = T_INT;
+			e.size = sizeof(int32_t);
+			e.data = malloc(e.size);
+			memcpy(e.data, &raw, e.size);
+			break;
+		}
+		case VAL_TEXT: {
+			e.type = T_STRING;
+			e.size = (uint32_t)strlen(v.as.text);
+			e.data = malloc(e.size);
+			memcpy(e.data, v.as.text, e.size);
+			break;
+		}
+		case VAL_BOOL: {
+			int32_t raw = v.as.boolean ? 1 : 0;
+			e.type = T_INT;
+			e.size = sizeof(int32_t);
+			e.data = malloc(e.size);
+			memcpy(e.data, &raw, e.size);
+			break;
+		}
+		case VAL_FLOAT: {
+			e.type = T_STRING;
+			e.size = sizeof(double);
+			e.data = malloc(e.size);
+			memcpy(e.data, &v.as.floating, e.size);
+			break;
+		}
+		default: { // VAL_NULL
+			e.type = T_INT;
+			e.size = 0;
+			e.data = NULL;
+			break;
+		}
+	}
+	return e;
 }
 
 /*
@@ -407,6 +466,101 @@ static interpret_result run() {
 				}
 				push(v);
 				break;
+			}
+			case OP_EMIT_ROW: {
+				uint8_t count = READ_BYTE();
+				// pop in reverse so row[0] is the leftmost column
+				value* row = malloc(count * sizeof(value));
+				for (int i = count - 1; i >= 0; i--) row[i] = pop();
+				for (int i = 0; i < count; i++) {
+					if (i > 0) printf(" | ");
+					printValue(row[i]);
+				}
+				printf("\n");
+				// grow result buffer
+				if (vm.results.capacity == 0) {
+					vm.results.capacity = 8;
+					vm.results.rows = malloc(vm.results.capacity * sizeof(value*));
+					vm.results.cols = count;
+				} else if (vm.results.count == vm.results.capacity) {
+					vm.results.capacity *= 2;
+					vm.results.rows = realloc(vm.results.rows, vm.results.capacity * sizeof(value*));
+				}
+				// transfer ownership of the row array (including any VAL_TEXT pointers) to vm.results
+				vm.results.rows[vm.results.count++] = row;
+				break;
+			}
+			case OP_INSERT_ROW: {
+				uint8_t count = READ_BYTE();
+				scanner* s = &vm.scanners[0];
+				table* t = s->tbl;
+				// stack top is the last column, so pop in reverse to preserve column order
+				entry* entries = malloc(count * sizeof(entry));
+				uint32_t totalSize = 0;
+				for (int i = count - 1; i >= 0; i--) {
+					entries[i] = valueToEntry(pop());
+					totalSize += entries[i].size;
+				}
+				// find the last page in the tree by reading maxPageNumber from the root node
+				node rootNode;
+				readNode(t->root, &rootNode, t);
+				address pageAddr = findPage(rootNode.maxPageNumber, t);
+				loadPage(pageAddr, t);
+				slotted_page* page = t->page;
+				sp_record r = { .entries = entries, .len = count, .size = totalSize };
+				if (hasSpace(page, totalSize)) {
+					uint32_t slotID = (page->header.numRecords > 0)
+						? page->slots[page->header.numRecords - 1].ID + 1
+						: 1;
+					addRecord(page, slotID, r);
+					markPage(pageAddr, page, t);
+				} else {
+					// allocate a new page; copy page dimensions from the full page
+					uint32_t newPageNum = rootNode.maxPageNumber + 1;
+					address newAddr = findAndInsert(newPageNum, t);
+					slotted_page* newPage = makeSPage(newPageNum,
+						page->header.maxSlots,
+						page->header.maxEntries,
+						page->header.arrCap);
+					addRecord(newPage, 1, r);
+					markPage(newAddr, newPage, t);
+					// newPage lives until commit writes it; freed at process cleanup
+				}
+				free(entries);  // page owns the data pointers; release only the metadata array
+				break;
+			}
+			case OP_UPDATE_COL: {
+				uint8_t col_idx = READ_BYTE();
+				scanner* s = &vm.scanners[0];
+				table* t = s->tbl;
+				sp_slot slot = s->page->slots[s->slotIdx];
+				entry* target = &s->page->entries[slot.ptr + col_idx];
+				free(target->data);
+				*target = valueToEntry(pop());
+				markPage(s->pageAddr, s->page, t);
+				break;
+			}
+			case OP_DELETE_ROW: {
+				scanner* s = &vm.scanners[0];
+				table* t = s->tbl;
+				sp_slot slot = s->page->slots[s->slotIdx];
+				deleteRecord(s->page, slot.ID);
+				markPage(s->pageAddr, s->page, t);
+				// step back so the next OP_NEXT's increment lands on the record that shifted into this slot
+				s->slotIdx = (s->slotIdx > 0) ? s->slotIdx - 1 : (uint32_t)(-1);
+				break;
+			}
+			case OP_CREATE_TABLE: {
+				// schema descriptor should already be registered in vm's table
+				uint8_t schemaIdx = READ_BYTE();
+				ht_entry* schema = readHT(vm.chunk->constants.values[schemaIdx].as.u32, vm.schema);
+				createTable();
+
+			}
+			case OP_DROP_TABLE: {
+				uint8_t nameIdx = READ_BYTE();
+				const char* name = vm.chunk->constants.values[nameIdx].as.text;
+				deleteTable();
 			}
 		}
 	}

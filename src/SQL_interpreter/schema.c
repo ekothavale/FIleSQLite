@@ -43,7 +43,7 @@ static void readEntries(hashtable* ht, FILE* file) {
 			cols[j] = name;
 		}
 
-		entry e = { .hash = hash, .cols = cols, .count = (int)colCount };
+		ht_entry e = { .hash = hash, .cols = cols, .count = (int)colCount };
 		insertHT(&e, ht);
 	}
 }
@@ -60,7 +60,7 @@ static void writeEntries(hashtable* ht, FILE* file) {
 	fwrite(&count, sizeof(uint32_t), 1, file);
 
 	for (int i = 0; i < ht->capacity; i++) {
-		entry* e = &ht->entries[i];
+		ht_entry* e = &ht->entries[i];
 		if (e->hash == 0) continue;
 
 		fwrite(&e->hash, sizeof(uint32_t), 1, file);

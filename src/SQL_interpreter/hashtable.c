@@ -27,7 +27,7 @@ void initHashTable(hashtable* table) {
 }
 
 void freeHashTable(hashtable* table) {
-	FREE_ARRAY(entry, table->entries, table->capacity);
+	FREE_ARRAY(ht_entry, table->entries, table->capacity);
 	initHashTable(table);
 }
 
@@ -47,11 +47,11 @@ uint32_t hashString(const char* key, int length) {
 }
 
 // quadratic probing
-static entry* findEntry(uint32_t hash, entry* entries, int capacity) {
+static ht_entry* findEntry(uint32_t hash, ht_entry* entries, int capacity) {
 	int velocity = 0;
 	for (;;) {
 		uint32_t index = (hash + velocity * velocity) % capacity;
-		entry* found = &entries[index];
+		ht_entry* found = &entries[index];
 		if (found->hash == hash || found->hash == NULL) {
 			return found;
 		}
@@ -60,12 +60,12 @@ static entry* findEntry(uint32_t hash, entry* entries, int capacity) {
 }
 
 static void adjustCapacity(int capacity, hashtable* table) {
-	entry* entries = calloc(sizeof(entry), capacity);
+	ht_entry* entries = calloc(sizeof(ht_entry), capacity);
 	for (int i = 0; i < table->capacity; i++) {
-		entry* e = &table->entries[i];
+		ht_entry* e = &table->entries[i];
 		if (e->hash == NULL) continue;
 
-		entry* dest = findEntry(e->hash, entries, capacity);
+		ht_entry* dest = findEntry(e->hash, entries, capacity);
 		dest->hash = e->hash;
 		dest->cols = e->cols;
 		dest->count = e->count;
@@ -79,8 +79,8 @@ static void adjustCapacity(int capacity, hashtable* table) {
 inserts e into the given table if it is not already present
 overwrites the exisiting value if e is already in the table
 */
-void insertHT(entry* e, hashtable* table) {
-	entry* found = findEntry(e->hash, table->entries, table->capacity);
+void insertHT(ht_entry* e, hashtable* table) {
+	ht_entry* found = findEntry(e->hash, table->entries, table->capacity);
 	found->hash = e->hash;
 	found->cols = e->cols;
 	found->count = e->count;
@@ -95,8 +95,8 @@ void insertHT(entry* e, hashtable* table) {
 read a value from a hash table given a key
 return NULL if value is not found
 */
-entry* readHT(uint32_t hash, hashtable* table) {
-	entry* found = findEntry(hash, table->entries, table->capacity);
+ht_entry* readHT(uint32_t hash, hashtable* table) {
+	ht_entry* found = findEntry(hash, table->entries, table->capacity);
 	return found->hash ? found : NULL;
 }
 
@@ -104,7 +104,7 @@ entry* readHT(uint32_t hash, hashtable* table) {
 deletes a key-value pair from a hash table
 */
 void deleteHT(uint32_t hash, hashtable* table) {
-	entry* target = findEntry(hash, table->entries, table->capacity);
+	ht_entry* target = findEntry(hash, table->entries, table->capacity);
 	target->cols = 0;
 	target->count = 0;
 	target->hash = 0;
