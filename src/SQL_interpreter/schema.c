@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 /*
 reads the entries in the schema file and loads them into the given hash table
-on-disk format per entry: [hash: u32] [col count: u32] [col 0 len: u32] [col 0 bytes] ...
+on-disk format per entry: [hash: u32] [name len: u32] [name bytes] [col count: u32] ([col N len: u32] [col N bytes])*
 */
 static void readEntries(hashtable* ht, FILE* file) {
 	uint32_t entryCount;
@@ -29,6 +29,12 @@ static void readEntries(hashtable* ht, FILE* file) {
 	for (uint32_t i = 0; i < entryCount; i++) {
 		uint32_t hash;
 		fread(&hash, sizeof(uint32_t), 1, file);
+
+		uint32_t nameLen;
+		fread(&nameLen, sizeof(uint32_t), 1, file);
+		char* tablename = malloc(nameLen + 1);
+		fread(tablename, 1, nameLen, file);
+		tablename[nameLen] = '\0';
 
 		uint32_t colCount;
 		fread(&colCount, sizeof(uint32_t), 1, file);
@@ -43,14 +49,14 @@ static void readEntries(hashtable* ht, FILE* file) {
 			cols[j] = name;
 		}
 
-		ht_entry e = { .hash = hash, .cols = cols, .count = (int)colCount };
+		schema e = { .hash = hash, .tablename = tablename, .cols = cols, .count = (int)colCount };
 		insertHT(&e, ht);
 	}
 }
 
 /*
 writes all of the entries in the schema hash table to the schema file
-on-disk format per entry: [hash: u32] [col count: u32] [col 0 len: u32] [col 0 bytes] ...
+on-disk format per entry: [hash: u32] [name len: u32] [name bytes] [col count: u32] ([col N len: u32] [col N bytes])*
 */
 static void writeEntries(hashtable* ht, FILE* file) {
 	uint32_t count = 0;
@@ -60,10 +66,14 @@ static void writeEntries(hashtable* ht, FILE* file) {
 	fwrite(&count, sizeof(uint32_t), 1, file);
 
 	for (int i = 0; i < ht->capacity; i++) {
-		ht_entry* e = &ht->entries[i];
+		schema* e = &ht->entries[i];
 		if (e->hash == 0) continue;
 
 		fwrite(&e->hash, sizeof(uint32_t), 1, file);
+		uint32_t nameLen = (uint32_t)strlen(e->tablename);
+		fwrite(&nameLen, sizeof(uint32_t), 1, file);
+		fwrite(e->tablename, 1, nameLen, file);
+
 		uint32_t colCount = (uint32_t)e->count;
 		fwrite(&colCount, sizeof(uint32_t), 1, file);
 

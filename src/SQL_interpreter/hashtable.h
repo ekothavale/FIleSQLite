@@ -23,23 +23,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define MAX_LOAD_FACTOR 0.8 // load factor at which the hash table is resized
 
-typedef struct ht_entry {
+typedef struct schema {
 	char** cols; // names of columns
+	char* tablename; // corresponding name of table (key)
 	uint32_t hash; // hash of key to id the entry
-	int count; // number of rows in the entry
-} ht_entry;
+	int count; // number of columns in the entry
+} schema;
 
 typedef struct hashtable {
 	int count;
 	int capacity;
-	ht_entry* entries;
+	schema* entries;
 } hashtable;
 
 void initHashTable(hashtable* table);
 void freeHashTable(hashtable* table);
 uint32_t hashString(const char* key, int len);
-void insertHT(ht_entry* e, hashtable* table);
-ht_entry* readHT(uint32_t, hashtable* table);
+void insertHT(schema* e, hashtable* table);
+schema* readHT(uint32_t, hashtable* table);
 void deleteHT(uint32_t, hashtable* table);
 
 #endif

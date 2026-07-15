@@ -27,11 +27,13 @@ void initHashTable(hashtable* table) {
 }
 
 void freeHashTable(hashtable* table) {
-	FREE_ARRAY(ht_entry, table->entries, table->capacity);
+	FREE_ARRAY(schema, table->entries, table->capacity);
 	initHashTable(table);
 }
 
-// FNV-1a hash function
+/*
+FNV-1a hash function
+*/
 static uint32_t FNV1_A(const char* key, int length) {
 	uint32_t hash = 2166136261u;
 	for (int i = 0; i < length; i++) {
@@ -41,17 +43,22 @@ static uint32_t FNV1_A(const char* key, int length) {
 	return hash;
 }
 
-// induction wrapper around hash function
+/*
+induction wrapper around hash function
+*/
 uint32_t hashString(const char* key, int length) {
 	return FNV1_A(key, length);
 }
 
-// quadratic probing
-static ht_entry* findEntry(uint32_t hash, ht_entry* entries, int capacity) {
+/*
+finds an entry in the given table
+resolves collisions via quadratic probing
+*/
+static schema* findEntry(uint32_t hash, schema* entries, int capacity) {
 	int velocity = 0;
 	for (;;) {
 		uint32_t index = (hash + velocity * velocity) % capacity;
-		ht_entry* found = &entries[index];
+		schema* found = &entries[index];
 		if (found->hash == hash || found->hash == NULL) {
 			return found;
 		}
@@ -59,16 +66,21 @@ static ht_entry* findEntry(uint32_t hash, ht_entry* entries, int capacity) {
 	}
 }
 
+/*
+resize the given hash table by copying the data to a new table by rehashing each entry
+frees the original table entries array, callocs a new one
+*/
 static void adjustCapacity(int capacity, hashtable* table) {
-	ht_entry* entries = calloc(sizeof(ht_entry), capacity);
+	schema* entries = calloc(sizeof(schema), capacity);
 	for (int i = 0; i < table->capacity; i++) {
-		ht_entry* e = &table->entries[i];
+		schema* e = &table->entries[i];
 		if (e->hash == NULL) continue;
 
-		ht_entry* dest = findEntry(e->hash, entries, capacity);
+		schema* dest = findEntry(e->hash, entries, capacity);
 		dest->hash = e->hash;
 		dest->cols = e->cols;
 		dest->count = e->count;
+		dest->tablename = e->tablename;
 	}
 	free(table->entries);
 	table->entries = entries;
@@ -79,11 +91,12 @@ static void adjustCapacity(int capacity, hashtable* table) {
 inserts e into the given table if it is not already present
 overwrites the exisiting value if e is already in the table
 */
-void insertHT(ht_entry* e, hashtable* table) {
-	ht_entry* found = findEntry(e->hash, table->entries, table->capacity);
+void insertHT(schema* e, hashtable* table) {
+	schema* found = findEntry(e->hash, table->entries, table->capacity);
 	found->hash = e->hash;
 	found->cols = e->cols;
 	found->count = e->count;
+	found->tablename= e->tablename;
 	if (table->count + 1 > table->capacity * MAX_LOAD_FACTOR) {
 		int capacity = GROW_CAPACITY(table->capacity);
 		adjustCapacity(capacity, table);
@@ -95,8 +108,8 @@ void insertHT(ht_entry* e, hashtable* table) {
 read a value from a hash table given a key
 return NULL if value is not found
 */
-ht_entry* readHT(uint32_t hash, hashtable* table) {
-	ht_entry* found = findEntry(hash, table->entries, table->capacity);
+schema* readHT(uint32_t hash, hashtable* table) {
+	schema* found = findEntry(hash, table->entries, table->capacity);
 	return found->hash ? found : NULL;
 }
 
@@ -104,7 +117,7 @@ ht_entry* readHT(uint32_t hash, hashtable* table) {
 deletes a key-value pair from a hash table
 */
 void deleteHT(uint32_t hash, hashtable* table) {
-	ht_entry* target = findEntry(hash, table->entries, table->capacity);
+	schema* target = findEntry(hash, table->entries, table->capacity);
 	target->cols = 0;
 	target->count = 0;
 	target->hash = 0;

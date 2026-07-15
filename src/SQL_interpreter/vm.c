@@ -551,16 +551,36 @@ static interpret_result run() {
 				break;
 			}
 			case OP_CREATE_TABLE: {
-				// schema descriptor should already be registered in vm's table
+				// schema entry is pre-populated in vm.schema by the compiler before execution
 				uint8_t schemaIdx = READ_BYTE();
-				ht_entry* schema = readHT(vm.chunk->constants.values[schemaIdx].as.u32, vm.schema);
-				createTable();
-
+				uint32_t hash = vm.chunk->constants.values[schemaIdx].as.u32;
+				schema* s = readHT(hash, vm.schema);
+				if (!s) {
+					printf("Error: schema not found for CREATE TABLE\n");
+					break;
+				}
+				table* t = createTable(s->tablename);
+				if (t) {
+					fclose(t->source);
+					freeTable(t);
+				}
+				saveSchema(vm.schema);
+				break;
 			}
 			case OP_DROP_TABLE: {
 				uint8_t nameIdx = READ_BYTE();
 				const char* name = vm.chunk->constants.values[nameIdx].as.text;
-				deleteTable();
+				uint32_t hash = hashString(name, (int)strlen(name));
+				deleteHT(hash, vm.schema);
+				table* t = malloc(sizeof(table));
+				if (loadTable((char*)name, t)) {
+					deleteTable(t);  // closes file, removes .tbl, frees t
+				} else {
+					free(t);
+					printf("Error: table '%s' not found\n", name);
+				}
+				saveSchema(vm.schema);
+				break;
 			}
 		}
 	}
