@@ -25,9 +25,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "storage_engine/page.h"
 #include "storage_engine/bplus.h"
 
-void printChunk(Chunk* chunk);
-void disassembleChunk(Chunk* chunk, const char* name);
-int disassembleInstruction(Chunk* chunk, int offset);
+void printChunk(chunk* chunk);
+void disassembleChunk(chunk* chunk, const char* name);
+int disassembleInstruction(chunk* chunk, int offset);
 
 void generateTestBPlusTree(table* t);
 void printIntArray(int* arr, int length);

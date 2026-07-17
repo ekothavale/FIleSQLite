@@ -17,3 +17,4 @@ CONSIDERATIONS:
 	- could use hash as table file name 
  - VM needs to receive table from compiler since the compiler may need to populate the table further at compile time
  - The storage engine doesn't use any of the schema to customize the table
+ - On disk datatypes in storage engine do not match the SQL interpreter value datatypes

@@ -394,30 +394,29 @@ static interpret_result run() {
 				break;
 			}
 			case OP_JUMP: {
-				// assumes offset factors in the two bytes taken up by the offset itself
 				uint16_t offset = READ_TWO_BYTES();
-				vm.ip += offset;
+				vm.ip += (int16_t)offset;
 				break;
 			}
 			case OP_JUMP_FALSE: {
+				uint16_t offset = READ_TWO_BYTES();
 				value v = pop();
 				if ((v.type == VAL_BOOL && !v.as.boolean) || v.type == VAL_NULL) {
-					uint16_t offset = READ_TWO_BYTES();
-					vm.ip += offset;
-					break;
+					vm.ip += (int16_t)offset;
 				}
+				break;
 			}
 			case OP_JUMP_TRUE: {
+				uint16_t offset = READ_TWO_BYTES();
 				value v = pop();
 				if (v.type == VAL_BOOL && v.as.boolean) {
-					uint16_t offset = READ_TWO_BYTES();
-					vm.ip += offset;
-					break;
+					vm.ip += (int16_t)offset;
 				}
+				break;
 			}
 			case OP_OPEN_SCAN: {
 				value v = pop();
-				openScanner(*v.as.text);
+				openScanner(v.as.text);
 				break;
 			}
 			case OP_CLOSE_SCAN: {
@@ -590,7 +589,7 @@ static interpret_result run() {
 }
 
 interpret_result interpret(const char* source) {
-	Chunk chunk;
+	chunk chunk;
 	initChunk(&chunk);
 
 	if (!compile(source, &chunk)) {

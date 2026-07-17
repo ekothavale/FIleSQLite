@@ -23,20 +23,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "memory.h"
 #include "value.h"
 
-typedef struct Chunk {
+typedef struct chunk {
     uint8_t* code; // pointer to the start of bytecode dynamic array
     int capacity; // bytecode dynamic array size
     int count; // bytecode dynamic array count (grow when count >= capacity)
     int* lines; // line numbers corresponding to each opcode
     ValueArray constants;
-} Chunk;
+} chunk;
 
 /*
 bytecode for VM
 each opcode is one byte and can be followed by 1 or 2 byte optional arguments
 */
 typedef enum opcode {
-    OP_SELECT,
     // constants
     OP_CONSTANT,
     OP_NULL,
@@ -86,10 +85,10 @@ typedef enum opcode {
     OP_HALT
 }opcode;
 
-void initChunk(Chunk* chunk);
-void writeChunk(Chunk* chunk, uint8_t byte, int line);
-void freeChunk(Chunk* chunk);
-int addConstant(Chunk* chunk, value value);
+void initChunk(chunk* chunk);
+void writeChunk(chunk* chunk, uint8_t byte, int line);
+void freeChunk(chunk* chunk);
+int addConstant(chunk* chunk, value value);
 
 
 #endif // CHUNK_H

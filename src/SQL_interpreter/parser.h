@@ -18,7 +18,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #ifndef PARSER_H
 #define PARSER_H
 
-#include "vm.h"
 #include "lexer.h"
 
 typedef enum ast_type {
@@ -58,7 +57,7 @@ typedef struct ast_node {
 	ast_node* children[7];
 } ast_node;
 
-bool compile(const char* source, Chunk* chunk);
+ast_node* compile(tokenized* t);
 
 #endif
 

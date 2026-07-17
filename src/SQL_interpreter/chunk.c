@@ -21,7 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 /*
 zero out a chunk
 */
-void initChunk(Chunk* chunk) {
+void initChunk(chunk* chunk) {
     chunk->code = NULL;
     chunk->capacity = 0;
     chunk->count = 0;
@@ -32,7 +32,7 @@ void initChunk(Chunk* chunk) {
 /*
 writes a byte to a chunk
 */
-void writeChunk(Chunk* chunk, uint8_t byte, int line) {
+void writeChunk(chunk* chunk, uint8_t byte, int line) {
     if (chunk->capacity < chunk->count + 1) {
         // Resize the chunk if necessary
         printf("Growing array (for debugging purposes)\n");
@@ -48,12 +48,12 @@ void writeChunk(Chunk* chunk, uint8_t byte, int line) {
 /*
 adds a constant to a chunk
 */
-int addConstant(Chunk* chunk, value value) {
+int addConstant(chunk* chunk, value value) {
     writeValueArray(&chunk->constants, value);
     return chunk->constants.count-1;
 }
 
-void freeChunk(Chunk* chunk) {
+void freeChunk(chunk* chunk) {
   FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
   FREE_ARRAY(int, chunk->lines, chunk->capacity);
   freeValueArray(&chunk->constants);

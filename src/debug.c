@@ -25,7 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 // ##########################################################################################################################################
 // SQL INTERPRETER PRETTY PRINTERS
 
-void disassembleChunk(Chunk* chunk, const char* name) {
+void disassembleChunk(chunk* chunk, const char* name) {
     printf("== %s ==\n", name);
 
     for (int offset = 0; offset < chunk->count;) {
@@ -37,7 +37,7 @@ void disassembleChunk(Chunk* chunk, const char* name) {
 prints a constant instruction
 @return - new offset after value (values are 64 bits)
 */
-static int constantInstruction(const char* name, Chunk* chunk, int offset) {
+static int constantInstruction(const char* name, chunk* chunk, int offset) {
     uint8_t constant = chunk->code[offset + 1];
     printf("%-16s %4d '", name, constant);
     printValue(chunk->constants.values[constant]);
@@ -50,7 +50,7 @@ static int simpleInstruction(const char* name, int offset) {
     return offset + 1;
 }
 
-int disassembleInstruction(Chunk* chunk, int offset) {
+int disassembleInstruction(chunk* chunk, int offset) {
     printf("%04d ", offset);
     if (offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) {
         printf("    | ");

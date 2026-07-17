@@ -20,12 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 Recursive descent parser
 */
 
-#include "common.h"
-#include "chunk.h"
-#include "lexer.h"
-#include "parser.h"
-
-
 /*
 query      → select_stmt | insert_stmt | update_stmt | delete_stmt
            | create_stmt | drop_stmt | alter_stmt
@@ -79,6 +73,10 @@ alter_stmt  → ALTER TABLE identifier ADD [COLUMN] col_def
             | ALTER TABLE identifier DROP COLUMN identifier
             | ALTER TABLE identifier ALTER COLUMN identifier identifier
 */
+
+#include "common.h"
+#include "chunk.h"
+#include "parser.h"
 
 typedef struct parser {
     token* start;
@@ -801,5 +799,15 @@ static ast_node* query() {
 	}
 	return out;
 
+}
+
+
+/*
+converts a stream of tokens into an abstract syntax tree
+*/
+ast_node* compile(tokenized t) {
+	initParser(t);
+	// probably some more cleanup that has to be done here
+	return query();
 }
 

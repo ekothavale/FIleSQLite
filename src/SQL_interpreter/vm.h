@@ -53,7 +53,7 @@ typedef struct result_buffer {
 
 // a virtual computer to manage a local database
 typedef struct VM {
-	Chunk* chunk;
+	chunk* chunk;
 	uint8_t* ip; // instruction pointer
 	value* stackTop;
 	hashtable* schema; // contains the schema for each table

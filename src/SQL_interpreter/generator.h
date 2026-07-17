@@ -19,4 +19,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #ifndef GENERATOR_H
 #define GENERATOR_H
 
+#include "chunk.h"
+#include "../common.h"
+#include "parser.h"
+#include "hashtable.h"
+
+void generate(ast_node* root, chunk* c, hashtable* schema);
+
 #endif
