@@ -104,103 +104,251 @@ static void emitBackJump(chunk* c, opcode op, int target) {
     writeChunk(c, (uint8_t)((uint16_t)jump & 0xFF), 0);
 }
 
-/* AST Node Types:
-	TYPE_QUERY,
-	TYPE_SELECT_STMT,
-	TYPE_INSERT_STMT,
-	TYPE_UPDATE_STMT,
-	TYPE_DELETE_STMT,
-	TYPE_CREATE_STMT,
-	TYPE_DROP_STMT,
-	TYPE_ALTER_STMT,
-	TYPE_WHERE_CLAUSE,
-	TYPE_GROUP_CLAUSE,
-	TYPE_HAVING_CLAUSE,
-	TYPE_ORDER_CLAUSE,
-	TYPE_LIMIT_CLAUSE,
-	TYPE_EXPR,
-	TYPE_OR_EXPR,
-	TYPE_AND_EXPR,
-	TYPE_NOT_EXPR,
-	TYPE_COMPARISON,
-	TYPE_ADDITIVE,
-	TYPE_MULTIPLICATIVE,
-	TYPE_UNARY,
-	TYPE_PRIMARY,
-	TYPE_IDENTIFIER,
-	TYPE_LIST_NODE,
-	TYPE_SELECT_ITEM,
-	TYPE_COL_DEF,
-	TYPE_ASSIGNMENT
-
-    Opcodes:
-    OP_SELECT,
-    OP_CONSTANT,
-    OP_NULL,
-    OP_TRUE,
-    OP_FALSE,
-    OP_POP,
-    OP_ADD,
-    OP_SUBTRACT,
-    OP_MULTIPLY,
-    OP_DIVIDE,
-    OP_NEGATE,
-    OP_EQUAL,
-    OP_NOT_EQUAL,
-    OP_LESS,
-    OP_LESS_EQUAL,
-    OP_GREATER,
-    OP_GREATER_EQUAL,
-    OP_LIKE,
-    OP_IS_NULL,
-    OP_NOT_NULL,
-    OP_NOT,
-    OP_JUMP,
-    OP_JUMP_FALSE,
-    OP_JUMP_TRUE,
-    OP_OPEN_SCAN,
-    OP_CLOSE_SCAN,
-    OP_NEXT,
-    OP_REWIND,
-    OP_COLUMN,
-    OP_EMIT_ROW,
-    OP_INSERT_ROW,
-    OP_UPDATE_COL,
-    OP_DELETE_ROW,
-    OP_CREATE_TABLE,
-    OP_DROP_TABLE,
-    OP_SORT,
-    OP_LIMIT,
-    OP_HALT
+/*
+s is the schema for the table currently being scanned; pass NULL when no column
+references are expected (e.g., inside INSERT VALUES).
 */
-
-static void munchExpr(ast_node* node, chunk* c, hashtable* schema) {
+static void munchExpr(ast_node* node, chunk* c, hashtable* ht, schema* s) {
 	switch(node->type) {
 		case TYPE_EXPR: {
+			/* TYPE_EXPR is a passthrough — parser's expr() returns orExpr() directly
+			   so TYPE_EXPR nodes are never instantiated; this case is unreachable */
 			break;
 		}
+
 		case TYPE_OR_EXPR: {
+			/*
+			Short-circuit OR:  left OR right
+			  [left]
+			  JUMP_TRUE <true>   left is true: skip right
+			  [right]            right's result is the OR result if left was false
+			  JUMP <done>
+			<true:>
+			  OP_TRUE
+			<done:>
+			*/
+			munchExpr(node->children[0], c, ht, s);
+			int truePatch = emitJump(c, OP_JUMP_TRUE);
+			munchExpr(node->children[1], c, ht, s);
+			int donePatch = emitJump(c, OP_JUMP);
+			patchJump(c, truePatch);
+			writeChunk(c, OP_TRUE, 0);
+			patchJump(c, donePatch);
 			break;
 		}
+
 		case TYPE_AND_EXPR: {
+			/*
+			Short-circuit AND:  left AND right
+			  [left]
+			  JUMP_FALSE <false>   left is false: skip right
+			  [right]              right's result is the AND result if left was true
+			  JUMP <done>
+			<false:>
+			  OP_FALSE
+			<done:>
+			*/
+			munchExpr(node->children[0], c, ht, s);
+			int falsePatch = emitJump(c, OP_JUMP_FALSE);
+			munchExpr(node->children[1], c, ht, s);
+			int donePatch = emitJump(c, OP_JUMP);
+			patchJump(c, falsePatch);
+			writeChunk(c, OP_FALSE, 0);
+			patchJump(c, donePatch);
 			break;
 		}
+
 		case TYPE_NOT_EXPR: {
+			munchExpr(node->children[0], c, ht, s);
+			writeChunk(c, OP_NOT, 0);
 			break;
 		}
+
 		case TYPE_COMPARISON: {
+			token_type op = node->tok.type;
+			switch(op) {
+				case TOKEN_EQUAL: {
+					munchExpr(node->children[0], c, ht, s);
+					munchExpr(node->children[1], c, ht, s);
+					writeChunk(c, OP_EQUAL, 0);
+					break;
+				}
+				case TOKEN_BANG_EQUAL: {
+					munchExpr(node->children[0], c, ht, s);
+					munchExpr(node->children[1], c, ht, s);
+					writeChunk(c, OP_NOT_EQUAL, 0);
+					break;
+				}
+				case TOKEN_LESS: {
+					munchExpr(node->children[0], c, ht, s);
+					munchExpr(node->children[1], c, ht, s);
+					writeChunk(c, OP_LESS, 0);
+					break;
+				}
+				case TOKEN_LESS_EQUAL: {
+					munchExpr(node->children[0], c, ht, s);
+					munchExpr(node->children[1], c, ht, s);
+					writeChunk(c, OP_LESS_EQUAL, 0);
+					break;
+				}
+				case TOKEN_GREATER: {
+					munchExpr(node->children[0], c, ht, s);
+					munchExpr(node->children[1], c, ht, s);
+					writeChunk(c, OP_GREATER, 0);
+					break;
+				}
+				case TOKEN_GREATER_EQUAL: {
+					munchExpr(node->children[0], c, ht, s);
+					munchExpr(node->children[1], c, ht, s);
+					writeChunk(c, OP_GREATER_EQUAL, 0);
+					break;
+				}
+				case TOKEN_LIKE: {
+					munchExpr(node->children[0], c, ht, s);
+					munchExpr(node->children[1], c, ht, s);
+					writeChunk(c, OP_LIKE, 0);
+					break;
+				}
+				case TOKEN_IS: {
+					/*
+					IS NULL    (flag=false) → OP_IS_NULL
+					IS NOT NULL (flag=true) → OP_NOT_NULL
+					*/
+					munchExpr(node->children[0], c, ht, s);
+					writeChunk(c, node->flag ? OP_NOT_NULL : OP_IS_NULL, 0);
+					break;
+				}
+				case TOKEN_BETWEEN: {
+					/*
+					A BETWEEN B AND C  →  (A >= B) AND (A <= C)
+					A is emitted twice; valid because column reads have no side effects.
+					Uses short-circuit AND pattern:
+					  [A] [B] OP_GREATER_EQUAL
+					  JUMP_FALSE <false>
+					  [A] [C] OP_LESS_EQUAL
+					  JUMP <done>
+					<false:>
+					  OP_FALSE
+					<done:>
+					*/
+					munchExpr(node->children[0], c, ht, s);  // A
+					munchExpr(node->children[1], c, ht, s);  // B
+					writeChunk(c, OP_GREATER_EQUAL, 0);
+					int falsePatch = emitJump(c, OP_JUMP_FALSE);
+					munchExpr(node->children[0], c, ht, s);  // A (emitted again)
+					munchExpr(node->children[2], c, ht, s);  // C
+					writeChunk(c, OP_LESS_EQUAL, 0);
+					int donePatch = emitJump(c, OP_JUMP);
+					patchJump(c, falsePatch);
+					writeChunk(c, OP_FALSE, 0);
+					patchJump(c, donePatch);
+					break;
+				}
+				case TOKEN_IN: {
+					/*
+					A IN (v1,...,vN):  (A==v1) OR ... OR (A==vN)
+					A NOT IN (...):    same with OP_NOT appended (node->flag == true)
+					A is emitted for each comparison; no DUP opcode available.
+
+					Each non-last element:
+					  [A] [vN] OP_EQUAL
+					  JUMP_TRUE <found>
+					Last element:
+					  [A] [vN] OP_EQUAL   (result stays on stack)
+					  JUMP <done>
+					<found:>
+					  OP_TRUE
+					<done:>
+					  [OP_NOT if NOT IN]
+					*/
+					int foundPatches[64];
+					int patchCount = 0;
+
+					ast_node* valIt = node->children[1];
+					while (valIt) {
+						bool isLast = (valIt->children[1] == NULL);
+						munchExpr(node->children[0], c, ht, s);   // A
+						munchExpr(valIt->children[0], c, ht, s);  // vN
+						writeChunk(c, OP_EQUAL, 0);
+						if (!isLast) {
+							foundPatches[patchCount++] = emitJump(c, OP_JUMP_TRUE);
+						}
+						valIt = valIt->children[1];
+					}
+					int donePatch = emitJump(c, OP_JUMP);
+					for (int i = 0; i < patchCount; i++) patchJump(c, foundPatches[i]);
+					writeChunk(c, OP_TRUE, 0);
+					patchJump(c, donePatch);
+					if (node->flag) writeChunk(c, OP_NOT, 0);
+					break;
+				}
+				default: {
+					break;
+				}
+			}
 			break;
 		}
+
 		case TYPE_ADDITIVE: {
+			munchExpr(node->children[0], c, ht, s);
+			munchExpr(node->children[1], c, ht, s);
+			writeChunk(c, node->tok.type == TOKEN_PLUS ? OP_ADD : OP_SUBTRACT, 0);
 			break;
 		}
+
 		case TYPE_MULTIPLICATIVE: {
+			munchExpr(node->children[0], c, ht, s);
+			munchExpr(node->children[1], c, ht, s);
+			writeChunk(c, node->tok.type == TOKEN_STAR ? OP_MULTIPLY : OP_DIVIDE, 0);
 			break;
 		}
+
 		case TYPE_UNARY: {
+			/* only operator is unary minus (tok.type == TOKEN_MINUS) */
+			munchExpr(node->children[0], c, ht, s);
+			writeChunk(c, OP_NEGATE, 0);
 			break;
 		}
+
 		case TYPE_PRIMARY: {
+			token_type t = node->tok.type;
+			if (t == TOKEN_NUMBER) {
+				char numStr[MAX_IDENT_LEN];
+				tokenToStr(node->tok, numStr);
+				value v = strchr(numStr, '.')
+				    ? FLOAT_VAL(atof(numStr))
+				    : INTEGER_VAL(atoll(numStr));
+				writeConst(c, v);
+			} else if (t == TOKEN_STRING) {
+				/* strip surrounding quote characters */
+				int slen = node->tok.length - 2;
+				char* text = malloc(slen + 1);
+				memcpy(text, node->tok.start + 1, slen);
+				text[slen] = '\0';
+				writeConst(c, TEXT_VAL(text));
+			} else if (t == TOKEN_IDENTIFIER) {
+				if (node->flag) {
+					/* function call: no OP_CALL opcode exists yet */
+					printf("Error: function calls are not yet supported in expressions\n");
+				} else if (s) {
+					/* column reference: resolve name to schema index */
+					char colname[MAX_IDENT_LEN];
+					tokenToStr(node->tok, colname);
+					int idx = lookupColIdx(colname, s);
+					if (idx >= 0) {
+						writeChunk(c, OP_COLUMN, 0);
+						writeChunk(c, (uint8_t)idx, 0);
+					} else {
+						printf("Error: unknown column '%s'\n", colname);
+					}
+				}
+			} else if (t == TOKEN_NULL) {
+				/* requires parser.c primary() to handle TOKEN_NULL (not yet added) */
+				writeChunk(c, OP_NULL, 0);
+			}
+			break;
+		}
+		default: {
 			break;
 		}
 	}
@@ -229,9 +377,6 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			  JUMP <loop_top>        loop back (backward)
 			[exit:]
 			  CLOSE_SCAN
-
-			Requires vm.c fixes: (int16_t) cast in OP_JUMP and OP_JUMP_FALSE,
-			and openScanner(v.as.text) in OP_OPEN_SCAN
 			*/
 			char tname[MAX_IDENT_LEN];
 			tokenToStr(node->children[1]->tok, tname);
@@ -246,7 +391,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 			// WHERE: emit condition; jump back to loopTop (next row) if false
 			if (node->children[2]) {
-				munchExpr(node->children[2]->children[0], c, ht);
+				munchExpr(node->children[2]->children[0], c, ht, s);
 				emitBackJump(c, OP_JUMP_FALSE, loopTop);
 			}
 
@@ -265,7 +410,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 				}
 			} else {
 				// Named items: resolve simple column identifiers to OP_COLUMN;
-				// fall back to matchExpr for computed expressions
+				// fall back to munchExpr for computed expressions
 				while (listIt) {
 					ast_node* item = listIt->children[0];     // TYPE_SELECT_ITEM
 					ast_node* itemExpr = item->children[0];   // the expression
@@ -279,7 +424,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 							writeChunk(c, (uint8_t)idx, 0);
 						}
 					} else if (itemExpr) {
-						munchExpr(itemExpr, c, ht);
+						munchExpr(itemExpr, c, ht, s);
 					}
 					colCount++;
 					listIt = listIt->children[1];
@@ -317,7 +462,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			int valCount = 0;
 			ast_node* valIt = node->children[2];
 			while (valIt) {
-				munchExpr(valIt->children[0], c, ht);
+				munchExpr(valIt->children[0], c, ht, NULL);
 				valCount++;
 				valIt = valIt->children[1];
 			}
@@ -357,14 +502,14 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			int nextPatch = emitJump(c, OP_NEXT);
 
 			if (node->children[2]) {
-				munchExpr(node->children[2]->children[0], c, ht);
+				munchExpr(node->children[2]->children[0], c, ht, s);
 				emitBackJump(c, OP_JUMP_FALSE, loopTop);
 			}
 
 			ast_node* asgmtIt = node->children[1];
 			while (asgmtIt) {
 				ast_node* asgmt = asgmtIt->children[0];  // TYPE_ASSIGNMENT
-				munchExpr(asgmt->children[1], c, ht);    // new value expression
+				munchExpr(asgmt->children[1], c, ht, s); // new value expression
 				char colname[MAX_IDENT_LEN];
 				tokenToStr(asgmt->children[0]->tok, colname);
 				int idx = s ? lookupColIdx(colname, s) : 0;
@@ -396,6 +541,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			*/
 			char tname[MAX_IDENT_LEN];
 			tokenToStr(node->children[0]->tok, tname);
+			schema* s = lookupSchema(tname, ht);
 
 			writeConst(c, TEXT_VAL(strdup(tname)));
 			writeChunk(c, OP_OPEN_SCAN, 0);
@@ -405,7 +551,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			int nextPatch = emitJump(c, OP_NEXT);
 
 			if (node->children[1]) {
-				munchExpr(node->children[1]->children[0], c, ht);
+				munchExpr(node->children[1]->children[0], c, ht, s);
 				emitBackJump(c, OP_JUMP_FALSE, loopTop);
 			}
 
@@ -454,7 +600,6 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 				writeChunk(c, OP_CREATE_TABLE, 0);
 				writeChunk(c, schemaIdx, 0);
 			} else {
-				// CREATE INDEX and CREATE VIEW have no corresponding opcodes yet
 				printf("Error: CREATE INDEX and CREATE VIEW are not yet supported\n");
 			}
 			break;
@@ -491,7 +636,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 		case TYPE_WHERE_CLAUSE:
 		case TYPE_HAVING_CLAUSE: {
 			// Emit the filter expression; leaves a bool on the stack
-			munchExpr(node->children[0], c, ht);
+			munchExpr(node->children[0], c, ht, NULL);
 			break;
 		}
 

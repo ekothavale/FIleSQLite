@@ -2,9 +2,15 @@
 #include "../common.h"
 #include "../debug.h"
 #include "parser.h"
+#include "generator.h"
+#include "schema.h"
 #include "vm.h"
 
 VM vm;
+
+static void resetStack(){
+	vm.stackTop = vm.stack;
+}
 
 static void runtimeError(const char* format, ...) {
   va_list args;
@@ -17,10 +23,6 @@ static void runtimeError(const char* format, ...) {
   int line = vm.chunk->lines[instruction];
   fprintf(stderr, "[line %d] in script\n", line);
   resetStack();
-}
-
-static void resetStack(){
-	vm.stackTop = vm.stack;
 }
 
 void initVM() {
@@ -117,6 +119,7 @@ static bool equal(value a, value b) {
 static bool lessThan(value a, value b) {
 	if (a.type != b.type) {
 		runtimeError("Operands of less than comparison must have the same type");
+		return false;
 	}
 	switch (a.type) {
 		case VAL_BOOL: return a.as.boolean < b.as.boolean;
@@ -127,7 +130,7 @@ static bool lessThan(value a, value b) {
 		case VAL_U32: return a.as.u32 < b.as.u32;
 		default: {
 			runtimeError("Less than not supported for type %i", a.type);
-			break;
+			return false;
 		}
 	}
 }
@@ -135,6 +138,7 @@ static bool lessThan(value a, value b) {
 static bool greaterThan(value a, value b) {
 	if (a.type != b.type) {
 		runtimeError("Operands of greater than comparison must have the same type");
+		return false;
 	}
 	switch (a.type) {
 		case VAL_BOOL: return a.as.boolean > b.as.boolean;
@@ -145,6 +149,7 @@ static bool greaterThan(value a, value b) {
 		case VAL_U32: return a.as.u32 > b.as.u32;
 		default: {
 			runtimeError("Greater than not supported for type %i", a.type);
+			return false;
 			break;
 		}
 	}
@@ -386,7 +391,7 @@ static interpret_result run() {
 				break;
 			}
 			case OP_NOT_NULL: {
-				push(BOOL_VAL(!pop().type == VAL_NULL));
+				push(BOOL_VAL(!(pop().type == VAL_NULL)));
 				break;
 			}
 			case OP_NOT: {
@@ -589,19 +594,23 @@ static interpret_result run() {
 }
 
 interpret_result interpret(const char* source) {
-	chunk chunk;
-	initChunk(&chunk);
+	chunk c;
+	hashtable* ht = loadSchema();
+	initChunk(&c);
+	tokenized t = lexQuery(source);
+	ast_node* root = compile(t);
+	generate(root, &c, ht);
 
-	if (!compile(source, &chunk)) {
+	/*if (!compile(source, &chunk)) {
 	freeChunk(&chunk);
 	return INTERPRET_COMPILE_ERROR;
-	}
+	}*/
 
-	vm.chunk = &chunk;
+	vm.chunk = &c;
 	vm.ip = vm.chunk->code;
 
 	interpret_result result = run();
 
-	freeChunk(&chunk);
+	freeChunk(&c);
 	return result;
 }

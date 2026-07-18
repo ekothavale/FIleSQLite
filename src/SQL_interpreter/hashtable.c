@@ -59,7 +59,7 @@ static schema* findEntry(uint32_t hash, schema* entries, int capacity) {
 	for (;;) {
 		uint32_t index = (hash + velocity * velocity) % capacity;
 		schema* found = &entries[index];
-		if (found->hash == hash || found->hash == NULL) {
+		if (found->hash == hash || found->hash == 0) {
 			return found;
 		}
 		velocity++;
@@ -74,7 +74,7 @@ static void adjustCapacity(int capacity, hashtable* table) {
 	schema* entries = calloc(sizeof(schema), capacity);
 	for (int i = 0; i < table->capacity; i++) {
 		schema* e = &table->entries[i];
-		if (e->hash == NULL) continue;
+		if (e->hash == 0) continue;
 
 		schema* dest = findEntry(e->hash, entries, capacity);
 		dest->hash = e->hash;

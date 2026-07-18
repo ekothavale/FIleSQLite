@@ -54,10 +54,10 @@ typedef struct ast_node {
 	ast_type type;
 	token tok;   // populated for leaf nodes and nodes whose subtype is encoded by a keyword token
 	bool flag;
-	ast_node* children[7];
+	struct ast_node* children[7];
 } ast_node;
 
-ast_node* compile(tokenized* t);
+ast_node* compile(tokenized t);
 
 #endif
 

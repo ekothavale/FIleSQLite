@@ -132,17 +132,10 @@ static ast_node* makeNode(ast_type type) {
 	return node;
 }
 
-/*
-identifier → IDENTIFIER
-tok: the consumed IDENTIFIER token
-*/
-static ast_node* identifier() {
-	ast_node* node = makeNode(TYPE_IDENTIFIER);
-	node->tok = expect(TOKEN_IDENTIFIER);
-	return node;
-}
-
-static ast_node* valList();  // forward declaration: defined after the clause helpers
+// forward declarations for expressions
+static ast_node* valList();
+static ast_node* expr();
+static ast_node* listNode(ast_node* item, ast_node* next);
 
 /*
 primary → NUMBER | STRING | IDENTIFIER [( val_list )] | ( expr ) | *
@@ -341,6 +334,16 @@ expr → or_expr
 */
 static ast_node* expr() {
 	return orExpr();
+}
+
+/*
+identifier → IDENTIFIER
+tok: the consumed IDENTIFIER token
+*/
+static ast_node* identifier() {
+	ast_node* node = makeNode(TYPE_IDENTIFIER);
+	node->tok = expect(TOKEN_IDENTIFIER);
+	return node;
 }
 
 /*

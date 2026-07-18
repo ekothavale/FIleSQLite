@@ -32,7 +32,7 @@ void writeValueArray(ValueArray* array, value v) {
 	if (array->capacity < array->count + 1) {
 		int oldCapacity = array->capacity;
 		array->capacity = GROW_CAPACITY(oldCapacity);
-		array->values = GROW_ARRAY(v, array->values, oldCapacity, array->capacity);
+		array->values = GROW_ARRAY(value, array->values, oldCapacity, array->capacity);
 	}
 
 	// write to array
@@ -46,5 +46,5 @@ void freeValueArray(ValueArray* array) {
 }
 
 void printValue(value value) {
-	print("%g", value);
+	printf("%g", value.as.floating);
 }

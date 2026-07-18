@@ -113,6 +113,10 @@ static void repl() {
     }
 }
 
+/*
+reads a file into a buffer
+mallocs buffer
+*/
 static char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
@@ -141,13 +145,13 @@ static char* readFile(const char* path) {
     buffer[bytesRead] = '\0';
 
     // clean up
-    fcose(file);
+    fclose(file);
     return buffer;
 }
 
 static void runFile(const char* path) {
     char* source = readFile(path);
-    interpret_result result = interpret(result);
+    interpret_result result = interpret(source);
     free(source);
 
     if (result == INTERPRET_COMPILE_ERROR) exit(65);
@@ -161,5 +165,12 @@ int main(int argc, char** argv) {
     //test_table_mgmt();
     //test_btree();
 
-    writeChunk(&chunk, OP_NEGATE, 123);
+    if (argc == 1) {
+        repl();
+    } else if (argc == 2) {
+        runFile(argv[1]);
+    } else {
+        printf("Usage: ./main [optional SQL file]");
+    }
+    
 }
