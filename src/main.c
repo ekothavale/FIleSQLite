@@ -18,6 +18,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "common.h"
 #include "debug.h"
+#include "const.h"
 #include "SQL_interpreter/lexer.h"
 #include "SQL_interpreter/chunk.h"
 #include "SQL_interpreter/vm.h"

@@ -25,7 +25,7 @@ static void runtimeError(const char* format, ...) {
   resetStack();
 }
 
-void initVM() {
+void initVM(hashtable* schema) {
 	resetStack();
 	for (int i = 0; i < MAX_SCANNERS; i++) {
 		vm.scanners[i].open = false;
@@ -35,7 +35,7 @@ void initVM() {
 	vm.results.count    = 0;
 	vm.results.capacity = 0;
 	vm.results.cols     = 0;
-	vm.schema           = NULL;
+	vm.schema           = schema;
 }
 
 void freeVM() {
@@ -336,6 +336,21 @@ static interpret_result run() {
 				push(constant);
 				break;
 			}
+			case OP_TRUE: {
+				value v = BOOL_VAL(true);
+				push(v);
+				break;
+			}
+			case OP_FALSE: {
+				value v = BOOL_VAL(false);
+				push(v);
+				break;
+			}
+			case OP_NULL: {
+				value v = NULL_VAL();
+				push(v);
+				break;
+			}
 			case OP_ADD: BINARY_OP(+); break;
 			case OP_SUBTRACT: BINARY_OP(-); break;
 			case OP_MULTIPLY: BINARY_OP(*); break;
@@ -595,11 +610,15 @@ static interpret_result run() {
 
 interpret_result interpret(const char* source) {
 	chunk c;
-	hashtable* ht = loadSchema();
+	hashtable* schema = loadSchema();
+	if (!schema) {
+		return INTERPRET_LOAD_ERROR;
+	}
+	initVM(schema);
 	initChunk(&c);
 	tokenized t = lexQuery(source);
 	ast_node* root = compile(t);
-	generate(root, &c, ht);
+	generate(root, &c, schema);
 
 	/*if (!compile(source, &chunk)) {
 	freeChunk(&chunk);
