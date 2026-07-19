@@ -170,6 +170,8 @@ int main(int argc, char** argv) {
     test_value();
     test_lexer();
     test_parser();
+    test_hashtable();
+    test_schema();
 
     /*
     if (argc == 1) {

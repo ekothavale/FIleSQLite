@@ -23,6 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <stdio.h>
 #include <unistd.h>
 #include "chunk.h"
+#include "hashtable.h"
+#include "schema.h"
 #include "lexer.h"
 #include "parser.h"
 
@@ -39,6 +41,32 @@ void test_add_constant_multiple();
 void test_free_chunk_resets_code();
 void test_free_chunk_clears_constants();
 void test_free_chunk_idempotent();
+
+/* Schema tests */
+void test_schema();
+void test_load_schema_null_on_missing();
+void test_load_schema_null_on_bad_magic();
+void test_save_schema_no_crash();
+void test_save_schema_writes_magic();
+void test_save_load_empty_schema();
+
+/* Hash table tests */
+void test_hashtable();
+void test_init_hash_table();
+void test_free_hash_table_resets();
+void test_free_hash_table_idempotent();
+void test_hash_string_deterministic();
+void test_hash_string_different_keys();
+void test_hash_string_length_matters();
+void test_insert_ht_stores_entry();
+void test_insert_ht_increments_count();
+void test_insert_ht_overwrites();
+void test_read_ht_finds_existing();
+void test_read_ht_missing();
+void test_read_ht_correct_data();
+void test_delete_ht_removes_entry();
+void test_delete_ht_zeroes_fields();
+void test_delete_ht_nonexistent();
 
 /* Value tests */
 void test_value();

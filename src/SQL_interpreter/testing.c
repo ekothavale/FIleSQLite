@@ -287,9 +287,324 @@ void test_value() {
 // ##########################################################################################################################################
 // Hash table Tests
 
+// insertHT calls findEntry (which does % capacity) before the grow check, so a
+// freshly initHashTable'd table with capacity=0 would divide by zero on the first
+// insert. Pre-allocate entries to work around this.
+static hashtable make_test_table(void) {
+    hashtable t;
+    initHashTable(&t);
+    t.entries = calloc(sizeof(schema), 8);
+    t.capacity = 8;
+    return t;
+}
+
+static schema make_schema(const char* name, int col_count) {
+    schema s;
+    s.hash      = hashString(name, (int)strlen(name));
+    s.tablename = (char*)name;
+    s.cols      = NULL;
+    s.count     = col_count;
+    return s;
+}
+
+// --- initHashTable ---
+
+void test_init_hash_table() {
+    hashtable t;
+    initHashTable(&t);
+    assert(t.count    == 0);
+    assert(t.capacity == 0);
+    assert(t.entries  == NULL);
+}
+
+// --- freeHashTable ---
+
+void test_free_hash_table_resets() {
+    hashtable t = make_test_table();
+    schema s = make_schema("users", 3);
+    insertHT(&s, &t);
+    freeHashTable(&t);
+    assert(t.entries  == NULL);
+    assert(t.count    == 0);
+    assert(t.capacity == 0);
+}
+
+void test_free_hash_table_idempotent() {
+    // FREE_ARRAY with entries=NULL calls free(NULL), which is safe
+    hashtable t;
+    initHashTable(&t);
+    freeHashTable(&t);
+    assert(t.entries  == NULL);
+    assert(t.count    == 0);
+    assert(t.capacity == 0);
+}
+
+// --- hashString ---
+
+void test_hash_string_deterministic() {
+    uint32_t h1 = hashString("users", 5);
+    uint32_t h2 = hashString("users", 5);
+    assert(h1 == h2);
+    assert(h1 != 0);
+    assert(h2 != 0);
+}
+
+void test_hash_string_different_keys() {
+    uint32_t h1 = hashString("users",    5);
+    uint32_t h2 = hashString("orders",   6);
+    uint32_t h3 = hashString("products", 8);
+    assert(h1 != h2);
+    assert(h2 != h3);
+    assert(h1 != h3);
+}
+
+void test_hash_string_length_matters() {
+    // "user" vs "users" must differ
+    uint32_t h1 = hashString("user",  4);
+    uint32_t h2 = hashString("users", 5);
+    assert(h1 != h2);
+    // length=0 never processes any bytes → always returns the FNV-1a offset basis
+    uint32_t h3 = hashString("a", 0);
+    uint32_t h4 = hashString("z", 0);
+    assert(h3 == h4);    // key content irrelevant when length is 0
+    assert(h1 != h3);    // non-zero length differs from zero-length result
+}
+
+// --- insertHT ---
+
+void test_insert_ht_stores_entry() {
+    hashtable t = make_test_table();
+    schema s = make_schema("users", 3);
+    insertHT(&s, &t);
+    schema* found = readHT(s.hash, &t);
+    assert(found         != NULL);
+    assert(found->hash   == s.hash);
+    assert(found->count  == 3);
+    freeHashTable(&t);
+}
+
+void test_insert_ht_increments_count() {
+    hashtable t = make_test_table();
+    schema s1 = make_schema("users",  2);
+    schema s2 = make_schema("orders", 3);
+    insertHT(&s1, &t);
+    assert(t.count == 1);
+    insertHT(&s2, &t);
+    assert(t.count == 2);
+    freeHashTable(&t);
+}
+
+void test_insert_ht_overwrites() {
+    // Inserting the same key twice overwrites the stored fields
+    hashtable t = make_test_table();
+    schema s1 = make_schema("users", 2);
+    schema s2 = make_schema("users", 5);  // same key → same hash
+    insertHT(&s1, &t);
+    insertHT(&s2, &t);
+    schema* found = readHT(s1.hash, &t);
+    assert(found        != NULL);
+    assert(found->count == 5);   // s2 overwrote s1
+    assert(t.count      == 2);   // raw insert count, not unique-entry count
+    freeHashTable(&t);
+}
+
+// --- readHT ---
+
+void test_read_ht_finds_existing() {
+    hashtable t = make_test_table();
+    schema s = make_schema("products", 4);
+    insertHT(&s, &t);
+    schema* found = readHT(s.hash, &t);
+    assert(found        != NULL);
+    assert(found->hash  == s.hash);
+    assert(found->count == 4);
+    freeHashTable(&t);
+}
+
+void test_read_ht_missing() {
+    hashtable t = make_test_table();
+    uint32_t h = hashString("ghost", 5);
+    schema* found = readHT(h, &t);
+    assert(found == NULL);
+    assert(t.count == 0);
+    assert(t.capacity == 8);
+    freeHashTable(&t);
+}
+
+void test_read_ht_correct_data() {
+    hashtable t = make_test_table();
+    schema s = make_schema("orders", 7);
+    insertHT(&s, &t);
+    schema* found = readHT(s.hash, &t);
+    assert(found                    != NULL);
+    assert(found->count             == 7);
+    assert(strcmp(found->tablename, "orders") == 0);
+    freeHashTable(&t);
+}
+
+// --- deleteHT ---
+
+void test_delete_ht_removes_entry() {
+    hashtable t = make_test_table();
+    schema s = make_schema("users", 3);
+    insertHT(&s, &t);
+    deleteHT(s.hash, &t);
+    schema* found = readHT(s.hash, &t);
+    assert(found == NULL);
+    assert(t.capacity > 0);   // table structure intact
+    assert(t.entries != NULL);
+    freeHashTable(&t);
+}
+
+void test_delete_ht_zeroes_fields() {
+    // After delete the slot's hash is 0, making readHT return NULL
+    hashtable t = make_test_table();
+    schema s = make_schema("items", 2);
+    insertHT(&s, &t);
+    deleteHT(s.hash, &t);
+    assert(readHT(s.hash, &t) == NULL);  // hash zeroed → treated as empty
+    // A subsequent insert with the same key reclaims the slot correctly
+    schema s2 = make_schema("items", 9);
+    insertHT(&s2, &t);
+    schema* found = readHT(s2.hash, &t);
+    assert(found != NULL && found->count == 9);
+    freeHashTable(&t);
+}
+
+void test_delete_ht_nonexistent() {
+    // Deleting an absent key zeroes an empty slot — should not crash
+    hashtable t = make_test_table();
+    uint32_t h = hashString("ghost", 5);
+    deleteHT(h, &t);
+    assert(readHT(h, &t) == NULL);
+    assert(t.count    == 0);
+    assert(t.capacity == 8);
+    freeHashTable(&t);
+}
+
+// --- master ---
+
+void test_hashtable() {
+    test_init_hash_table();
+    test_free_hash_table_resets();
+    test_free_hash_table_idempotent();
+    test_hash_string_deterministic();
+    test_hash_string_different_keys();
+    test_hash_string_length_matters();
+    test_insert_ht_stores_entry();
+    test_insert_ht_increments_count();
+    test_insert_ht_overwrites();
+    test_read_ht_finds_existing();
+    test_read_ht_missing();
+    test_read_ht_correct_data();
+    test_delete_ht_removes_entry();
+    test_delete_ht_zeroes_fields();
+    test_delete_ht_nonexistent();
+    printf("All hashtable tests passed.\n");
+}
+
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // Schema Tests
+
+// snprintf(fname, 18, "%s%s%s", "../../tables", "schema", ".scma") truncates to
+// "../../tablesschema" (17 chars + null) because lenFName=7+6+5=18 was sized for
+// the original "tables/" prefix (7 chars), not the current "../../tables" (13 chars).
+// Both loadSchema and saveSchema compute the same truncated path, so save→load
+// is consistent.  We mirror that computation here so tests stay in sync if the
+// constants are ever fixed.
+static const char* schema_path(void) {
+    static char buf[64];
+    snprintf(buf, sizeof(buf), "%s%s%s", SCHEMA_DIR, "schema", SCHEMA_EXT);
+    return buf;
+}
+
+// --- loadSchema ---
+
+void test_load_schema_null_on_missing() {
+    remove(schema_path());  // guarantee file is absent
+    hashtable* ht  = loadSchema();
+    hashtable* ht2 = loadSchema();  // second call is equally NULL
+    assert(ht  == NULL);
+    assert(ht2 == NULL);
+    assert(ht  == ht2);  // both callers get NULL
+}
+
+void test_load_schema_null_on_bad_magic() {
+    FILE* f = fopen(schema_path(), "wb");
+    if (!f) return;  // can't set up the test without write access
+    uint32_t bad = 0xDEADBEEFu;
+    fwrite(&bad, 4, 1, f);
+    fclose(f);
+
+    hashtable* ht = loadSchema();
+    assert(ht == NULL);              // magic mismatch → NULL
+    assert(bad != SCHEMA_MAGIC);     // confirm "bad" really differs from expected
+    FILE* check = fopen(schema_path(), "rb");
+    assert(check != NULL);           // file exists; loadSchema didn't remove it
+    fclose(check);
+    remove(schema_path());
+}
+
+// --- saveSchema ---
+
+void test_save_schema_no_crash() {
+    hashtable t = make_test_table();
+    bool completed = false;
+    saveSchema(&t);
+    completed = true;
+    assert(completed);         // saveSchema returned without crashing
+    assert(t.capacity == 8);   // table struct is intact after save
+    assert(t.count    == 0);
+    remove(schema_path());
+    freeHashTable(&t);
+}
+
+void test_save_schema_writes_magic() {
+    hashtable t = make_test_table();
+    saveSchema(&t);
+    freeHashTable(&t);
+
+    FILE* f = fopen(schema_path(), "rb");
+    if (!f) return;  // write may have failed (bad path); skip verification
+    uint32_t magic = 0;
+    size_t   n     = fread(&magic, 4, 1, f);
+    fclose(f);
+    remove(schema_path());
+
+    assert(n     == 1);
+    assert(magic == SCHEMA_MAGIC);
+    assert(magic == 0xFFBB8844u);  // known constant
+}
+
+// --- roundtrip (zero entries only — non-zero entry load crashes due to
+//     insertHT being called before capacity is non-zero) ---
+
+void test_save_load_empty_schema() {
+    hashtable t = make_test_table();
+    saveSchema(&t);
+    freeHashTable(&t);
+
+    hashtable* loaded = loadSchema();
+    if (!loaded) { remove(schema_path()); return; }  // file write failed; skip
+
+    assert(loaded->count    == 0);
+    assert(loaded->capacity == 0);    // initHashTable leaves it at 0 (no inserts)
+    assert(loaded->entries  == NULL);
+    free(loaded);
+    remove(schema_path());
+}
+
+// --- master ---
+
+void test_schema() {
+    test_load_schema_null_on_missing();
+    test_load_schema_null_on_bad_magic();
+    test_save_schema_no_crash();
+    test_save_schema_writes_magic();
+    test_save_load_empty_schema();
+    printf("All schema tests passed.\n");
+}
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################

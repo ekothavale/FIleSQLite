@@ -36,6 +36,8 @@ typedef struct hashtable {
 	schema* entries;
 } hashtable;
 
+// Public API — callable from outside this translation unit
+// (FNV1_A, findEntry, and adjustCapacity are file-scoped static helpers)
 void initHashTable(hashtable* table);
 void freeHashTable(hashtable* table);
 uint32_t hashString(const char* key, int len);
