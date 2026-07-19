@@ -19,6 +19,60 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #ifndef TESTING_INTERPRETER_H
 #define TESTING_INTERPRETER_H
 
+#include <assert.h>
+#include <stdio.h>
+#include "lexer.h"
+#include "parser.h"
 
+/* Lexer tests */
+void test_lexer();
+void test_scan_single_char_tokens();
+void test_scan_two_char_tokens();
+void test_scan_single_ops();
+void test_scan_keywords();
+void test_scan_identifier();
+void test_scan_number_integer();
+void test_scan_number_float();
+void test_scan_number_no_trailing_decimal();
+void test_scan_string();
+void test_scan_empty_string();
+void test_scan_unterminated_string();
+void test_scan_skips_whitespace();
+void test_scan_skips_comment();
+void test_scan_line_tracking();
+void test_init_tokenized();
+void test_add_token_count();
+void test_add_token_stored();
+void test_add_multiple_tokens();
+void test_lex_query_simple();
+void test_lex_query_empty();
+void test_lex_query_string_and_number();
+
+/* Parser tests */
+void test_parser();
+void test_parse_select_star();
+void test_parse_select_columns();
+void test_parse_select_where();
+void test_parse_select_distinct();
+void test_parse_select_limit();
+void test_parse_select_order_by();
+void test_parse_select_group_by();
+void test_parse_select_expr_alias();
+void test_parse_insert_with_cols();
+void test_parse_insert_without_cols();
+void test_parse_update();
+void test_parse_update_no_where();
+void test_parse_delete_with_where();
+void test_parse_delete_no_where();
+void test_parse_create_table();
+void test_parse_create_index();
+void test_parse_create_unique_index();
+void test_parse_drop_table();
+void test_parse_drop_view();
+void test_parse_alter_add();
+void test_parse_alter_drop_column();
+void test_parse_alter_alter_column();
+void test_parse_expr_arithmetic();
+void test_parse_expr_logical();
 
 #endif

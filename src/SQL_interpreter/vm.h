@@ -69,7 +69,7 @@ typedef enum {
 	INTERPRET_RUNTIME_ERROR,
 } interpret_result;
 
-void initVM();
+void initVM(hashtable* schema);
 void freeVM();
 interpret_result interpret(const char* source);
 void push(value value);

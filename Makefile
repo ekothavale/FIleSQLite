@@ -6,7 +6,7 @@ CFLAGS = -I$(SRC) -I$(SQL) -I$(STOR)
 
 OBJS = main.o debug.o \
        chunk.o generator.o hashtable.o lexer.o memory.o parser.o schema.o value.o vm.o \
-       bplus.o page.o tableIO.o stor_testing.o
+       bplus.o page.o tableIO.o stor_testing.o sql_testing.o
 
 main: $(OBJS)
 	clang -fsanitize=address $(OBJS) -o main
@@ -71,3 +71,6 @@ tableIO.o: $(STOR)/tableIO.c $(STOR)/tableIO.h
 
 stor_testing.o: $(STOR)/testing.c $(STOR)/testing.h $(STOR)/bplus.h $(STOR)/page.h
 	clang $(CFLAGS) -c $(STOR)/testing.c -o stor_testing.o
+
+sql_testing.o: $(SQL)/testing.c $(SQL)/testing.h $(SQL)/lexer.h $(SQL)/parser.h $(SRC)/common.h
+	clang $(CFLAGS) -c $(SQL)/testing.c -o sql_testing.o

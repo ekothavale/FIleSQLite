@@ -304,7 +304,7 @@ static void munchExpr(ast_node* node, chunk* c, hashtable* ht, schema* s) {
 		}
 
 		case TYPE_UNARY: {
-			/* only operator is unary minus (tok.type == TOKEN_MINUS) */
+			// only operator is unary minus (tok.type == TOKEN_MINUS)
 			munchExpr(node->children[0], c, ht, s);
 			writeChunk(c, OP_NEGATE, 0);
 			break;
@@ -320,7 +320,7 @@ static void munchExpr(ast_node* node, chunk* c, hashtable* ht, schema* s) {
 				    : INTEGER_VAL(atoll(numStr));
 				writeConst(c, v);
 			} else if (t == TOKEN_STRING) {
-				/* strip surrounding quote characters */
+				// strip surrounding quote characters
 				int slen = node->tok.length - 2;
 				char* text = malloc(slen + 1);
 				memcpy(text, node->tok.start + 1, slen);
@@ -328,10 +328,10 @@ static void munchExpr(ast_node* node, chunk* c, hashtable* ht, schema* s) {
 				writeConst(c, TEXT_VAL(text));
 			} else if (t == TOKEN_IDENTIFIER) {
 				if (node->flag) {
-					/* function call: no OP_CALL opcode exists yet */
+					// function call: no OP_CALL opcode exists yet
 					printf("Error: function calls are not yet supported in expressions\n");
 				} else if (s) {
-					/* column reference: resolve name to schema index */
+					// column reference: resolve name to schema index
 					char colname[MAX_IDENT_LEN];
 					tokenToStr(node->tok, colname);
 					int idx = lookupColIdx(colname, s);
@@ -343,7 +343,6 @@ static void munchExpr(ast_node* node, chunk* c, hashtable* ht, schema* s) {
 					}
 				}
 			} else if (t == TOKEN_NULL) {
-				/* requires parser.c primary() to handle TOKEN_NULL (not yet added) */
 				writeChunk(c, OP_NULL, 0);
 			}
 			break;

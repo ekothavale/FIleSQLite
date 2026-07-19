@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "SQL_interpreter/vm.h"
 #include "storage_engine/bplus.h"
 #include "storage_engine/testing.h"
+#include "SQL_interpreter/testing.h"
 
 
 static entry makeEntry(const char* str, datatype t) {
@@ -121,7 +122,7 @@ mallocs buffer
 static char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
-        fprintf(stderr, "Could not open file \%s\".\n", path);
+        fprintf(stderr, "Could not open file \"%s\".\n", path);
         exit(74);
     }
 
@@ -140,7 +141,7 @@ static char* readFile(const char* path) {
     // read file
     size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
     if (bytesRead < fileSize) {
-        fprintf(stderr, "Could not read file \"&s\".\n");
+        fprintf(stderr, "Could not read file \"%s\".\n", path);
         exit(74);
     }
     buffer[bytesRead] = '\0';
@@ -160,18 +161,21 @@ static void runFile(const char* path) {
 }
 
 int main(int argc, char** argv) {
-    //testPages();
-    //testPagesRandom();
-    //test_tableio();
-    //test_table_mgmt();
-    //test_btree();
+    testPages();
+    testPagesRandom();
+    test_tableio();
+    test_table_mgmt();
+    test_btree();
+    test_lexer();
+    test_parser();
 
+    /*
     if (argc == 1) {
         repl();
     } else if (argc == 2) {
         runFile(argv[1]);
     } else {
-        printf("Usage: ./main [optional SQL file]");
+        printf("Usage: ./main [optional SQL file]\n");
     }
-    
+    */
 }

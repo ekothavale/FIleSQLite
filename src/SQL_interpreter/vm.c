@@ -107,7 +107,7 @@ static bool equal(value a, value b) {
 		case VAL_FLOAT: return a.as.floating == b.as.floating;
 		case VAL_INT: return a.as.integer == b.as.integer;
 		case VAL_NULL: return true;
-		case VAL_TEXT: return strcmp(a.as.text, b.as.text) ? 1 : 0;
+		case VAL_TEXT: return strcmp(a.as.text, b.as.text) ? 0 : 1;
 		case VAL_U32: return a.as.u32 == b.as.u32;
 		default: {
 			runtimeError("Equality not supported for type %i", a.type);
@@ -351,6 +351,7 @@ static interpret_result run() {
 				push(v);
 				break;
 			}
+			case OP_POP: pop(); break;
 			case OP_ADD: BINARY_OP(+); break;
 			case OP_SUBTRACT: BINARY_OP(-); break;
 			case OP_MULTIPLY: BINARY_OP(*); break;
@@ -363,7 +364,7 @@ static interpret_result run() {
 				if (v.type == VAL_INT) {
 					push(INTEGER_VAL(-v.as.integer));
 				} else if (v.type == VAL_FLOAT) {
-					push(FLOAT_VAL(v.as.floating));
+					push(FLOAT_VAL(-v.as.floating));
 				}
 				break;
 			}

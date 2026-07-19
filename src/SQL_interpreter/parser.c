@@ -144,7 +144,7 @@ flag: true if this primary is a function call (IDENTIFIER followed by ( val_list
 */
 static ast_node* primary() {
 	token_type t = peek();
-	if (t == TOKEN_NUMBER || t == TOKEN_STRING) {
+	if (t == TOKEN_NUMBER || t == TOKEN_STRING || t == TOKEN_NULL) {
 		ast_node* node = makeNode(TYPE_PRIMARY);
 		node->tok = advance();
 		return node;
@@ -710,7 +710,7 @@ consumed by caller: SELECT
 flag: true if DISTINCT is present
 */
 static ast_node* selectStmt() {
-	ast_node* out = calloc(1, sizeof(ast_node));
+	ast_node* out = makeNode(TYPE_SELECT_STMT);
 	token_type type = peek();
 	if (type == TOKEN_DISTINCT) {
 		advance();

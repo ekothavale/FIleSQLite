@@ -77,8 +77,11 @@ typedef struct tokenized {
     int count; // token dynamic array count (grow when count >= capacity)
 } tokenized;
 
+// Public API — callable from outside this translation unit
 void initLexer(const char* source);
 token scanToken();
+void initTokenized(tokenized* t);
+void addToken(tokenized* t, token tok);
 tokenized lexQuery(const char* source);
 
 #endif // SCANNER_H
