@@ -21,8 +21,36 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include <assert.h>
 #include <stdio.h>
+#include <unistd.h>
+#include "chunk.h"
 #include "lexer.h"
 #include "parser.h"
+
+/* Chunk tests */
+void test_chunk();
+void test_init_chunk();
+void test_write_chunk_stores_byte();
+void test_write_chunk_stores_line();
+void test_write_chunk_multiple();
+void test_write_chunk_triggers_grow();
+void test_add_constant_returns_index();
+void test_add_constant_stores_value();
+void test_add_constant_multiple();
+void test_free_chunk_resets_code();
+void test_free_chunk_clears_constants();
+void test_free_chunk_idempotent();
+
+/* Value tests */
+void test_value();
+void test_init_value_array();
+void test_write_value_array_stores_value();
+void test_write_value_array_multiple_types();
+void test_write_value_array_triggers_grow();
+void test_free_value_array_resets();
+void test_free_value_array_idempotent();
+void test_print_value_float();
+void test_print_value_zero();
+void test_print_value_large();
 
 /* Lexer tests */
 void test_lexer();

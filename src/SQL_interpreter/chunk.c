@@ -35,7 +35,6 @@ writes a byte to a chunk
 void writeChunk(chunk* chunk, uint8_t byte, int line) {
     if (chunk->capacity < chunk->count + 1) {
         // Resize the chunk if necessary
-        printf("Growing array (for debugging purposes)\n");
         int oldCapacity = chunk->capacity;
         chunk->capacity = GROW_CAPACITY(oldCapacity);
         chunk->code = GROW_ARRAY(uint8_t, chunk->code, oldCapacity, chunk->capacity);

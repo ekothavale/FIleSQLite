@@ -85,10 +85,11 @@ typedef enum opcode {
     OP_HALT
 }opcode;
 
+// Public API — callable from outside this translation unit
 void initChunk(chunk* chunk);
 void writeChunk(chunk* chunk, uint8_t byte, int line);
-void freeChunk(chunk* chunk);
 int addConstant(chunk* chunk, value value);
+void freeChunk(chunk* chunk);
 
 
 #endif // CHUNK_H

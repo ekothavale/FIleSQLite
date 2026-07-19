@@ -1,5 +1,295 @@
 #include "testing.h"
 
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// Chunk Tests
+
+// --- initChunk ---
+
+void test_init_chunk() {
+    chunk c;
+    initChunk(&c);
+    assert(c.code     == NULL);
+    assert(c.lines    == NULL);
+    assert(c.capacity == 0);
+    assert(c.count    == 0);
+    assert(c.constants.count == 0);
+}
+
+// --- writeChunk ---
+
+void test_write_chunk_stores_byte() {
+    chunk c;
+    initChunk(&c);
+    writeChunk(&c, OP_HALT, 1);
+    assert(c.count    == 1);
+    assert(c.code[0]  == OP_HALT);
+    assert(c.capacity >= 1);
+    freeChunk(&c);
+}
+
+void test_write_chunk_stores_line() {
+    chunk c;
+    initChunk(&c);
+    writeChunk(&c, OP_ADD, 42);
+    assert(c.lines    != NULL);
+    assert(c.lines[0] == 42);
+    assert(c.count    == 1);
+    freeChunk(&c);
+}
+
+void test_write_chunk_multiple() {
+    chunk c;
+    initChunk(&c);
+    writeChunk(&c, OP_CONSTANT, 1);
+    writeChunk(&c, 0,           1);  // operand byte
+    writeChunk(&c, OP_HALT,     1);
+    assert(c.count    == 3);
+    assert(c.code[0]  == OP_CONSTANT);
+    assert(c.code[1]  == 0);
+    assert(c.code[2]  == OP_HALT);
+    freeChunk(&c);
+}
+
+void test_write_chunk_triggers_grow() {
+    // GROW_CAPACITY(0)=8, so bytes 1-8 fill the first allocation;
+    // the 9th write triggers GROW_CAPACITY(8)=16
+    chunk c;
+    initChunk(&c);
+    for (int i = 0; i < 9; i++) writeChunk(&c, OP_POP, i + 1);
+    assert(c.count    == 9);
+    assert(c.capacity == 16);
+    assert(c.code[8]  == OP_POP);
+    freeChunk(&c);
+}
+
+// --- addConstant ---
+
+void test_add_constant_returns_index() {
+    chunk c;
+    initChunk(&c);
+    int i0 = addConstant(&c, INTEGER_VAL(10));
+    int i1 = addConstant(&c, INTEGER_VAL(20));
+    assert(i0 == 0);
+    assert(i1 == 1);
+    assert(c.constants.count == 2);
+    freeChunk(&c);
+}
+
+void test_add_constant_stores_value() {
+    chunk c;
+    initChunk(&c);
+    addConstant(&c, INTEGER_VAL(99));
+    assert(c.constants.count              == 1);
+    assert(c.constants.values[0].type     == VAL_INT);
+    assert(c.constants.values[0].as.integer == 99);
+    freeChunk(&c);
+}
+
+void test_add_constant_multiple() {
+    chunk c;
+    initChunk(&c);
+    addConstant(&c, BOOL_VAL(true));
+    addConstant(&c, FLOAT_VAL(3.14));
+    addConstant(&c, NULL_VAL(0));
+    assert(c.constants.count          == 3);
+    assert(c.constants.values[0].type == VAL_BOOL);
+    assert(c.constants.values[1].type == VAL_FLOAT);
+    assert(c.constants.values[2].type == VAL_NULL);
+    freeChunk(&c);
+}
+
+// --- freeChunk ---
+
+void test_free_chunk_resets_code() {
+    chunk c;
+    initChunk(&c);
+    writeChunk(&c, OP_ADD,  1);
+    writeChunk(&c, OP_HALT, 1);
+    freeChunk(&c);
+    assert(c.code     == NULL);
+    assert(c.lines    == NULL);
+    assert(c.count    == 0);
+    assert(c.capacity == 0);
+}
+
+void test_free_chunk_clears_constants() {
+    chunk c;
+    initChunk(&c);
+    addConstant(&c, INTEGER_VAL(1));
+    addConstant(&c, BOOL_VAL(false));
+    freeChunk(&c);
+    assert(c.constants.count    == 0);
+    assert(c.constants.capacity == 0);
+    assert(c.constants.values   == NULL);
+}
+
+void test_free_chunk_idempotent() {
+    // freeChunk on a never-written chunk must not crash
+    // (FREE_ARRAY with capacity=0 calls free(NULL) which is safe)
+    chunk c;
+    initChunk(&c);
+    freeChunk(&c);
+    assert(c.code  == NULL);
+    assert(c.count == 0);
+    assert(c.constants.values == NULL);
+}
+
+// --- master ---
+
+void test_chunk() {
+    test_init_chunk();
+    test_write_chunk_stores_byte();
+    test_write_chunk_stores_line();
+    test_write_chunk_multiple();
+    test_write_chunk_triggers_grow();
+    test_add_constant_returns_index();
+    test_add_constant_stores_value();
+    test_add_constant_multiple();
+    test_free_chunk_resets_code();
+    test_free_chunk_clears_constants();
+    test_free_chunk_idempotent();
+    printf("All chunk tests passed.\n");
+}
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// Value Tests
+
+// --- initValueArray ---
+
+void test_init_value_array() {
+    ValueArray arr;
+    initValueArray(&arr);
+    assert(arr.values   == NULL);
+    assert(arr.capacity == 0);
+    assert(arr.count    == 0);
+}
+
+// --- writeValueArray ---
+
+void test_write_value_array_stores_value() {
+    ValueArray arr;
+    initValueArray(&arr);
+    writeValueArray(&arr, INTEGER_VAL(7));
+    assert(arr.count               == 1);
+    assert(arr.values[0].type      == VAL_INT);
+    assert(arr.values[0].as.integer == 7);
+    freeValueArray(&arr);
+}
+
+void test_write_value_array_multiple_types() {
+    ValueArray arr;
+    initValueArray(&arr);
+    writeValueArray(&arr, BOOL_VAL(true));
+    writeValueArray(&arr, FLOAT_VAL(1.5));
+    writeValueArray(&arr, NULL_VAL(0));
+    assert(arr.count                  == 3);
+    assert(arr.values[0].type         == VAL_BOOL);
+    assert(arr.values[0].as.boolean   == true);
+    assert(arr.values[1].type         == VAL_FLOAT);
+    assert(arr.values[2].type         == VAL_NULL);
+    freeValueArray(&arr);
+}
+
+void test_write_value_array_triggers_grow() {
+    // GROW_CAPACITY(0)=8 on first write; 9th write causes GROW_CAPACITY(8)=16
+    ValueArray arr;
+    initValueArray(&arr);
+    for (int i = 0; i < 9; i++) writeValueArray(&arr, INTEGER_VAL(i));
+    assert(arr.count                == 9);
+    assert(arr.capacity             == 16);
+    assert(arr.values[8].as.integer == 8);
+    freeValueArray(&arr);
+}
+
+// --- freeValueArray ---
+
+void test_free_value_array_resets() {
+    ValueArray arr;
+    initValueArray(&arr);
+    writeValueArray(&arr, INTEGER_VAL(1));
+    writeValueArray(&arr, BOOL_VAL(false));
+    freeValueArray(&arr);
+    assert(arr.values   == NULL);
+    assert(arr.count    == 0);
+    assert(arr.capacity == 0);
+}
+
+void test_free_value_array_idempotent() {
+    // freeValueArray on a never-written array must not crash
+    ValueArray arr;
+    initValueArray(&arr);
+    freeValueArray(&arr);
+    assert(arr.values   == NULL);
+    assert(arr.count    == 0);
+    assert(arr.capacity == 0);
+}
+
+// --- printValue ---
+// printValue writes to stdout via printf("%g", value.as.floating).
+// We redirect fd 1 through a tmpfile to capture and inspect the output.
+
+static char* capture_printValue(value v) {
+    FILE* tmp = tmpfile();
+    fflush(stdout);
+    int saved = dup(STDOUT_FILENO);
+    dup2(fileno(tmp), STDOUT_FILENO);
+    printValue(v);
+    fflush(stdout);
+    dup2(saved, STDOUT_FILENO);
+    close(saved);
+    rewind(tmp);
+    static char buf[128];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, tmp);
+    buf[n] = '\0';
+    fclose(tmp);
+    return buf;
+}
+
+void test_print_value_float() {
+    char* out = capture_printValue(FLOAT_VAL(3.14));
+    assert(strlen(out)        >  0);
+    assert(strstr(out, "3.14") != NULL);
+    assert(out[0]             != '\0');
+}
+
+void test_print_value_zero() {
+    char* out = capture_printValue(FLOAT_VAL(0.0));
+    assert(strlen(out)      >  0);
+    assert(strstr(out, "0") != NULL);
+    assert(out[0]           != '\0');
+}
+
+void test_print_value_large() {
+    char* out = capture_printValue(FLOAT_VAL(1000.0));
+    assert(strlen(out)         >  0);
+    assert(strstr(out, "1000") != NULL);
+    assert(out[0]              != '\0');
+}
+
+// --- master ---
+
+void test_value() {
+    test_init_value_array();
+    test_write_value_array_stores_value();
+    test_write_value_array_multiple_types();
+    test_write_value_array_triggers_grow();
+    test_free_value_array_resets();
+    test_free_value_array_idempotent();
+    test_print_value_float();
+    test_print_value_zero();
+    test_print_value_large();
+    printf("All value tests passed.\n");
+}
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// Hash table Tests
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// Schema Tests
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
@@ -551,4 +841,12 @@ void test_parser() {
     test_parse_expr_logical();
     printf("All parser tests passed.\n");
 }
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// Generator Tests
+
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// VM Tests
 

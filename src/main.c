@@ -166,6 +166,8 @@ int main(int argc, char** argv) {
     test_tableio();
     test_table_mgmt();
     test_btree();
+    test_chunk();
+    test_value();
     test_lexer();
     test_parser();
 

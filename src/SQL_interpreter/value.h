@@ -55,6 +55,7 @@ typedef struct ValueArray {
 	value* values;
 } ValueArray;
 
+// Public API — callable from outside this translation unit
 void initValueArray(ValueArray* array);
 void writeValueArray(ValueArray* array, value value);
 void freeValueArray(ValueArray* array);
