@@ -507,12 +507,9 @@ void test_hashtable() {
 // ##########################################################################################################################################
 // Schema Tests
 
-// snprintf(fname, 18, "%s%s%s", "../../tables", "schema", ".scma") truncates to
-// "../../tablesschema" (17 chars + null) because lenFName=7+6+5=18 was sized for
-// the original "tables/" prefix (7 chars), not the current "../../tables" (13 chars).
-// Both loadSchema and saveSchema compute the same truncated path, so save→load
-// is consistent.  We mirror that computation here so tests stay in sync if the
-// constants are ever fixed.
+/*
+dynamimcally resizes schema path allocation if schema directory is ever changed
+*/
 static const char* schema_path(void) {
     static char buf[64];
     snprintf(buf, sizeof(buf), "%s%s%s", SCHEMA_DIR, "schema", SCHEMA_EXT);
