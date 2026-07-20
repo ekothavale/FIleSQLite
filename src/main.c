@@ -105,6 +105,7 @@ static void runFile(const char* path) {
 }
 
 int main(int argc, char** argv) {
+    /*
     test_tableio();
     test_table_mgmt();
     test_btree();
@@ -116,6 +117,7 @@ int main(int argc, char** argv) {
     test_schema();
     test_generator();
     test_vm();
+    */
 
     if (argc == 1) {
         repl();

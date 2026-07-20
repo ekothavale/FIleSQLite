@@ -511,9 +511,8 @@ void test_hashtable() {
 dynamimcally resizes schema path allocation if schema directory is ever changed
 */
 static const char* schema_path(void) {
-    static char buf[64];
-    snprintf(buf, sizeof(buf), "%s%s%s", SCHEMA_DIR, "schema", SCHEMA_EXT);
-    return buf;
+    const char* path = SCHEMA_PATH;
+	return path;
 }
 
 // --- loadSchema ---

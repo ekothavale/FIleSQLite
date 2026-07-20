@@ -19,6 +19,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "schema.h"
 
 /*
+creates a new, empty schema file at SCHEMA_DIR/schema.scma.
+writes the magic number and a zero entry count.
+overwrites any existing file at that path.
+*/
+void initSchema() {
+	const char* path = SCHEMA_PATH;
+
+	FILE* tfile = fopen(path, "wb");
+	if (!tfile) {
+		printf("Error: failed to create schema file\n");
+		return;
+	}
+	uint32_t magic = SCHEMA_MAGIC;
+	fwrite(&magic, sizeof(uint32_t), 1, tfile);
+	uint32_t zero = 0;
+	fwrite(&zero, sizeof(uint32_t), 1, tfile);
+	fclose(tfile);
+}
+
+/*
 reads the entries in the schema file and loads them into the given hash table
 on-disk format per entry: [hash: u32] [name len: u32] [name bytes] [col count: u32] ([col N len: u32] [col N bytes])*
 */
@@ -92,31 +112,33 @@ load schema data from tables/schema.scma
 mallocs (1 hashtable)
 */
 hashtable* loadSchema() {
-	const char* dir = SCHEMA_DIR;
-	const char* ext = SCHEMA_EXT;
 	// ../../tables/schema.scma
-	size_t lenFName = strlen(dir) + 6 + strlen(ext) + 1;
-	char* fname = malloc(lenFName);
-	snprintf(fname, lenFName, "%s%s%s", dir, "schema", ext);
+	const char* path = SCHEMA_PATH;
 
-	FILE* tfile = fopen(fname, "rb");
+	FILE* tfile;
+	tfile = fopen(path, "rb");
+	// if tfile isn't found, try creating it
+	if (!tfile) {
+		initSchema();
+		tfile = fopen(path, "rb");
+	}
+	// if this still fails, report an error
 	if (!tfile) {
 		printf("Error: failed to open database schema\n");
-		free(fname);
 		return NULL;
 	}
 	uint32_t magic;
 	fread(&magic, 4, 1, tfile);
 	if (magic != SCHEMA_MAGIC) {
+		printf("Read: %u\n", magic);
 		printf("Error: schema file is corrupted\n");
-		free(fname);
+		fclose(tfile);
 		return NULL;
 	}
 	hashtable* ht = malloc(sizeof(hashtable));
 	initHashTable(ht);
 	readEntries(ht, tfile);
 	fclose(tfile);
-	free(fname);
 	return ht;
 }
 
@@ -124,14 +146,9 @@ hashtable* loadSchema() {
 assumes the hashtable contains accurate data
 */
 void saveSchema(hashtable* schema) {
-	const char* dir = SCHEMA_DIR;
-	const char* ext = SCHEMA_EXT;
-	size_t lenFName = strlen(dir) + 6 + strlen(ext) + 1;
-	char* fname = malloc(lenFName);
-	snprintf(fname, lenFName, "%s%s%s", dir, "schema", ext);
+	const char* path = SCHEMA_PATH;
 
-	FILE* tfile = fopen(fname, "wb");
-	free(fname);
+	FILE* tfile = fopen(path, "wb");
 	if (!tfile) {
 		printf("Error: failed to open schema file for writing\n");
 		return;

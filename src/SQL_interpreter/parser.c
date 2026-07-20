@@ -797,7 +797,7 @@ static ast_node* query() {
 			break;
 		}
 		default: {
-			printf("Error: query is of invalid statment type\n");
+			printf("Error: query is of invalid statement type\n");
 		}
 	}
 	return out;

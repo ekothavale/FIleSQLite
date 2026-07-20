@@ -92,15 +92,15 @@ inserts e into the given table if it is not already present
 overwrites the exisiting value if e is already in the table
 */
 void insertHT(schema* e, hashtable* table) {
-	schema* found = findEntry(e->hash, table->entries, table->capacity);
-	found->hash = e->hash;
-	found->cols = e->cols;
-	found->count = e->count;
-	found->tablename= e->tablename;
 	if (table->count + 1 > table->capacity * MAX_LOAD_FACTOR) {
 		int capacity = GROW_CAPACITY(table->capacity);
 		adjustCapacity(capacity, table);
 	}
+	schema* found = findEntry(e->hash, table->entries, table->capacity);
+	found->hash = e->hash;
+	found->cols = e->cols;
+	found->count = e->count;
+	found->tablename = e->tablename;
 	table->count++;
 }
 

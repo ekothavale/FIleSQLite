@@ -19,6 +19,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 // NOTE: function scanNumber assumes max length of number literal is 255 characters
 // NOTE: function parse assumes max length of query is 2048 tokens
 
+#include <ctype.h>
+#include <strings.h>
 #include "lexer.h"
 #include "common.h"
 #include "value.h"
@@ -118,7 +120,7 @@ static void skipWhitespace() {
 
 static token_type checkKeyword(int start, int length, const char* rest, token_type type) {
     if (lex.current - lex.start == start + length &&
-        memcmp(lex.start + start, rest, length) == 0) {
+        strncasecmp(lex.start + start, rest, length) == 0) {
         return type;
     }
     return TOKEN_IDENTIFIER;
@@ -127,46 +129,46 @@ static token_type checkKeyword(int start, int length, const char* rest, token_ty
 /*
 scans the next sequence of letters in the SQL query to determine
 if the characters represent a keyword or an identifier
-AS OF NOW, keywords are case sensitive (only lowercase matched)
+keywords are matched case-insensitively (CREATE == create)
 INSTEAD OF PATTERN MATCHING, DFA COULD BE REPRESENTED WITH A TABLE INSTEAD
 */
 static token_type identifierType() {
-    switch (lex.start[0]) {
+    switch (tolower((unsigned char)lex.start[0])) {
         case 'a':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'd': return checkKeyword(1, 2, "dd", TOKEN_ADD);
                 case 'l':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'l': return checkKeyword(1, 2, "ll", TOKEN_ALL);
                         case 't': return checkKeyword(1, 4, "lter", TOKEN_ALTER);
                     }
                     break;
                 case 'n':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'd': return checkKeyword(1, 2, "nd", TOKEN_AND);
                         case 'y': return checkKeyword(1, 2, "ny", TOKEN_ANY);
                     }
                     break;
                 case 's':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'c': return checkKeyword(1, 2, "sc", TOKEN_ASC);
                     }
                     return checkKeyword(1, 1, "s", TOKEN_AS);
             }
             break;
         case 'b':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'a': return checkKeyword(1, 5, "ackup", TOKEN_BACKUP);
                 case 'e': return checkKeyword(1, 6, "etween", TOKEN_BETWEEN);
                 case 'y': return checkKeyword(1, 1, "y", TOKEN_BY);
             }
             break;
         case 'c':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'a': return checkKeyword(1, 3, "ase", TOKEN_CASE);
                 case 'h': return checkKeyword(1, 4, "heck", TOKEN_CHECK);
                 case 'o':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'l': return checkKeyword(1, 5, "olumn", TOKEN_COLUMN);
                         case 'n': return checkKeyword(1, 9, "onstraint", TOKEN_CONSTRAINT);
                     }
@@ -175,10 +177,10 @@ static token_type identifierType() {
             }
             break;
         case 'd':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'a': return checkKeyword(1, 7, "atabase", TOKEN_DATABASE);
                 case 'e':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'f': return checkKeyword(1, 6, "efault", TOKEN_DEFAULT);
                         case 'l': return checkKeyword(1, 5, "elete", TOKEN_DELETE);
                         case 's': return checkKeyword(1, 3, "esc", TOKEN_DESC);
@@ -189,9 +191,9 @@ static token_type identifierType() {
             }
             break;
         case 'e':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'x':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'e': return checkKeyword(1, 3, "xec", TOKEN_EXEC);
                         case 'i': return checkKeyword(1, 5, "xists", TOKEN_EXISTS);
                     }
@@ -199,7 +201,7 @@ static token_type identifierType() {
             }
             break;
         case 'f':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'o': return checkKeyword(1, 6, "oreign", TOKEN_FOREIGN);
                 case 'r': return checkKeyword(1, 3, "rom", TOKEN_FROM);
                 case 'u': return checkKeyword(1, 3, "ull", TOKEN_FULL);
@@ -208,9 +210,9 @@ static token_type identifierType() {
         case 'g': return checkKeyword(1, 4, "roup", TOKEN_GROUP);
         case 'h': return checkKeyword(1, 5, "aving", TOKEN_HAVING);
         case 'i':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'n':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'd': return checkKeyword(1, 4, "ndex", TOKEN_INDEX);
                         case 'n': return checkKeyword(1, 4, "nner", TOKEN_INNER);
                         case 's': return checkKeyword(1, 5, "nsert", TOKEN_INSERT);
@@ -223,10 +225,10 @@ static token_type identifierType() {
         case 'j': return checkKeyword(1, 3, "oin", TOKEN_JOIN);
         case 'k': return checkKeyword(1, 2, "ey", TOKEN_KEY);
         case 'l':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'e': return checkKeyword(1, 3, "eft", TOKEN_LEFT);
                 case 'i':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'k': return checkKeyword(1, 3, "ike", TOKEN_LIKE);
                         case 'm': return checkKeyword(1, 4, "imit", TOKEN_LIMIT);
                     }
@@ -234,16 +236,16 @@ static token_type identifierType() {
             }
             break;
         case 'n':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'o': return checkKeyword(1, 2, "ot", TOKEN_NOT);
                 case 'u': return checkKeyword(1, 3, "ull", TOKEN_NULL);
             }
             break;
         case 'o':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'n': return checkKeyword(1, 1, "n", TOKEN_ON);
                 case 'r':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'd': return checkKeyword(1, 4, "rder", TOKEN_ORDER);
                     }
                     return checkKeyword(1, 1, "r", TOKEN_OR);
@@ -251,9 +253,9 @@ static token_type identifierType() {
             }
             break;
         case 'p':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'r':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'i': return checkKeyword(1, 6, "rimary", TOKEN_PRIMARY);
                         case 'o': return checkKeyword(1, 8, "rocedure", TOKEN_PROCEDURE);
                     }
@@ -261,16 +263,16 @@ static token_type identifierType() {
             }
             break;
         case 'r':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'e': return checkKeyword(1, 6, "eplace", TOKEN_REPLACE);
                 case 'i': return checkKeyword(1, 4, "ight", TOKEN_RIGHT);
                 case 'o': return checkKeyword(1, 5, "ownum", TOKEN_ROWNUM);
             }
             break;
         case 's':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'e':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'l': return checkKeyword(1, 5, "elect", TOKEN_SELECT);
                         case 't': return checkKeyword(1, 2, "et", TOKEN_SET);
                     }
@@ -278,18 +280,18 @@ static token_type identifierType() {
             }
             break;
         case 't':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'a': return checkKeyword(1, 4, "able", TOKEN_TABLE);
                 case 'o': return checkKeyword(1, 2, "op", TOKEN_TOP);
                 case 'r': return checkKeyword(1, 7, "runcate", TOKEN_TRUNCATE);
             }
             break;
         case 'u':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'n':
-                    switch (lex.start[2]) {
+                    switch (tolower((unsigned char)lex.start[2])) {
                         case 'i':
-                            switch (lex.start[3]) {
+                            switch (tolower((unsigned char)lex.start[3])) {
                                 case 'o': return checkKeyword(1, 4, "nion", TOKEN_UNION);
                                 case 'q': return checkKeyword(1, 5, "nique", TOKEN_UNIQUE);
                             }
@@ -300,7 +302,7 @@ static token_type identifierType() {
             }
             break;
         case 'v':
-            switch (lex.start[1]) {
+            switch (tolower((unsigned char)lex.start[1])) {
                 case 'a': return checkKeyword(1, 5, "alues", TOKEN_VALUES);
                 case 'i': return checkKeyword(1, 3, "iew", TOKEN_VIEW);
             }
