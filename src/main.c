@@ -45,62 +45,6 @@ static entry* makeRecord() {
     return out;
 }
 
-void testPages() {
-    int numSlots = 40;
-    int numEntries = 200;
-    int pageCap = 10000;
-    slotted_page* p = makeSPage(13, numSlots, numEntries, pageCap);
-    for (int i = 0; i < 45; i++) {
-        sp_record record = {
-            .entries = makeRecord(),
-            .len = 5
-        };
-        for (int i = 0; i < 5; i++) {
-            record.size += strlen(record.entries[i].data) + 1;
-        }
-        addRecord(p, i, record);
-    }
-    printSlottedPage(p);
-    for (int i = 0; i < 45; i++) {
-        deleteRecord(p, i);
-    }
-    printSlottedPage(p);
-}
-
-void testPagesRandom() {
-    int numSlots = 40;
-    int numEntries = 200;
-    int pageCap = 10000;
-    slotted_page* p = makeSPage(13, numSlots, numEntries, pageCap);
-    int insertionOrder[] = {4, 2, 7, 0, 8, 1, 3, 9, 5, 6};
-    for (int i = 0; i < 10; i++) {
-        sp_record record = {
-            // new records don't have their size written
-            .entries = makeRecord(),
-            .len = 5
-        };
-        for (int i = 0; i < 5; i++) {
-            record.size += strlen(record.entries[i].data) + 1;
-        }
-        addRecord(p, insertionOrder[i], record);
-    }
-    printSlottedPage(p);
-    int deletionOrder[] = {9, 6, 1, 2, 7, 3, 4, 8, 0, 5};
-    for (int i = 0; i < 10; i++) {
-        deleteRecord(p, deletionOrder[i]);
-    }
-    printSlottedPage(p);
-}
-
-/*
-TO BE CONTINUED
-FULL BACK END SIMULATION
-*/
-void testTree() {
-    table* t = createTree("People", 300);
-    address p = findPage(300, t);
-}
-
 static void repl() {
     char line[MAX_REPL_INPUT_LEN];
     for (;;) {
@@ -161,8 +105,6 @@ static void runFile(const char* path) {
 }
 
 int main(int argc, char** argv) {
-    testPages();
-    testPagesRandom();
     test_tableio();
     test_table_mgmt();
     test_btree();
@@ -172,8 +114,9 @@ int main(int argc, char** argv) {
     test_parser();
     test_hashtable();
     test_schema();
+    test_generator();
+    test_vm();
 
-    /*
     if (argc == 1) {
         repl();
     } else if (argc == 2) {
@@ -181,5 +124,4 @@ int main(int argc, char** argv) {
     } else {
         printf("Usage: ./main [optional SQL file]\n");
     }
-    */
 }

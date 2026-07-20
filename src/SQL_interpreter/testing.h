@@ -27,6 +27,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "schema.h"
 #include "lexer.h"
 #include "parser.h"
+#include "generator.h"
+#include "vm.h"
 
 /* Chunk tests */
 void test_chunk();
@@ -103,6 +105,27 @@ void test_add_multiple_tokens();
 void test_lex_query_simple();
 void test_lex_query_empty();
 void test_lex_query_string_and_number();
+
+/* VM tests */
+void test_vm();
+void test_vm_push_pop_integer();
+void test_vm_push_pop_lifo();
+void test_vm_push_pop_bool();
+void test_vm_push_pop_null();
+void test_vm_free_no_crash();
+void test_interpret_no_schema_returns_load_error();
+
+/* Generator tests */
+void test_generator();
+void test_generate_select_emits_scan_opcodes();
+void test_generate_select_where_emits_filter();
+void test_generate_insert_emits_insert_row();
+void test_generate_delete_emits_delete_row();
+void test_generate_update_emits_update_col();
+void test_generate_create_table_emits_opcode();
+void test_generate_drop_table_emits_opcode();
+void test_generate_expr_arithmetic();
+void test_generate_expr_logical_and();
 
 /* Parser tests */
 void test_parser();

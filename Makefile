@@ -72,5 +72,5 @@ tableIO.o: $(STOR)/tableIO.c $(STOR)/tableIO.h
 stor_testing.o: $(STOR)/testing.c $(STOR)/testing.h $(STOR)/bplus.h $(STOR)/page.h
 	clang $(CFLAGS) -c $(STOR)/testing.c -o stor_testing.o
 
-sql_testing.o: $(SQL)/testing.c $(SQL)/testing.h $(SQL)/chunk.h $(SQL)/hashtable.h $(SQL)/schema.h $(SQL)/value.h $(SQL)/lexer.h $(SQL)/parser.h $(SRC)/common.h
+sql_testing.o: $(SQL)/testing.c $(SQL)/testing.h $(SQL)/chunk.h $(SQL)/hashtable.h $(SQL)/schema.h $(SQL)/value.h $(SQL)/lexer.h $(SQL)/parser.h $(SQL)/generator.h $(SQL)/vm.h $(SRC)/common.h
 	clang $(CFLAGS) -c $(SQL)/testing.c -o sql_testing.o

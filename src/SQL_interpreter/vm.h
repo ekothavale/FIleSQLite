@@ -69,6 +69,10 @@ typedef enum {
 	INTERPRET_RUNTIME_ERROR,
 } interpret_result;
 
+// Public API — callable from outside this translation unit
+// (resetStack, runtimeError, openScanner, closeScanner, equal, lessThan,
+//  greaterThan, loadFirstValidPage, advanceScanner, valueToEntry, likeMatch,
+//  and run are file-scoped static helpers)
 void initVM(hashtable* schema);
 void freeVM();
 interpret_result interpret(const char* source);

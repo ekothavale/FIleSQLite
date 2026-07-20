@@ -853,6 +853,7 @@ void test_lexer() {
 // ##########################################################################################################################################
 // Parser tests
 
+// for cleanup in parser and generator tests
 static void freeAST(ast_node* node) {
     if (!node) return;
     for (int i = 0; i < 7; i++) freeAST(node->children[i]);
@@ -1158,7 +1159,305 @@ void test_parser() {
 // ##########################################################################################################################################
 // Generator Tests
 
+// Returns true if any byte in c->code[0..count-1] equals op.
+static bool has_opcode(chunk* c, uint8_t op) {
+    for (int i = 0; i < c->count; i++) {
+        if (c->code[i] == op) return true;
+    }
+    return false;
+}
+
+// Build a pre-allocated hashtable with a "users" schema (id, name).
+static hashtable make_users_ht(void) {
+    hashtable ht = make_test_table();
+    static char* cols[] = { "id", "name" };
+    schema s = {
+        .hash = hashString("users", 5),
+        .tablename = "users",
+        .cols = cols,
+        .count = 2,
+    };
+    insertHT(&s, &ht);
+    return ht;
+}
+
+void test_generate_select_emits_scan_opcodes(void) {
+    tokenized t = lexQuery("select * from users");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    hashtable ht = make_users_ht();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    assert(has_opcode(&c, OP_OPEN_SCAN));
+    assert(has_opcode(&c, OP_REWIND));
+    assert(has_opcode(&c, OP_NEXT));
+    assert(has_opcode(&c, OP_CLOSE_SCAN));
+    assert(c.code[c.count - 1] == OP_HALT);
+    // SELECT * with 2-column schema emits OP_EMIT_ROW
+    assert(has_opcode(&c, OP_EMIT_ROW));
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generate_select_where_emits_filter(void) {
+    tokenized t = lexQuery("select * from users where id = 1");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    hashtable ht = make_users_ht();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    // WHERE id = 1 must produce a comparison and a conditional jump
+    assert(has_opcode(&c, OP_COLUMN));
+    assert(has_opcode(&c, OP_EQUAL));
+    assert(has_opcode(&c, OP_JUMP_FALSE));
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generate_insert_emits_insert_row(void) {
+    tokenized t = lexQuery("insert into users values (1, 'alice')");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    hashtable ht = make_test_table();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    assert(has_opcode(&c, OP_OPEN_SCAN));
+    assert(has_opcode(&c, OP_INSERT_ROW));
+    // Three constants: "users", 1, "alice"
+    assert(c.constants.count == 3);
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generate_delete_emits_delete_row(void) {
+    tokenized t = lexQuery("delete from users where id = 1");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    hashtable ht = make_users_ht();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    assert(has_opcode(&c, OP_OPEN_SCAN));
+    assert(has_opcode(&c, OP_DELETE_ROW));
+    assert(c.code[c.count - 1] == OP_HALT);
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generate_update_emits_update_col(void) {
+    tokenized t = lexQuery("update users set name = 'bob' where id = 1");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    hashtable ht = make_users_ht();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    assert(has_opcode(&c, OP_OPEN_SCAN));
+    assert(has_opcode(&c, OP_UPDATE_COL));
+    assert(c.code[c.count - 1] == OP_HALT);
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generate_create_table_emits_opcode(void) {
+    tokenized t = lexQuery("create table users (id int, name text)");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    // make_test_table() gives capacity=8, avoiding insertHT's capacity=0 crash.
+    hashtable ht = make_test_table();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    assert(has_opcode(&c, OP_CREATE_TABLE));
+    assert(c.code[c.count - 1] == OP_HALT);
+    // generate() inserts the new schema into ht via insertHT
+    assert(readHT(hashString("users", 5), &ht) != NULL);
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generate_drop_table_emits_opcode(void) {
+    tokenized t = lexQuery("drop table users");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    hashtable ht = make_test_table();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    assert(has_opcode(&c, OP_DROP_TABLE));
+    assert(c.code[c.count - 1] == OP_HALT);
+    // Only one constant: the table name string
+    assert(c.constants.count == 1);
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generate_expr_arithmetic(void) {
+    tokenized t = lexQuery("select 1 + 2 from users");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    hashtable ht = make_test_table();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    // Additive expression must emit OP_ADD
+    assert(has_opcode(&c, OP_ADD));
+    assert(has_opcode(&c, OP_EMIT_ROW));
+    assert(c.code[c.count - 1] == OP_HALT);
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generate_expr_logical_and(void) {
+    tokenized t = lexQuery("select * from users where 1 = 1 and 2 = 2");
+    ast_node* ast = compile(t);
+    free(t.tokens);
+
+    hashtable ht = make_test_table();
+    chunk c; initChunk(&c);
+    generate(ast, &c, &ht);
+
+    // Short-circuit AND emits OP_JUMP_FALSE and two OP_EQUAL comparisons
+    assert(has_opcode(&c, OP_EQUAL));
+    assert(has_opcode(&c, OP_JUMP_FALSE));
+    assert(c.code[c.count - 1] == OP_HALT);
+
+    freeAST(ast); freeChunk(&c); freeHashTable(&ht);
+}
+
+void test_generator(void) {
+    test_generate_select_emits_scan_opcodes();
+    test_generate_select_where_emits_filter();
+    test_generate_insert_emits_insert_row();
+    test_generate_delete_emits_delete_row();
+    test_generate_update_emits_update_col();
+    test_generate_create_table_emits_opcode();
+    test_generate_drop_table_emits_opcode();
+    test_generate_expr_arithmetic();
+    test_generate_expr_logical_and();
+    printf("All generator tests passed.\n");
+}
+
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // VM Tests
+
+// --- push / pop ---
+
+void test_vm_push_pop_integer(void) {
+    hashtable ht = make_test_table();
+    initVM(&ht);
+
+    push(INTEGER_VAL(42));
+    value v = pop();
+    assert(v.type == VAL_INT);
+    assert(v.as.integer == 42);
+
+    // second roundtrip confirms stackTop resets to base after pop
+    push(INTEGER_VAL(-7));
+    assert(pop().as.integer == -7);
+
+    freeVM(); freeHashTable(&ht);
+}
+
+void test_vm_push_pop_lifo(void) {
+    hashtable ht = make_test_table();
+    initVM(&ht);
+
+    push(INTEGER_VAL(1));
+    push(BOOL_VAL(true));
+    push(FLOAT_VAL(2.5));
+
+    assert(pop().type == VAL_FLOAT);
+    assert(pop().type == VAL_BOOL);
+    assert(pop().as.integer == 1);
+
+    freeVM(); freeHashTable(&ht);
+}
+
+void test_vm_push_pop_bool(void) {
+    hashtable ht = make_test_table();
+    initVM(&ht);
+
+    push(BOOL_VAL(true));
+    assert(pop().as.boolean == true);
+
+    push(BOOL_VAL(false));
+    assert(pop().as.boolean == false);
+
+    push(BOOL_VAL(true));
+    assert(pop().type == VAL_BOOL);
+
+    freeVM(); freeHashTable(&ht);
+}
+
+void test_vm_push_pop_null(void) {
+    hashtable ht = make_test_table();
+    initVM(&ht);
+
+    push(NULL_VAL(0));
+    value v = pop();
+    assert(v.type == VAL_NULL);
+
+    // push two nulls; both pop as VAL_NULL in LIFO order
+    push(NULL_VAL(0)); push(NULL_VAL(0));
+    assert(pop().type == VAL_NULL);
+    assert(pop().type == VAL_NULL);
+
+    freeVM(); freeHashTable(&ht);
+}
+
+// --- initVM / freeVM ---
+
+void test_vm_free_no_crash(void) {
+    hashtable ht = make_test_table();
+
+    // freeVM on a fresh VM (no open scanners, no results) must not crash
+    initVM(&ht);
+    freeVM();
+
+    // re-init after free: push/pop must still give correct LIFO results
+    initVM(&ht);
+    push(INTEGER_VAL(10));
+    push(INTEGER_VAL(20));
+    assert(pop().as.integer == 20);
+    assert(pop().as.integer == 10);
+
+    freeVM();  // second freeVM on clean state must also not crash
+
+    freeHashTable(&ht);
+}
+
+// --- interpret ---
+
+void test_interpret_no_schema_returns_load_error(void) {
+    // No .scma file exists at ../../tables/schema.scma relative to the build
+    // directory, so loadSchema() returns NULL and interpret() short-circuits.
+    assert(interpret("select * from users") == INTERPRET_LOAD_ERROR);
+    assert(interpret("insert into users values (1)") == INTERPRET_LOAD_ERROR);
+    assert(interpret("create table t (id int)") == INTERPRET_LOAD_ERROR);
+}
+
+// --- master ---
+
+void test_vm(void) {
+    test_vm_push_pop_integer();
+    test_vm_push_pop_lifo();
+    test_vm_push_pop_bool();
+    test_vm_push_pop_null();
+    test_vm_free_no_crash();
+    test_interpret_no_schema_returns_load_error();
+    printf("All VM tests passed.\n");
+}
 

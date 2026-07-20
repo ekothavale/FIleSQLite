@@ -95,7 +95,7 @@ hashtable* loadSchema() {
 	const char* dir = SCHEMA_DIR;
 	const char* ext = SCHEMA_EXT;
 	// ../../tables/schema.scma
-	size_t lenFName = strlen(dir) + 6 + strlen(ext);
+	size_t lenFName = strlen(dir) + 6 + strlen(ext) + 1;
 	char* fname = malloc(lenFName);
 	snprintf(fname, lenFName, "%s%s%s", dir, "schema", ext);
 
@@ -126,7 +126,7 @@ assumes the hashtable contains accurate data
 void saveSchema(hashtable* schema) {
 	const char* dir = SCHEMA_DIR;
 	const char* ext = SCHEMA_EXT;
-	size_t lenFName = strlen(dir) + 6 + strlen(ext);
+	size_t lenFName = strlen(dir) + 6 + strlen(ext) + 1;
 	char* fname = malloc(lenFName);
 	snprintf(fname, lenFName, "%s%s%s", dir, "schema", ext);
 

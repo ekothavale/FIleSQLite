@@ -9,7 +9,7 @@ TODO:
  - implement database manipulation opcodes - DONE
  - implement database definition opcodes - DONE
  - write compiler second pass to generate code from AST - DONE
- - test every component of the front end
+ - test every component of the front end - DONE
  - test the whole project
 
 CONSIDERATIONS:
