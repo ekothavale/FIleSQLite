@@ -16,6 +16,8 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
+#include "time.h"
+
 #include "common.h"
 #include "debug.h"
 #include "const.h"
@@ -119,11 +121,19 @@ int main(int argc, char** argv) {
     test_vm();
     */
 
+    struct timespec start, end;
+
     if (argc == 1) {
         repl();
     } else if (argc == 2) {
+        clock_gettime(CLOCK_MONOTONIC, &start);
         runFile(argv[1]);
+        clock_gettime(CLOCK_MONOTONIC, &end);
     } else {
         printf("Usage: ./main [optional SQL file]\n");
     }
+
+    double time_taken = (end.tv_sec - start.tv_sec) + 
+                        (end.tv_nsec - start.tv_nsec) / 1e6;
+    printf(" %.3f ms\n", time_taken);
 }

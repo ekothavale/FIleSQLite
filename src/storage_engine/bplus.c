@@ -110,7 +110,7 @@ table* createTree(char* tablename, uint32_t pageNum) {
 
 	t->root = rootAddr;
 
-	// write structs and clean up
+	// write structs and flush metadata (root pointer) to disk
 	writeNewTree(page, pageAddr, root, rootAddr, t);
 	free(root);
 	free(page);

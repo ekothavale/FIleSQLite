@@ -15,6 +15,9 @@ TODO:
 CONSIDERATIONS:
  - Potential issue where tables are stored on disk as hashes but table file names expect a string (originally intended to be the table name)
 	- could use hash as table file name 
- - VM needs to receive table from compiler since the compiler may need to populate the table further at compile time
  - The storage engine doesn't use any of the schema to customize the table
  - On disk datatypes in storage engine do not match the SQL interpreter value datatypes
+ - Result buffer is not outputted
+ - Column types are not stored in schema
+ - readNode and readPage need to propagate failure
+ - Creating a table should do nothing if the table already exists

@@ -402,6 +402,8 @@ bool loadTable(char* tablename, table* t) {
 	t->source = tfile;
 	t->cursor = 0;
 	t->name   = strdup(tablename);
+	t->node   = NULL;
+	t->page   = NULL;
 	loadMeta(tfile, fname, t);
 	setStacks(t);
 	free(fname);
@@ -538,9 +540,10 @@ bool readPage(address addr, slotted_page* p, table* t) {
 
 /*
 moves a table's cursor to a page and loads it
+callocs one page if t->page == NULL
 */
 bool loadPage(address address, table* t) {
-	if (!t->page) t->page = malloc(sizeof(slotted_page));
+	if (!t->page) t->page = calloc(1, sizeof(slotted_page));
 	jump(address, t);
 	return readPage(address, t->page, t);
 }
@@ -601,9 +604,10 @@ bool readNode(address addr, node* n, table* t) {
 /*
 moves a table's cursor to a node and loads it
 assumes the current location of the cursor is a valid node
+callocs one node if t->node == NULL
 */
 bool loadNode(address address, table* t) {
-	if (!t->node) t->node = malloc(sizeof(node));
+	if (!t->node) t->node = calloc(1, sizeof(node));
 	jump(address, t);
 	return readNode(address, t->node, t);
 }
@@ -724,6 +728,7 @@ should be used only on a new file
 void writeNewTree(slotted_page* p, address pageAddr, node* n, address nodeAddr, table* t) {
 	writePage(p, pageAddr, t);
 	writeNode(n, nodeAddr, t);
+	writeMeta(t->source, t);
 }
 
 /*MIGHT NEED THESE TO RETURN TRUE OR FALSE*/

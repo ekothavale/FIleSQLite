@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <sys/stat.h>
 #include "../common.h"
 #include "../debug.h"
 #include "parser.h"
@@ -95,6 +96,18 @@ static void closeScanner(scanner* c) {
 	c->open    = false;
 	c->started = false;
 	c->atEnd   = false;
+}
+
+static bool tableAlreadyExists(const char* tablename) {
+	char* dir = TABLE_DIRECTORY;
+	char* ext = TABLE_EXTENSION;
+	int pathLen = strlen(dir) + strlen(tablename) + strlen(ext);
+	char* path = malloc(pathLen + 1);
+	snprintf(path, pathLen + 1, "%s%s%s", dir, tablename, ext);
+	struct stat st;
+	bool exists = stat(path, &st) == 0;
+	free(path);
+	return exists;
 }
 
 /*
@@ -579,7 +592,13 @@ static interpret_result run() {
 					printf("Error: schema not found for CREATE TABLE\n");
 					break;
 				}
-				table* t = createTable(s->tablename);
+				// if the table already exists, do nothing
+				if (tableAlreadyExists(s->tablename)) {
+					printf("Tried to create table %s but it already exists\n", s->tablename);
+					break;
+				}
+				// otherwise create the table
+				table* t = createTree(s->tablename, 1);
 				if (t) {
 					fclose(t->source);
 					freeTable(t);
