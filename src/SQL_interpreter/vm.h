@@ -44,11 +44,20 @@ typedef struct scanner {
 	uint32_t slotIdx;    // which slot (row) within page is current
 } scanner;
 
+typedef enum {
+	INTERPRET_OK, // successful interpret but query did not request data
+	INTERPRET_LOAD_ERROR,
+	INTERPRET_COMPILE_ERROR,
+	INTERPRET_RUNTIME_ERROR,
+} interpret_result;
+
 typedef struct result_buffer {
+	interpret_result ir;
 	value** rows;
 	int count;
 	int capacity;
 	int cols;
+	bool print;
 } result_buffer;
 
 // a virtual computer to manage a local database
@@ -62,20 +71,13 @@ typedef struct VM {
 	value stack[STACK_MAX]; // where values are stored
 } VM;
 
-typedef enum {
-	INTERPRET_OK,
-	INTERPRET_LOAD_ERROR,
-	INTERPRET_COMPILE_ERROR,
-	INTERPRET_RUNTIME_ERROR,
-} interpret_result;
-
 // Public API — callable from outside this translation unit
 // (resetStack, runtimeError, openScanner, closeScanner, equal, lessThan,
 //  greaterThan, loadFirstValidPage, advanceScanner, valueToEntry, likeMatch,
 //  and run are file-scoped static helpers)
 void initVM(hashtable* schema);
 void freeVM();
-interpret_result interpret(const char* source);
+result_buffer interpret(const char* source);
 void push(value value);
 value pop();
 

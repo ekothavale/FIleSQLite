@@ -436,6 +436,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 			patchJump(c, nextPatch);
 			writeChunk(c, OP_CLOSE_SCAN, 0);
+			writeChunk(c, OP_SET_RESULT, 0);
 			break;
 		}
 

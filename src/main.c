@@ -47,6 +47,28 @@ static entry* makeRecord() {
     return out;
 }
 
+/*
+pretty prints the rows in the results of a query 
+*/
+static void printResult(result_buffer result) {
+    for (int r = 0; r < result.count; r++) {
+        for (int c = 0; c < result.cols; c++) {
+            if (c > 0) printf(" | ");
+            value v = result.rows[r][c];
+            switch (v.type) {
+                case VAL_NULL:  printf("NULL");              break;
+                case VAL_BOOL:  printf("%s", v.as.boolean ? "true" : "false"); break;
+                case VAL_INT:   printf("%lld", v.as.integer); break;
+                case VAL_FLOAT: printf("%g",   v.as.floating); break;
+                case VAL_TEXT:  printf("%s",   v.as.text);    break;
+                case VAL_U32:   printf("%u",   v.as.u32);     break;
+            }
+        }
+        printf("\n");
+    }
+    printf("(%d row%s)\n", result.count, result.count == 1 ? "" : "s");
+}
+
 static void repl() {
     char line[MAX_REPL_INPUT_LEN];
     for (;;) {
@@ -57,7 +79,8 @@ static void repl() {
             break;
         }
 
-        interpret(line);
+        result_buffer result = interpret(line);
+        if (result.print) printResult(result);
     }
 }
 
@@ -99,11 +122,13 @@ static char* readFile(const char* path) {
 
 static void runFile(const char* path) {
     char* source = readFile(path);
-    interpret_result result = interpret(source);
+    result_buffer result = interpret(source);
     free(source);
 
-    if (result == INTERPRET_COMPILE_ERROR) exit(65);
-    if (result == INTERPRET_RUNTIME_ERROR) exit(70);
+    if (result.ir == INTERPRET_LOAD_ERROR) exit(60);
+    if (result.ir == INTERPRET_COMPILE_ERROR) exit(65);
+    if (result.ir == INTERPRET_RUNTIME_ERROR) exit(70);
+    if (result.print) printResult(result);
 }
 
 int main(int argc, char** argv) {
@@ -126,14 +151,31 @@ int main(int argc, char** argv) {
     if (argc == 1) {
         repl();
     } else if (argc == 2) {
+        if (strncmp(argv[1], "-d", 2) == 0) {
+            #define DEBUG_TRACE_EXECUTION
+            repl();
+        } else {
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            runFile(argv[1]);
+            clock_gettime(CLOCK_MONOTONIC, &end);
+        }
+    } else if (argc == 3) {
+        if (strncmp(argv[2], "-d", 2) == 0) {
+            #define DEBUG_TRACE_EXECUTION
+        } else {
+            printf("Usage: ./main [SQL file] [id]\n");
+            return 0;
+        }
         clock_gettime(CLOCK_MONOTONIC, &start);
         runFile(argv[1]);
         clock_gettime(CLOCK_MONOTONIC, &end);
+
     } else {
-        printf("Usage: ./main [optional SQL file]\n");
+        printf("Usage: ./main [SQL file] [-d]\n");
     }
 
     double time_taken = (end.tv_sec - start.tv_sec) + 
                         (end.tv_nsec - start.tv_nsec) / 1e6;
-    printf(" %.3f ms\n", time_taken);
+    printf(" %.3f s\n", time_taken);
+    return 0;
 }

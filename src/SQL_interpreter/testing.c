@@ -1443,9 +1443,9 @@ void test_vm_free_no_crash(void) {
 void test_interpret_no_schema_returns_load_error(void) {
     // No .scma file exists at ../../tables/schema.scma relative to the build
     // directory, so loadSchema() returns NULL and interpret() short-circuits.
-    assert(interpret("select * from users") == INTERPRET_LOAD_ERROR);
-    assert(interpret("insert into users values (1)") == INTERPRET_LOAD_ERROR);
-    assert(interpret("create table t (id int)") == INTERPRET_LOAD_ERROR);
+    assert(interpret("select * from users").ir == INTERPRET_LOAD_ERROR);
+    assert(interpret("insert into users values (1)").ir == INTERPRET_LOAD_ERROR);
+    assert(interpret("create table t (id int)").ir == INTERPRET_LOAD_ERROR);
 }
 
 // --- master ---

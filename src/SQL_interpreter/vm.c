@@ -37,6 +37,7 @@ void initVM(hashtable* schema) {
 	vm.results.capacity = 0;
 	vm.results.cols     = 0;
 	vm.schema           = schema;
+	vm.results.print	= false;
 }
 
 void freeVM() {
@@ -339,11 +340,6 @@ static interpret_result run() {
 		#endif
 		uint8_t instruction;
 		switch (instruction = READ_BYTE()) {
-			case OP_HALT: {
-				printValue(pop());
-				printf("\n");
-				return INTERPRET_OK;
-			}
 			case OP_CONSTANT: {
 				value constant = READ_CONSTANT();
 				push(constant);
@@ -621,6 +617,15 @@ static interpret_result run() {
 				saveSchema(vm.schema);
 				break;
 			}
+			case OP_SET_RESULT: {
+				vm.results.print = true;
+				break;
+			}
+			case OP_HALT: {
+				printValue(pop());
+				printf("\n");
+				return INTERPRET_OK;
+			}
 		}
 	}
 	#undef READ_BYTE
@@ -628,16 +633,21 @@ static interpret_result run() {
 	#undef BINARY_OP
 }
 
-interpret_result interpret(const char* source) {
+result_buffer interpret(const char* source) {
 	chunk c;
 	hashtable* schema = loadSchema();
 	if (!schema) {
-		return INTERPRET_LOAD_ERROR;
+		vm.results.ir = INTERPRET_LOAD_ERROR;
+		return vm.results;
 	}
 	initVM(schema);
 	initChunk(&c);
 	tokenized t = lexQuery(source);
 	ast_node* root = compile(t);
+	if (!root) {
+		vm.results.ir = INTERPRET_COMPILE_ERROR;
+		return vm.results;
+	}
 	generate(root, &c, schema);
 
 	/*if (!compile(source, &chunk)) {
@@ -648,8 +658,8 @@ interpret_result interpret(const char* source) {
 	vm.chunk = &c;
 	vm.ip = vm.chunk->code;
 
-	interpret_result result = run();
+	vm.results.ir = run();
 
 	freeChunk(&c);
-	return result;
+	return vm.results;
 }

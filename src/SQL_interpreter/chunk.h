@@ -82,6 +82,7 @@ typedef enum opcode {
     OP_SORT,
     OP_LIMIT,
     // execution management
+    OP_SET_RESULT,
     OP_HALT
 }opcode;
 
