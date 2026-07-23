@@ -506,11 +506,13 @@ static interpret_result run() {
 				// pop in reverse so row[0] is the leftmost column
 				value* row = malloc(count * sizeof(value));
 				for (int i = count - 1; i >= 0; i--) row[i] = pop();
+				#ifdef DEBUG_TRACE_EXECUTION
 				for (int i = 0; i < count; i++) {
 					if (i > 0) printf(" | ");
 					printValue(row[i]);
 				}
 				printf("\n");
+				#endif
 				// grow result buffer
 				if (vm.results.capacity == 0) {
 					vm.results.capacity = 8;

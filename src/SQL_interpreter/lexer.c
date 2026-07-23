@@ -385,7 +385,9 @@ token scanToken() {
 
     }
 
-    return errorToken("Unexpected character.");
+    printf("Error: unexpected symbol '%c' (line %d)\n", c, lex.line);
+
+    return errorToken("");
 }
 
 void initTokenized(tokenized* t) {
@@ -415,7 +417,7 @@ tokenized lexQuery(const char* source) {
     while(tok.type != TOKEN_EOF) {
         tok = scanToken();
         if (tok.type == TOKEN_ERROR) {
-            printf("Error: unrecognized token\n");
+            printf("%s", tok.start);
             // can do other cleanup
         } else {
             addToken(&t, tok);

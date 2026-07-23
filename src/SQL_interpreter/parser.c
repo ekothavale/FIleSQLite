@@ -111,6 +111,17 @@ static token advance() {
 }
 
 /*
+prints the current token as erroneous
+*/
+static void reportUnexpected() {
+	char* errTok = malloc((*p.current).length + 1);
+	strncpy(errTok, p.current->start, p.current->length);
+	errTok[p.current->length] = '\0';
+	printf("Error: unexpected token '%s' encountered (line %d)\n", errTok, p.current->line);
+	free(errTok);
+}
+
+/*
 checks to see if the current token is of a certain type.
 if so, consumes it, else returns an error
 */
@@ -118,7 +129,7 @@ static token expect(token_type type) {
 	if (p.total - p.numCurrent > 0 && type == (*p.current).type) {
 		return advance();
 	} else {
-		perror("Error: unexpected token encountered");
+		reportUnexpected();
 		exit(74);
 	}
 }

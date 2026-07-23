@@ -14,9 +14,7 @@ TODO:
 
 CONSIDERATIONS:
  - The storage engine doesn't use any of the schema to customize the table
- - On disk datatypes in storage engine do not match the SQL interpreter value datatypes
- - Result buffer is not outputted
- - Column types are not stored in schema
  - readNode and readPage need to propagate failure
- - Creating a table should do nothing if the table already exists
  - Entering a blank line into REPL causes segfault
+ - Primary keys are not supported
+ - Changing query column order is not supported
