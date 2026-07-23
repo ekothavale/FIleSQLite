@@ -74,7 +74,7 @@ alter_stmt  → ALTER TABLE identifier ADD [COLUMN] col_def
             | ALTER TABLE identifier ALTER COLUMN identifier identifier
 */
 
-#include "common.h"
+#include "../common.h"
 #include "chunk.h"
 #include "parser.h"
 

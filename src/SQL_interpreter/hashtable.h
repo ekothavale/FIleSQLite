@@ -24,7 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define MAX_LOAD_FACTOR 0.8 // load factor at which the hash table is resized
 
 typedef struct schema {
-	char** cols; // names of columns
+	char** colNames; // names of columns
+	char* colTypes;// types of columns
 	char* tablename; // corresponding name of table (key)
 	uint32_t hash; // hash of key to id the entry
 	int count; // number of columns in the entry

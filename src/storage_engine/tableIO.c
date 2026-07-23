@@ -531,8 +531,8 @@ bool readPage(address addr, slotted_page* p, table* t) {
 		p->entries[i].size = size;
 		if (p->entries[i].data) free(p->entries[i].data);
 		p->entries[i].data = malloc(size);
-		readArbitrary(p->entries[i].data, size, -size, t);
-		jumpRel(-size, t);
+		readArbitrary(p->entries[i].data, size, -(long)size, t);
+		jumpRel(-(long)size, t);
 	}
 	jump(prev, t);
 	return true;
@@ -646,7 +646,7 @@ static void writePage(slotted_page* p, address address, table* t) {
 	}
 	// write records
 	int entryOffset = 0;
-	for (int i = 0; i < h.numRecords; i++) {
+	for (int i = 0; i < h.numEntries; i++) {
 		// entry: <--  data | size (4B) | type (2B)  <--
 		entry e = p->entries[i];
 		int addition = e.size + 6;

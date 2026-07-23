@@ -40,7 +40,7 @@ void initSchema() {
 
 /*
 reads the entries in the schema file and loads them into the given hash table
-on-disk format per entry: [hash: u32] [name len: u32] [name bytes] [col count: u32] ([col N len: u32] [col N bytes])*
+on-disk format per entry: [hash: u32] [name len: u32] [name bytes] [col count: u32] ([col N type: u8] [col N len: u32] [col N bytes])*
 */
 static void readEntries(hashtable* ht, FILE* file) {
 	uint32_t entryCount;
@@ -60,7 +60,9 @@ static void readEntries(hashtable* ht, FILE* file) {
 		fread(&colCount, sizeof(uint32_t), 1, file);
 
 		char** cols = malloc(colCount * sizeof(char*));
+		char* types = malloc(colCount);
 		for (uint32_t j = 0; j < colCount; j++) {
+			fread(&types[j], 1, 1, file);
 			uint32_t len;
 			fread(&len, sizeof(uint32_t), 1, file);
 			char* name = malloc(len + 1);
@@ -69,14 +71,14 @@ static void readEntries(hashtable* ht, FILE* file) {
 			cols[j] = name;
 		}
 
-		schema e = { .hash = hash, .tablename = tablename, .cols = cols, .count = (int)colCount };
+		schema e = { .hash = hash, .tablename = tablename, .colNames = cols, .colTypes = types, .count = (int)colCount };
 		insertHT(&e, ht);
 	}
 }
 
 /*
 writes all of the entries in the schema hash table to the schema file
-on-disk format per entry: [hash: u32] [name len: u32] [name bytes] [col count: u32] ([col N len: u32] [col N bytes])*
+on-disk format per entry: [hash: u32] [name len: u32] [name bytes] [col count: u32] ([col N type: u8] [col N len: u32] [col N bytes])*
 */
 static void writeEntries(hashtable* ht, FILE* file) {
 	uint32_t count = 0;
@@ -98,9 +100,10 @@ static void writeEntries(hashtable* ht, FILE* file) {
 		fwrite(&colCount, sizeof(uint32_t), 1, file);
 
 		for (int j = 0; j < e->count; j++) {
-			uint32_t len = (uint32_t)strlen(e->cols[j]);
+			fwrite(&e->colTypes[j], 1, 1, file);
+			uint32_t len = (uint32_t)strlen(e->colNames[j]);
 			fwrite(&len, sizeof(uint32_t), 1, file);
-			fwrite(e->cols[j], 1, len, file);
+			fwrite(e->colNames[j], 1, len, file);
 		}
 	}
 }

@@ -19,8 +19,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #ifndef LEXER_H
 #define LEXER_H
 
-#include "common.h"
-#include "memory.h"
+#include "../common.h"
+#include "../memory.h"
 
 #define INITIAL_TOKEN_COUNT 128
 

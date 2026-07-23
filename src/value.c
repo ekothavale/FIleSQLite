@@ -48,3 +48,19 @@ void freeValueArray(ValueArray* array) {
 void printValue(value value) {
 	printf("%g", value.as.floating);
 }
+
+/*
+abstraction around SQL type conversion
+byte -> SQL type
+*/
+SQL_type getSQLType(char byte) {
+	return (SQL_type) byte;
+}
+
+/*
+abstraction around SQL type conversion
+SQL type -> byte
+*/
+char encodeSQLType(SQL_type t) {
+	return (char) t;
+}

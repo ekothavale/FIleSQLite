@@ -55,13 +55,14 @@ static void printResult(result_buffer result) {
         for (int c = 0; c < result.cols; c++) {
             if (c > 0) printf(" | ");
             value v = result.rows[r][c];
-            switch (v.type) {
-                case VAL_NULL:  printf("NULL");              break;
-                case VAL_BOOL:  printf("%s", v.as.boolean ? "true" : "false"); break;
-                case VAL_INT:   printf("%lld", v.as.integer); break;
-                case VAL_FLOAT: printf("%g",   v.as.floating); break;
-                case VAL_TEXT:  printf("%s",   v.as.text);    break;
-                case VAL_U32:   printf("%u",   v.as.u32);     break;
+            SQL_type type = (SQL_type) result.types[c];
+            switch (type) {
+                case SQL_NULL:  printf("NULL");              break;
+                case SQL_BOOL:  printf("%s", v.as.boolean ? "true" : "false"); break;
+                case SQL_INT:   printf("%lld", v.as.integer); break;
+                case SQL_FLOAT: printf("%g",   v.as.floating); break;
+                case SQL_TEXT:  printf("%s",   v.as.text);    break;
+                default:        printf("N/A");               break;
             }
         }
         printf("\n");
@@ -174,8 +175,8 @@ int main(int argc, char** argv) {
         printf("Usage: ./main [SQL file] [-d]\n");
     }
 
-    double time_taken = (end.tv_sec - start.tv_sec) + 
-                        (end.tv_nsec - start.tv_nsec) / 1e6;
-    printf(" %.3f s\n", time_taken);
+    double time_taken = ((end.tv_sec - start.tv_sec) + 
+                        (end.tv_nsec - start.tv_nsec) / 1e9) * 1e3;
+    printf(" %.3f ms\n", time_taken);
     return 0;
 }

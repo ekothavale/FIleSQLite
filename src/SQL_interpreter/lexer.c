@@ -22,8 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include <ctype.h>
 #include <strings.h>
 #include "lexer.h"
-#include "common.h"
-#include "value.h"
+#include "../common.h"
+#include "../value.h"
 
 typedef struct lexer {
     const char* start;

@@ -17,8 +17,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 */
 
 #include "hashtable.h"
-#include "memory.h"
-#include "value.h"
+#include "../memory.h"
+#include "../value.h"
 
 void initHashTable(hashtable* table) {
 	table->count = 0;
@@ -78,7 +78,8 @@ static void adjustCapacity(int capacity, hashtable* table) {
 
 		schema* dest = findEntry(e->hash, entries, capacity);
 		dest->hash = e->hash;
-		dest->cols = e->cols;
+		dest->colNames = e->colNames;
+		dest->colTypes = e->colTypes;
 		dest->count = e->count;
 		dest->tablename = e->tablename;
 	}
@@ -98,7 +99,8 @@ void insertHT(schema* e, hashtable* table) {
 	}
 	schema* found = findEntry(e->hash, table->entries, table->capacity);
 	found->hash = e->hash;
-	found->cols = e->cols;
+	found->colNames = e->colNames;
+	found->colTypes = e->colTypes;
 	found->count = e->count;
 	found->tablename = e->tablename;
 	table->count++;
@@ -118,7 +120,8 @@ deletes a key-value pair from a hash table
 */
 void deleteHT(uint32_t hash, hashtable* table) {
 	schema* target = findEntry(hash, table->entries, table->capacity);
-	target->cols = 0;
+	target->colNames = NULL;
+	target->colTypes = NULL;
 	target->count = 0;
 	target->hash = 0;
 }

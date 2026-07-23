@@ -302,7 +302,8 @@ static schema make_schema(const char* name, int col_count) {
     schema s;
     s.hash      = hashString(name, (int)strlen(name));
     s.tablename = (char*)name;
-    s.cols      = NULL;
+    s.colNames  = NULL;
+    s.colTypes  = NULL;
     s.count     = col_count;
     return s;
 }
@@ -591,6 +592,49 @@ void test_save_load_empty_schema() {
     remove(schema_path());
 }
 
+void test_save_load_schema_with_cols_and_types() {
+    hashtable t = make_test_table();
+
+    char** cols = malloc(2 * sizeof(char*));
+    cols[0] = strdup("id");
+    cols[1] = strdup("name");
+    char* types = malloc(2);
+    types[0] = 2;   // SQL_INT
+    types[1] = 0;   // SQL_TEXT
+
+    schema s;
+    s.hash      = hashString("users", 5);
+    s.tablename = "users";
+    s.colNames  = cols;
+    s.colTypes  = types;
+    s.count     = 2;
+
+    insertHT(&s, &t);
+    saveSchema(&t);
+    freeHashTable(&t);
+    free(cols[0]); free(cols[1]); free(cols); free(types);
+
+    hashtable* loaded = loadSchema();
+    assert(loaded != NULL);
+
+    uint32_t h = hashString("users", 5);
+    schema* found = readHT(h, loaded);
+    assert(found != NULL);
+    assert(found->count == 2);
+    assert(strcmp(found->colNames[0], "id")   == 0);
+    assert(strcmp(found->colNames[1], "name") == 0);
+    assert((uint8_t)found->colTypes[0] == 2);
+    assert((uint8_t)found->colTypes[1] == 0);
+
+    for (int i = 0; i < found->count; i++) free(found->colNames[i]);
+    free(found->colNames);
+    free(found->colTypes);
+    free(found->tablename);
+    freeHashTable(loaded);
+    free(loaded);
+    remove(schema_path());
+}
+
 // --- master ---
 
 void test_schema() {
@@ -599,6 +643,7 @@ void test_schema() {
     test_save_schema_no_crash();
     test_save_schema_writes_magic();
     test_save_load_empty_schema();
+    test_save_load_schema_with_cols_and_types();
     printf("All schema tests passed.\n");
 }
 
@@ -1173,7 +1218,7 @@ static hashtable make_users_ht(void) {
     schema s = {
         .hash = hashString("users", 5),
         .tablename = "users",
-        .cols = cols,
+        .colNames = cols,
         .count = 2,
     };
     insertHT(&s, &ht);

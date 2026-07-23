@@ -23,27 +23,27 @@ main.o: $(SRC)/main.c $(SRC)/common.h $(SRC)/debug.h \
 	clang $(CFLAGS) -c $(SRC)/main.c -o main.o
 
 debug.o: $(SRC)/debug.c $(SRC)/debug.h $(SRC)/common.h \
-         $(SQL)/chunk.h $(SQL)/value.h \
+         $(SQL)/chunk.h $(SRC)/value.h \
          $(STOR)/bplus.h $(STOR)/page.h
 	clang $(CFLAGS) -c $(SRC)/debug.c -o debug.o
 
 # --- SQL interpreter ---
 
-chunk.o: $(SQL)/chunk.c $(SQL)/chunk.h $(SRC)/common.h $(SQL)/memory.h $(SQL)/value.h
+chunk.o: $(SQL)/chunk.c $(SQL)/chunk.h $(SRC)/common.h $(SRC)/memory.h $(SRC)/value.h
 	clang $(CFLAGS) -c $(SQL)/chunk.c -o chunk.o
 
 generator.o: $(SQL)/generator.c $(SQL)/generator.h $(SQL)/chunk.h \
              $(SQL)/parser.h $(SQL)/hashtable.h $(SRC)/common.h
 	clang $(CFLAGS) -c $(SQL)/generator.c -o generator.o
 
-hashtable.o: $(SQL)/hashtable.c $(SQL)/hashtable.h $(SQL)/memory.h $(SQL)/value.h
+hashtable.o: $(SQL)/hashtable.c $(SQL)/hashtable.h $(SRC)/memory.h $(SRC)/value.h
 	clang $(CFLAGS) -c $(SQL)/hashtable.c -o hashtable.o
 
-lexer.o: $(SQL)/lexer.c $(SQL)/lexer.h $(SRC)/common.h $(SQL)/memory.h $(SQL)/value.h
+lexer.o: $(SQL)/lexer.c $(SQL)/lexer.h $(SRC)/common.h $(SRC)/memory.h $(SRC)/value.h
 	clang $(CFLAGS) -c $(SQL)/lexer.c -o lexer.o
 
-memory.o: $(SQL)/memory.c $(SQL)/memory.h
-	clang $(CFLAGS) -c $(SQL)/memory.c -o memory.o
+memory.o: $(SRC)/memory.c $(SRC)/memory.h
+	clang $(CFLAGS) -c $(SRC)/memory.c -o memory.o
 
 parser.o: $(SQL)/parser.c $(SQL)/parser.h $(SQL)/lexer.h $(SQL)/chunk.h $(SRC)/common.h
 	clang $(CFLAGS) -c $(SQL)/parser.c -o parser.o
@@ -51,11 +51,11 @@ parser.o: $(SQL)/parser.c $(SQL)/parser.h $(SQL)/lexer.h $(SQL)/chunk.h $(SRC)/c
 schema.o: $(SQL)/schema.c $(SQL)/schema.h $(SQL)/hashtable.h $(SRC)/common.h
 	clang $(CFLAGS) -c $(SQL)/schema.c -o schema.o
 
-value.o: $(SQL)/value.c $(SQL)/value.h $(SQL)/memory.h
-	clang $(CFLAGS) -c $(SQL)/value.c -o value.o
+value.o: $(SRC)/value.c $(SRC)/value.h $(SRC)/memory.h
+	clang $(CFLAGS) -c $(SRC)/value.c -o value.o
 
 vm.o: $(SQL)/vm.c $(SQL)/vm.h $(SQL)/parser.h $(SQL)/chunk.h \
-      $(SQL)/value.h $(SQL)/hashtable.h $(SRC)/common.h $(SRC)/debug.h
+      $(SRC)/value.h $(SQL)/hashtable.h $(SRC)/common.h $(SRC)/debug.h
 	clang $(CFLAGS) -c $(SQL)/vm.c -o vm.o
 
 # --- storage engine ---
@@ -72,5 +72,5 @@ tableIO.o: $(STOR)/tableIO.c $(STOR)/tableIO.h
 stor_testing.o: $(STOR)/testing.c $(STOR)/testing.h $(STOR)/bplus.h $(STOR)/page.h
 	clang $(CFLAGS) -c $(STOR)/testing.c -o stor_testing.o
 
-sql_testing.o: $(SQL)/testing.c $(SQL)/testing.h $(SQL)/chunk.h $(SQL)/hashtable.h $(SQL)/schema.h $(SQL)/value.h $(SQL)/lexer.h $(SQL)/parser.h $(SQL)/generator.h $(SQL)/vm.h $(SRC)/common.h
+sql_testing.o: $(SQL)/testing.c $(SQL)/testing.h $(SQL)/chunk.h $(SQL)/hashtable.h $(SQL)/schema.h $(SRC)/value.h $(SQL)/lexer.h $(SQL)/parser.h $(SQL)/generator.h $(SQL)/vm.h $(SRC)/common.h
 	clang $(CFLAGS) -c $(SQL)/testing.c -o sql_testing.o

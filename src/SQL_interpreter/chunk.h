@@ -19,9 +19,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #ifndef CHUNK_H
 #define CHUNK_H
 
-#include "common.h"
-#include "memory.h"
-#include "value.h"
+#include "../common.h"
+#include "../memory.h"
+#include "../value.h"
 
 typedef struct chunk {
     uint8_t* code; // pointer to the start of bytecode dynamic array

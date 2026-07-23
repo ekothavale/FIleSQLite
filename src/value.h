@@ -30,6 +30,24 @@ typedef enum {
 	VAL_U32,
 } value_type;
 
+/*
+REPRESENTATION OF SQL DATATYPES
+real sql types have size parameters that customize the maximum sizes of each type
+this has not yet been implemented
+
+*/
+typedef enum {
+	SQL_NULL, // null
+	SQL_TEXT, // string
+	SQL_BOOL, // boolean
+	SQL_INT, // integer
+	SQL_FLOAT, // float
+	SQL_DOUBLE, // double
+	SQL_DATE, // YYYY-MM-DD
+	SQL_DATETIME, // YYYY-MM-DD hh:mm:ss
+	SQL_TIME, // hh:mm:ss
+} SQL_type;
+
 // tagged union
 typedef struct value {
 	value_type type;
@@ -60,5 +78,7 @@ void initValueArray(ValueArray* array);
 void writeValueArray(ValueArray* array, value value);
 void freeValueArray(ValueArray* array);
 void printValue(value value);
+SQL_type getSQLType(char byte);
+char encodeSQLType(SQL_type t);
 
 #endif

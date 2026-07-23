@@ -33,11 +33,12 @@ void initVM(hashtable* schema) {
 		vm.scanners[i].tbl = NULL;
 	}
 	vm.results.rows     = NULL;
+	vm.results.types    = NULL;
 	vm.results.count    = 0;
 	vm.results.capacity = 0;
 	vm.results.cols     = 0;
 	vm.schema           = schema;
-	vm.results.print	= false;
+	vm.results.print    = false;
 }
 
 void freeVM() {
@@ -59,6 +60,10 @@ void freeVM() {
 		free(vm.results.rows);
 		vm.results.rows  = NULL;
 		vm.results.count = 0;
+	}
+	if (vm.results.types) {
+		free(vm.results.types);
+		vm.results.types = NULL;
 	}
 }
 
@@ -618,12 +623,16 @@ static interpret_result run() {
 				break;
 			}
 			case OP_SET_RESULT: {
+				value thash = pop();
+				schema* s = readHT(thash.as.u32, vm.schema);
+				if (s && s->colTypes) {
+					vm.results.types = malloc(vm.results.cols);
+					memcpy(vm.results.types, s->colTypes, vm.results.cols);
+				}
 				vm.results.print = true;
 				break;
 			}
 			case OP_HALT: {
-				printValue(pop());
-				printf("\n");
 				return INTERPRET_OK;
 			}
 		}
@@ -649,11 +658,6 @@ result_buffer interpret(const char* source) {
 		return vm.results;
 	}
 	generate(root, &c, schema);
-
-	/*if (!compile(source, &chunk)) {
-	freeChunk(&chunk);
-	return INTERPRET_COMPILE_ERROR;
-	}*/
 
 	vm.chunk = &c;
 	vm.ip = vm.chunk->code;

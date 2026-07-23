@@ -17,8 +17,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 */
 
 #include "generator.h"
-#include "common.h"
+#include "../common.h"
 #include "hashtable.h"
+#include <strings.h>
+
+#define MAX_IDENT_LEN 256
 
 static uint32_t reverse_bits32(uint32_t x) {
     x = (x >> 16) | (x << 16);
@@ -33,8 +36,6 @@ static uint32_t pkToIk(uint32_t pk, uint32_t num_internal_keys) {
     uint32_t reversed = reverse_bits32(pk);
     return (uint32_t)(((uint64_t)reversed * num_internal_keys) >> 32);
 }
-
-#define MAX_IDENT_LEN 256
 
 /*
 copies tok's source text into buf as a null-terminated string
@@ -54,11 +55,11 @@ static schema* lookupSchema(const char* tname, hashtable* ht) {
 }
 
 /*
-returns the 0-based index of colname within s->cols, or -1 if not found
+returns the 0-based index of colname within s->colNames, or -1 if not found
 */
 static int lookupColIdx(const char* colname, schema* s) {
     for (int i = 0; i < s->count; i++) {
-        if (strcmp(s->cols[i], colname) == 0) return i;
+        if (strcmp(s->colNames[i], colname) == 0) return i;
     }
     return -1;
 }
@@ -436,6 +437,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 			patchJump(c, nextPatch);
 			writeChunk(c, OP_CLOSE_SCAN, 0);
+			writeConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_SET_RESULT, 0);
 			break;
 		}
@@ -585,13 +587,27 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 				s->tablename = strdup(tname);
 				s->hash = hashString(tname, (int)strlen(tname));
 				s->count = colCount;
-				s->cols = malloc(colCount * sizeof(char*));
+				s->colNames = malloc(colCount * sizeof(char*));
+				s->colTypes = malloc(colCount);
 				it = node->children[1];
 				for (int i = 0; i < colCount; i++) {
 					ast_node* def = it->children[0];  // TYPE_COL_DEF
 					char colname[MAX_IDENT_LEN];
 					tokenToStr(def->children[0]->tok, colname);
-					s->cols[i] = strdup(colname);
+					s->colNames[i] = strdup(colname);
+					char typename[MAX_IDENT_LEN];
+					tokenToStr(def->children[1]->tok, typename);
+					if      (strcasecmp(typename, "TEXT")     == 0) s->colTypes[i] = SQL_TEXT;
+					else if (strcasecmp(typename, "BOOL")     == 0) s->colTypes[i] = SQL_BOOL;
+					else if (strcasecmp(typename, "BOOLEAN")  == 0) s->colTypes[i] = SQL_BOOL;
+					else if (strcasecmp(typename, "INT")      == 0) s->colTypes[i] = SQL_INT;
+					else if (strcasecmp(typename, "INTEGER")  == 0) s->colTypes[i] = SQL_INT;
+					else if (strcasecmp(typename, "FLOAT")    == 0) s->colTypes[i] = SQL_FLOAT;
+					else if (strcasecmp(typename, "DOUBLE")   == 0) s->colTypes[i] = SQL_DOUBLE;
+					else if (strcasecmp(typename, "DATETIME") == 0) s->colTypes[i] = SQL_DATETIME;
+					else if (strcasecmp(typename, "DATE")     == 0) s->colTypes[i] = SQL_DATE;
+					else if (strcasecmp(typename, "TIME")     == 0) s->colTypes[i] = SQL_TIME;
+					else                                             s->colTypes[i] = SQL_TEXT;
 					it = it->children[1];
 				}
 				insertHT(s, ht);

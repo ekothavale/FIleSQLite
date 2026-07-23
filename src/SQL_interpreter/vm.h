@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define VM_H
 
 #include "chunk.h"
-#include "value.h"
 #include "hashtable.h"
+#include "../value.h"
 #include "../storage_engine/bplus.h"
 #include "../storage_engine/tableIO.h"
 
@@ -52,11 +52,12 @@ typedef enum {
 } interpret_result;
 
 typedef struct result_buffer {
-	interpret_result ir;
 	value** rows;
+	char* types; // the SQL type of each column in the result
 	int count;
 	int capacity;
 	int cols;
+	interpret_result ir;
 	bool print;
 } result_buffer;
 
