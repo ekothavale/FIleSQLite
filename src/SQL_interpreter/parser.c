@@ -560,7 +560,8 @@ static ast_node* alterStmt() {
 		node->children[1] = identifier();  // column name
 		node->children[2] = identifier();  // new type
 	} else {
-		printf("Error: expected ADD, DROP, or ALTER after ALTER TABLE <name>\n");
+		reportUnexpected();
+		printf("Expected ADD, DROP, or ALTER after ALTER TABLE <name>\n");
 		exit(74);
 	}
 	return node;
@@ -577,7 +578,8 @@ static ast_node* dropStmt() {
 	if (t == TOKEN_TABLE || t == TOKEN_INDEX || t == TOKEN_VIEW || t == TOKEN_DATABASE) {
 		node->tok = advance();  // store TABLE/INDEX/VIEW/DATABASE token to identify what is dropped
 	} else {
-		printf("Error: expected TABLE, INDEX, VIEW, or DATABASE after DROP\n");
+		reportUnexpected();
+		printf("Expected TABLE, INDEX, VIEW, or DATABASE after DROP\n");
 		exit(74);
 	}
 	node->children[0] = identifier();
@@ -618,7 +620,8 @@ static ast_node* createStmt() {
 		expect(TOKEN_AS);
 		node->children[1] = selectStmt();
 	} else {
-		printf("Error: expected TABLE, INDEX, or VIEW after CREATE\n");
+		reportUnexpected();
+		printf("Expected TABLE, INDEX, or VIEW after CREATE\n");
 		exit(74);
 	}
 	return node;
@@ -808,7 +811,8 @@ static ast_node* query() {
 			break;
 		}
 		default: {
-			printf("Error: query is of invalid statement type\n");
+			reportUnexpected();
+			printf("Expected SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, or ALTER\n");
 		}
 	}
 	return out;
