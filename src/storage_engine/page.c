@@ -95,10 +95,16 @@ slotted_page* makeSPage(uint32_t pageNum, uint32_t numSlots, uint32_t numEntries
 	return out;
 }
 
+/*
+frees the entries and slots of a slotted page since those are always heap allocated
+does not free the page pointer itself
+*/
 void freeSPage(slotted_page* p) {
+	for (int i = 0; i < p->header.numEntries; i++) {
+		free(p->entries[i].data);
+	}
 	free(p->entries);
 	free(p->slots);
-	free(p);
 }
 
 // ##########################################################################################################################################

@@ -471,6 +471,7 @@ delete_order* searchDeleteStack(address address, table* t) {
 /*
 reads a page from an address into a chunk of memory
 @param: p - a slotted page to load the data from disk into
+mallocs page entries, page slots, and page entry data
 */
 bool readPage(address addr, slotted_page* p, table* t) {
 	// checking write stack
@@ -675,6 +676,8 @@ void writeNextPage(table* t) { // all pages will be looked up in the dirty queue
 	page_write_order order = t->pageDirty.stack[t->pageDirty.count-1];
 	t->pageDirty.count--;
 	writePage(order.page, order.address, t);
+	freeSPage(order.page); // frees page members
+	free(order.page); // frees page pointer itself
 }
 
 // write node
@@ -719,6 +722,7 @@ void writeNextNode(table* t) {
 	t->nodeDirty.count--;
 	jump(order.address, t);
 	writeNode(order.node, order.address, t);
+	free(order.node);
 }
 
 /*

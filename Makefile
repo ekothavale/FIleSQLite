@@ -7,9 +7,11 @@ CFLAGS = -I$(SRC) -I$(SQL) -I$(STOR)
 OBJS = main.o debug.o \
        chunk.o generator.o hashtable.o lexer.o memory.o parser.o schema.o value.o vm.o \
        bplus.o page.o tableIO.o stor_testing.o sql_testing.o
+	
+ASAN = -fsanitize=address
 
 main: $(OBJS)
-	clang -fsanitize=address $(OBJS) -o main
+	clang -g $(OBJS) -o main
 	rm -f $(OBJS)
 
 clean:
