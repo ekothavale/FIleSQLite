@@ -777,9 +777,7 @@ query → select_stmt | insert_stmt | update_stmt | delete_stmt
 consumes the leading statement keyword and dispatches to the appropriate stmt function
 */
 static ast_node* query() {
-	ast_node* out = calloc(1, sizeof(ast_node));
-	out->type = TYPE_QUERY;
-	out->flag = false;
+	ast_node* out = makeNode(TYPE_QUERY);
 	token tok = advance();
 	switch(tok.type) {
 		case TOKEN_SELECT: {
