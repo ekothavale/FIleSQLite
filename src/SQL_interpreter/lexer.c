@@ -39,6 +39,23 @@ void initLexer(const char* source) {
     lex.line = 1;
 }
 
+/*
+mallocs t->tokens
+*/
+void initTokenized(tokenized* t) {
+    t->tokens = (token*) malloc(sizeof(token) * INITIAL_TOKEN_COUNT);
+    t->capacity = INITIAL_TOKEN_COUNT;
+    t->count = 0;
+}
+
+/*
+t is stack allocated
+frees t->tokens
+*/
+void freeTokenized(tokenized* t) {
+    free(t->tokens);
+}
+
 static bool isAlpha(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
@@ -390,12 +407,6 @@ token scanToken() {
     return errorToken("");
 }
 
-void initTokenized(tokenized* t) {
-    t->tokens = (token*) malloc(sizeof(token) * INITIAL_TOKEN_COUNT);
-    t->capacity = INITIAL_TOKEN_COUNT;
-    t->count = 0;
-}
-
 void addToken(tokenized* t, token tok) {
     if (t->capacity < t->count + 1) {
         // Resize the token array if necessary
@@ -408,6 +419,9 @@ void addToken(tokenized* t, token tok) {
     t->count++;
 }
 
+/*
+lexes a query
+*/
 tokenized lexQuery(const char* source) {
     initLexer(source);
     tokenized t;

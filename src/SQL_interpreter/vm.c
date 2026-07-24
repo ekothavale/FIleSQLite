@@ -655,6 +655,7 @@ result_buffer interpret(const char* source) {
 	initChunk(&c);
 	tokenized t = lexQuery(source);
 	ast_node* root = compile(t);
+	freeTokenized(&t);
 	if (!root) {
 		vm.results.ir = INTERPRET_COMPILE_ERROR;
 		return vm.results;

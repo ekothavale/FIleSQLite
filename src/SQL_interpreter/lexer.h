@@ -81,6 +81,7 @@ typedef struct tokenized {
 void initLexer(const char* source);
 token scanToken();
 void initTokenized(tokenized* t);
+void freeTokenized(tokenized* t);
 void addToken(tokenized* t, token tok);
 tokenized lexQuery(const char* source);
 

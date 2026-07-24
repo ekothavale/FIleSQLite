@@ -48,18 +48,6 @@ TODO:
 
 
 /*
-allocate more room than what's available in a page since there are checks
-to ensure the pages don't overflow
-*/
-static size_t calcSlotsSize(table* t) {
-	return t->pageSize / sizeof(sp_slot) / 8;
-}
-
-static size_t calcEntriesSize(table* t) {
-	return t->pageSize * 0.9;
-}
-
-/*
 jumps to a specific address in the table's source
 */
 static bool jump(address address, table* t) {
@@ -513,7 +501,7 @@ bool readPage(address addr, slotted_page* p, table* t) {
 	p->header.maxSlots = readUInt(33, t);
 	// slots
 	if (!p->slots) {
-		p->slots = malloc(calcSlotsSize(t));
+		p->slots = calloc(p->header.maxSlots, sizeof(sp_slot));
 	}
 	int offset = 37;
 	for (int i = 0; i < p->header.numRecords; i++) {
@@ -527,7 +515,7 @@ bool readPage(address addr, slotted_page* p, table* t) {
 	int entryOffset = 0;
 	jump(addr + t->pageSize, t); // navigating to 1 byte after the end of the page
 	if(!p->entries) {
-		p->entries = calloc(1, calcEntriesSize(t));
+		p->entries = calloc(p->header.maxEntries, sizeof(entry));
 	}
 	for (int i = 0; i < p->header.numEntries; i++) {
 		// entry: <--  data | size (4B) | type (2B)  <--
