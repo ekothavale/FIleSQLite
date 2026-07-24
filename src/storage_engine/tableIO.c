@@ -314,11 +314,7 @@ frees allocated memory
 void freeTable(table* t) {
 	freeStacks(t);
 	free(t->name);
-	if (t->node) {
-		free(t->node);
-	} if (t->page) {
-		free(t->page);
-	}
+	freeSPage(&t->page);
 	free(t);
 }
 
@@ -360,8 +356,8 @@ table* createTable(char* tablename) {
 	t->nodeFree      = (uint64_t)t->metalen
 	                 + (uint64_t)t->pageStripes * t->pageStripeLen * t->pageSize;
 	t->root          = 0;
-	t->page          = NULL;
-	t->node          = NULL;
+	t->node			 = (node){0};
+	t->page          = (slotted_page){0};
 	t->name          = strdup(tablename);
 
 	setStacks(t);
@@ -400,8 +396,8 @@ bool loadTable(char* tablename, table* t) {
 	t->source = tfile;
 	t->cursor = 0;
 	t->name   = strdup(tablename);
-	t->node   = NULL;
-	t->page   = NULL;
+	t->node   = (node){0};
+	t->page   = (slotted_page){0};
 	loadMeta(tfile, fname, t);
 	setStacks(t);
 	free(fname);
@@ -542,9 +538,8 @@ moves a table's cursor to a page and loads it
 callocs one page if t->page == NULL
 */
 bool loadPage(address address, table* t) {
-	if (!t->page) t->page = calloc(1, sizeof(slotted_page));
 	jump(address, t);
-	return readPage(address, t->page, t);
+	return readPage(address, &t->page, t);
 }
 
 /*
@@ -606,9 +601,8 @@ assumes the current location of the cursor is a valid node
 callocs one node if t->node == NULL
 */
 bool loadNode(address address, table* t) {
-	if (!t->node) t->node = calloc(1, sizeof(node));
 	jump(address, t);
-	return readNode(address, t->node, t);
+	return readNode(address, &t->node, t);
 }
 
 // write page
@@ -882,11 +876,11 @@ writes directly to disk without using the write queue
 trusts that both addresses given are correct
 */
 static void moveNode(address source, address dest, table* t) {
-	slotted_page* p = t->page;
-	node* n = t->node;
+	slotted_page p = t->page;
+	node n = t->node;
 	address addr = t->cursor;
 	loadNode(source, t);
-	writeNode(t->node, dest, t);
+	writeNode(&t->node, dest, t);
 	jump(addr, t);
 	t->page = p;
 	t->node = n;
@@ -898,11 +892,11 @@ writes directly to disk without using the write queue
 trusts that both addresses given are correct
 */
 static void movePage(address source, address dest, table* t) {
-	slotted_page* p = t->page;
-	node* n = t->node;
+	slotted_page p = t->page;
+	node n = t->node;
 	address addr = t->cursor;
 	loadPage(source, t);
-	writePage(t->page, dest, t);
+	writePage(&t->page, dest, t);
 	jump(addr, t);
 	t->page = p;
 	t->node = n;

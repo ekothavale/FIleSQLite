@@ -71,8 +71,8 @@ typedef struct table {
 	address pageFree; // address of next free page space
 	address nodeFree; // address of next free node space
 	address root; // pointer to the root of the tree
-	slotted_page* page; // pointer to current object if it's a page
-	node* node; // pointer to current object if it's a node
+	slotted_page page; // pointer to current object if it's a page
+	node node; // pointer to current object if it's a node
 	int metalen; // size of the metadata in the table file in bytes
 	int pageStripes; // number of page stripes in file
 	int pageStripeLen; // number of pages per page stripe

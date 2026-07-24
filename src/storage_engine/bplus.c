@@ -209,30 +209,30 @@ bool isRoot(node* n) {
 // returns null if page is not in tree
 address findPage(uint32_t pageNum, table* t) {
 	loadNode(t->root, t);
-    if (t->node == NULL || t->node->childCount == 0) {
+    if (t->node.childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
         return 0; // input was an invalid tree
     }
     // Compare pageNum against keys in node
-    while (!t->node->isLeaf) {
+    while (!t->node.isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node->childCount - 1; i++) {
+        for (int i = 0; i < t->node.childCount - 1; i++) {
             // Searching for the correct key position
-            if (pageNum <= t->node->keys[i]) {
-                loadNode(t->node->children[i], t);
+            if (pageNum <= t->node.keys[i]) {
+                loadNode(t->node.children[i], t);
                 found = 1;
                 break;
             }
         }
         // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node->children[t->node->childCount - 1], t);
+            loadNode(t->node.children[t->node.childCount - 1], t);
         }
     }
     // We have found the correct leaf
-    for (int i = 0; i < t->node->childCount; i++) {
-        if (t->node->keys[i] == pageNum) {
-            return t->node->children[i];
+    for (int i = 0; i < t->node.childCount; i++) {
+        if (t->node.keys[i] == pageNum) {
+            return t->node.children[i];
         }
     }
 	return 0;
@@ -244,41 +244,41 @@ if the page does not exist, creates a page in the right spot and returns it
 */
 address findAndInsert(uint32_t pageNum, table* t) {
 	loadNode(t->root, t);
-    if (t->node == NULL || t->node->childCount == 0) {
+    if (t->node.childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
         return 0; // input was an invalid tree
     }
     // Compare pageNum against keys in node
-    while (!t->node->isLeaf) {
+    while (!t->node.isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node->childCount - 1; i++) {
+        for (int i = 0; i < t->node.childCount - 1; i++) {
             // Searching for the correct key position
-            if (pageNum <= t->node->keys[i]) {
-                loadNode(t->node->children[i], t);
+            if (pageNum <= t->node.keys[i]) {
+                loadNode(t->node.children[i], t);
                 found = 1;
                 break;
             }
         }
         // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node->children[t->node->childCount - 1], t);
+            loadNode(t->node.children[t->node.childCount - 1], t);
         }
     }
     // We have found the correct leaf
-    for (int i = 0; i < t->node->childCount; i++) {
-        uint32_t key = t->node->keys[i];
+    for (int i = 0; i < t->node.childCount; i++) {
+        uint32_t key = t->node.keys[i];
         if (key == pageNum) {
-            return t->node->children[i];
+            return t->node.children[i];
         } else if (key > pageNum) { // optimization so that we don't have to unnecessarily finish a loop
 			slotted_page* p = makeSPage(pageNum, PAGE_NUM_SLOTS, PAGE_NUM_ENTRIES, PAGE_ARR_CAP);
 			address pageAddr = allocPage(t);
-			addPage(t->node, t->cursor, p, pageAddr, t);
+			addPage(&t->node, t->cursor, p, pageAddr, t);
 			return pageAddr;
 		}
     }
 	slotted_page* p = makeSPage(pageNum, PAGE_NUM_SLOTS, PAGE_NUM_ENTRIES, PAGE_ARR_CAP);
 	address pageAddr = allocPage(t);
-    addPage(t->node, t->cursor, p, pageAddr, t);
+    addPage(&t->node, t->cursor, p, pageAddr, t);
 	return pageAddr;
 }
 
@@ -289,31 +289,31 @@ Searches for a page by number in the tree and deletes it
 */
 bool findAndDelete(uint32_t pageNum, table* t) {
 	loadNode(t->root, t);
-    if (t->node == NULL || t->node->childCount == 0) {
+    if (t->node.childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
         return NULL; // input was an invalid tree
     }
     // Compare pageNum against keys in node
-    while (!t->node->isLeaf) {
+    while (!t->node.isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node->childCount - 1; i++) {
+        for (int i = 0; i < t->node.childCount - 1; i++) {
             // Searching for the correct key position
-            if (pageNum <= t->node->keys[i]) {
-                loadNode(t->node->children[i], t);
+            if (pageNum <= t->node.keys[i]) {
+                loadNode(t->node.children[i], t);
                 found = 1;
                 break;
             }
         }
         // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node->children[t->node->childCount - 1], t);
+            loadNode(t->node.children[t->node.childCount - 1], t);
         }
     }
     // We have found the correct leaf
-    for (int i = 0; i < t->node->childCount; i++) {
-        uint32_t key = t->node->keys[i];
+    for (int i = 0; i < t->node.childCount; i++) {
+        uint32_t key = t->node.keys[i];
         if (key == pageNum) {
-            return deletePage(t->node, t->cursor, pageNum, t);
+            return deletePage(&t->node, t->cursor, pageNum, t);
 		}
     }
 	return false;
@@ -360,7 +360,7 @@ uint32_t findNextPageNum(slotted_page* p) {
 uint32_t updateMaxPageNum(node* n, table* t) {
 	if (n->isLeaf) {
 		loadPage(n->children[n->childCount-1], t);
-		return t->page->header.pageNum;
+		return t->page.header.pageNum;
 	}
 	node child;
 	readNode(n->children[n->childCount-1], &child, t);
@@ -527,7 +527,7 @@ void addPage(node* n, address nodeAddr, slotted_page* p, address pageAddr, table
 		if (p->header.pageNum > n->maxPageNumber) {
 			insertPageIntoChildren(new, newNodeAddr, p, pageAddr, t);
 			// Propagate the new max up to the root so findPage stays accurate
-			if (p->header.pageNum > t->node->maxPageNumber) {
+			if (p->header.pageNum > t->node.maxPageNumber) {
 				node root;
 				readNode(t->root, &root, t);
 				root.maxPageNumber = p->header.pageNum;

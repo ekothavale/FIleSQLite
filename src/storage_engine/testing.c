@@ -284,8 +284,6 @@ static table make_test_table(void) {
     t.nodeFree = (uint64_t)t.metalen + (uint64_t)t.pageStripes * t.pageStripeLen * t.pageSize;
     t.root = 0;
     t.M = M_GLOBAL;
-    t.page = NULL;
-    t.node = NULL;
     // Inline stack initialisation (setStacks is static in tableIO.c)
     t.pageDirty.size  = DIRTY_STACK_INTIAL_SIZE;
     t.pageDirty.count = 0;
@@ -919,8 +917,6 @@ void test_create_table_fields(void) {
     assert(t->pageFree  == (address)(METALEN * 4));
     assert(t->nodeFree  == (address)(METALEN * 4)
                          + (address)t->pageStripes * t->pageStripeLen * t->pageSize);
-    assert(t->page      == NULL);
-    assert(t->node      == NULL);
     deleteTable(t);
     printf("PASS\n");
 }

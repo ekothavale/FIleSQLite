@@ -542,22 +542,22 @@ static interpret_result run() {
 				readNode(t->root, &rootNode, t);
 				address pageAddr = findPage(rootNode.maxPageNumber, t);
 				loadPage(pageAddr, t);
-				slotted_page* page = t->page;
+				slotted_page page = t->page;
 				sp_record r = { .entries = entries, .len = count, .size = totalSize };
-				if (hasSpace(page, totalSize)) {
-					uint32_t slotID = (page->header.numRecords > 0)
-						? page->slots[page->header.numRecords - 1].ID + 1
+				if (hasSpace(&page, totalSize)) {
+					uint32_t slotID = (page.header.numRecords > 0)
+						? page.slots[page.header.numRecords - 1].ID + 1
 						: 1;
-					addRecord(page, slotID, r);
-					markPage(pageAddr, page, t);
+					addRecord(&page, slotID, r);
+					markPage(pageAddr, &page, t);
 				} else {
 					// allocate a new page; copy page dimensions from the full page
 					uint32_t newPageNum = rootNode.maxPageNumber + 1;
 					address newAddr = findAndInsert(newPageNum, t);
 					slotted_page* newPage = makeSPage(newPageNum,
-						page->header.maxSlots,
-						page->header.maxEntries,
-						page->header.arrCap);
+						page.header.maxSlots,
+						page.header.maxEntries,
+						page.header.arrCap);
 					addRecord(newPage, 1, r);
 					markPage(newAddr, newPage, t);
 					// newPage lives until commit writes it; freed at process cleanup
