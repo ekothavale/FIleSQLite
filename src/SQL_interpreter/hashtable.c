@@ -21,6 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "../value.h"
 
 static void freeHTValue(schema* val) {
+	for (int i = 0; i < val->count; i++) free(val->colNames[i]);
 	free(val->colNames);
 	free(val->colTypes);
 	free(val->tablename);
