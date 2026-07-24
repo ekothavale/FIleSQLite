@@ -18,16 +18,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "memory.h"
 
-void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
-  if (newSize == 0) {
-    free(pointer);
-    return NULL;
-  }
+	void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
+	if (newSize == 0) {
+	free(pointer);
+	return NULL;
+	}
 
-  void* result = realloc(pointer, newSize);
-  if (result == NULL) {
+	void* result = realloc(pointer, newSize);
+	if (result == NULL) {
 	fprintf(stderr, "Memory allocation failed\n");
 	exit(1);
-  }
-  return result;
-}
+	}
+	return result;
+	}

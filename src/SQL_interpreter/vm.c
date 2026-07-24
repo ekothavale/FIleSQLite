@@ -660,12 +660,14 @@ result_buffer interpret(const char* source) {
 		return vm.results;
 	}
 	generate(root, &c, schema);
+	freeAST(root);
 
 	vm.chunk = &c;
 	vm.ip = vm.chunk->code;
 
 	vm.results.ir = run();
 
+	freeHashTable(schema);
 	freeChunk(&c);
 	return vm.results;
 }

@@ -196,14 +196,24 @@ static void consumeArbitrary(char* buffer, uint32_t len, long offset, table* t) 
 }
 
 /*
-copies the contents of the source page into the target page
+deep copies the contents of the source page into the target page
 */
 static void copyPage(slotted_page* source, slotted_page* target) {
-	*target = *source;
+	target->header = source->header;
+	target->entries = calloc(source->header.maxEntries, sizeof(entry));
+	for (int i = 0; i < source->header.numEntries; i++) {
+		entry* tgt = target->entries + i;
+		entry* src = source->entries + i;
+		*tgt = *src;
+		tgt->data = malloc(src->size);
+		memcpy(tgt->data, src->data, src->size);
+	}
+	target->slots = calloc(source->header.maxSlots, sizeof(sp_slot));
+	memcpy(target->slots, source->slots, source->header.numRecords * sizeof(sp_slot));
 }
 
 /*
-copies the contents of the source node into the target node
+deep copies the contents of the source node into the target node
 */
 static void copyNode(node* source, node* target) {
 	*target = *source;

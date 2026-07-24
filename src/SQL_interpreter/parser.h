@@ -58,13 +58,9 @@ typedef struct ast_node {
 } ast_node;
 
 // Public API — callable from outside this translation unit
-// All parsing helpers (query, selectStmt, insertStmt, updateStmt, deleteStmt,
-// createStmt, dropStmt, alterStmt, selectList, selectItem, whereClause,
-// groupClause, havingClause, orderClause, limitClause, colList, colDef,
-// colDefList, valList, assignment, assignmentList, listNode, identifier,
-// expr, orExpr, andExpr, notExpr, comparison, additive, multiplicative,
-// unary, primary) are file-scoped (static) and not accessible externally.
+void freeAST(ast_node* root);
 ast_node* compile(tokenized t);
+
 
 #endif
 

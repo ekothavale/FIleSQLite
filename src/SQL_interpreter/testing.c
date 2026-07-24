@@ -897,13 +897,6 @@ void test_lexer() {
 // ##########################################################################################################################################
 // Parser tests
 
-// for cleanup in parser and generator tests
-static void freeAST(ast_node* node) {
-    if (!node) return;
-    for (int i = 0; i < 7; i++) freeAST(node->children[i]);
-    free(node);
-}
-
 // Convenience: lex a query and compile it in one call.
 // Caller must freeAST(ast) and free(t.tokens) after use.
 #define COMPILE(src, t, ast) \

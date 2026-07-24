@@ -20,13 +20,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "../memory.h"
 #include "../value.h"
 
+static void freeHTValue(schema* val) {
+	free(val->colNames);
+	free(val->colTypes);
+	free(val->tablename);
+}
+
 void initHashTable(hashtable* table) {
 	table->count = 0;
 	table->capacity = 0;
 	table->entries = NULL;
 }
 
+/*
+can use hash as check since FNV1-A algorithm never naturally returns 0
+*/
 void freeHashTable(hashtable* table) {
+
+	for (int i = 0; i < table->capacity; i++) {
+		if (table->entries[i].hash) {
+			freeHTValue(table->entries + i);
+		}
+	}
 	FREE_ARRAY(schema, table->entries, table->capacity);
 	initHashTable(table);
 }
@@ -45,6 +60,7 @@ static uint32_t FNV1_A(const char* key, int length) {
 
 /*
 induction wrapper around hash function
+hash function must never naturally return 0 (see readHT() and freeHashTable())
 */
 uint32_t hashString(const char* key, int length) {
 	return FNV1_A(key, length);
@@ -109,6 +125,7 @@ void insertHT(schema* e, hashtable* table) {
 /*
 read a value from a hash table given a key
 return NULL if value is not found
+can use found->hash as a check because FNV1-A never returns 0 naturally
 */
 schema* readHT(uint32_t hash, hashtable* table) {
 	schema* found = findEntry(hash, table->entries, table->capacity);
@@ -120,9 +137,11 @@ deletes a key-value pair from a hash table
 */
 void deleteHT(uint32_t hash, hashtable* table) {
 	schema* target = findEntry(hash, table->entries, table->capacity);
+	freeHTValue(target);
 	target->colNames = NULL;
 	target->colTypes = NULL;
 	target->count = 0;
 	target->hash = 0;
+	target->tablename = NULL;
 }
 

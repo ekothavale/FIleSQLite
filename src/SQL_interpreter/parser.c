@@ -135,6 +135,15 @@ static token expect(token_type type) {
 }
 
 /*
+frees the nodes of the given AST including the root pointer
+*/
+void freeAST(ast_node* node) {
+    if (!node) return;
+    for (int i = 0; i < 7; i++) freeAST(node->children[i]);
+    free(node);
+}
+
+/*
 allocates and zero-initializes an ast_node of the given type
 */
 static ast_node* makeNode(ast_type type) {
