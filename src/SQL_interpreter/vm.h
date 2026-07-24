@@ -35,11 +35,11 @@ typedef struct scanner {
 	bool started;        // whether OP_NEXT has been called at least once
 	bool atEnd;          // whether all rows have been exhausted
 
-	node* leafNode;      // currently loaded leaf node (scanner-owned)
+	node leafNode;      // currently loaded leaf node (scanner-owned)
 	address leafAddr;    // disk address of leafNode
 	uint32_t childIdx;   // which child of leafNode is the current page
 
-	slotted_page* page;  // currently loaded page (scanner-owned)
+	slotted_page page;  // currently loaded page (scanner-owned)
 	address pageAddr;    // disk address of page
 	uint32_t slotIdx;    // which slot (row) within page is current
 } scanner;

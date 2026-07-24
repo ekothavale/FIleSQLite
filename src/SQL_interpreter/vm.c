@@ -47,11 +47,7 @@ void freeVM() {
 			commit(vm.scanners[i].tbl);
 			fclose(vm.scanners[i].tbl->source);
 			freeTable(vm.scanners[i].tbl);
-			if (vm.scanners[i].leafNode) free(vm.scanners[i].leafNode);
-			if (vm.scanners[i].page) freeSPage(vm.scanners[i].page);
 			vm.scanners[i].tbl = NULL;
-			vm.scanners[i].leafNode = NULL;
-			vm.scanners[i].page = NULL;
 			vm.scanners[i].open = false;
 		}
 	}
@@ -79,10 +75,10 @@ static void openScanner(const char* tablename) {
 			vm.scanners[i].open     = true;
 			vm.scanners[i].started  = false;
 			vm.scanners[i].atEnd    = false;
-			vm.scanners[i].leafNode = NULL;
+			vm.scanners[i].leafNode = (node){0};
 			vm.scanners[i].leafAddr = 0;
 			vm.scanners[i].childIdx = 0;
-			vm.scanners[i].page     = NULL;
+			vm.scanners[i].page     = (slotted_page){0};
 			vm.scanners[i].pageAddr = 0;
 			vm.scanners[i].slotIdx  = 0;
 			return;
@@ -91,17 +87,17 @@ static void openScanner(const char* tablename) {
 	printf("Error: no free scanner slots available\n");
 }
 
-static void closeScanner(scanner* c) {
-	if (!c->open) return;
-	commit(c->tbl);
-	fclose(c->tbl->source);
-	freeTable(c->tbl);
-	if (c->leafNode) { free(c->leafNode); c->leafNode = NULL; }
-	if (c->page)     { freeSPage(c->page); c->page = NULL; }
-	c->tbl     = NULL;
-	c->open    = false;
-	c->started = false;
-	c->atEnd   = false;
+static void closeScanner(scanner* s) {
+	if (!s->open) return;
+	commit(s->tbl);
+	fclose(s->tbl->source);
+	freeTable(s->tbl);
+	s->page = (slotted_page){0};
+	s->leafNode = (node){0};
+	s->tbl     = NULL;
+	s->open    = false;
+	s->started = false;
+	s->atEnd   = false;
 }
 
 static bool tableAlreadyExists(const char* tablename) {
@@ -197,19 +193,19 @@ Returns true if a valid row is now current, false if the table is exhausted.
 static bool loadFirstValidPage(scanner* s) {
 	table* t = s->tbl;
 	while (true) {
-		while (s->childIdx < s->leafNode->childCount) {
-			s->pageAddr = s->leafNode->children[s->childIdx];
-			readPage(s->pageAddr, s->page, t);
+		while (s->childIdx < s->leafNode.childCount) {
+			s->pageAddr = s->leafNode.children[s->childIdx];
+			readPage(s->pageAddr, &s->page, t);
 			s->slotIdx = 0;
-			if (s->page->header.numRecords > 0) return true;
+			if (s->page.header.numRecords > 0) return true;
 			s->childIdx++;
 		}
-		if (s->leafNode->next == 0) {
+		if (s->leafNode.next == 0) {
 			s->atEnd = true;
 			return false;
 		}
-		s->leafAddr = s->leafNode->next;
-		readNode(s->leafAddr, s->leafNode, t);
+		s->leafAddr = s->leafNode.next;
+		readNode(s->leafAddr, &s->leafNode, t);
 		s->childIdx = 0;
 	}
 }
@@ -224,18 +220,12 @@ static bool advanceScanner(scanner* s) {
 	table* t = s->tbl;
 
 	if (!s->started) {
-		if (!s->leafNode) s->leafNode = malloc(sizeof(node));
-		if (!s->page) {
-			s->page = malloc(sizeof(slotted_page));
-			s->page->slots   = NULL;
-			s->page->entries = NULL;
-		}
 		// walk down to leftmost leaf
 		address nAddr = t->root;
-		readNode(nAddr, s->leafNode, t);
-		while (!s->leafNode->isLeaf) {
-			nAddr = s->leafNode->children[0];
-			readNode(nAddr, s->leafNode, t);
+		readNode(nAddr, &s->leafNode, t);
+		while (!s->leafNode.isLeaf) {
+			nAddr = s->leafNode.children[0];
+			readNode(nAddr, &s->leafNode, t);
 		}
 		s->leafAddr = nAddr;
 		s->childIdx = 0;
@@ -245,7 +235,7 @@ static bool advanceScanner(scanner* s) {
 
 	// advance within current page
 	s->slotIdx++;
-	if (s->slotIdx < s->page->header.numRecords) return true;
+	if (s->slotIdx < s->page.header.numRecords) return true;
 
 	// move to next page
 	s->childIdx++;
@@ -476,8 +466,8 @@ static interpret_result run() {
 			case OP_COLUMN: {
 				uint8_t col_idx = READ_BYTE();
 				scanner* s = &vm.scanners[0];
-				sp_slot slot = s->page->slots[s->slotIdx];
-				entry e = s->page->entries[slot.ptr + col_idx];
+				sp_slot slot = s->page.slots[s->slotIdx];
+				entry e = s->page.entries[slot.ptr + col_idx];
 				value v;
 				switch (e.type) {
 					case T_INT: {
@@ -569,19 +559,19 @@ static interpret_result run() {
 				uint8_t col_idx = READ_BYTE();
 				scanner* s = &vm.scanners[0];
 				table* t = s->tbl;
-				sp_slot slot = s->page->slots[s->slotIdx];
-				entry* target = &s->page->entries[slot.ptr + col_idx];
+				sp_slot slot = s->page.slots[s->slotIdx];
+				entry* target = &s->page.entries[slot.ptr + col_idx];
 				free(target->data);
 				*target = valueToEntry(pop());
-				markPage(s->pageAddr, s->page, t);
+				markPage(s->pageAddr, &s->page, t);
 				break;
 			}
 			case OP_DELETE_ROW: {
 				scanner* s = &vm.scanners[0];
 				table* t = s->tbl;
-				sp_slot slot = s->page->slots[s->slotIdx];
-				deleteRecord(s->page, slot.ID);
-				markPage(s->pageAddr, s->page, t);
+				sp_slot slot = s->page.slots[s->slotIdx];
+				deleteRecord(&s->page, slot.ID);
+				markPage(s->pageAddr, &s->page, t);
 				// step back so the next OP_NEXT's increment lands on the record that shifted into this slot
 				s->slotIdx = (s->slotIdx > 0) ? s->slotIdx - 1 : (uint32_t)(-1);
 				break;
