@@ -10,7 +10,11 @@ TODO:
  - implement database definition opcodes - DONE
  - write compiler second pass to generate code from AST - DONE
  - test every component of the front end - DONE
- - test the whole project
+ - test the whole project - DONE
+ - add ability to process multiple queries in one file
+ - implement primary keys
+ - implement ability to use column reorderings in queries
+ - implement transactions
 
 CONSIDERATIONS:
  - The storage engine doesn't use any of the schema to customize the table

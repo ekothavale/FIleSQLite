@@ -86,6 +86,69 @@ static void repl() {
 }
 
 /*
+pulls a query out of a source that could contain multiple queries
+returns null if string ends without '\0' or any other failure
+*/
+static char* isolateQuery(int* start, int len, const char* source) {
+    #define PEEK() (i < len-1 ? source[i+1] : '\0')
+    bool singleQuote = false;
+    bool lineComment = false;
+    bool multiLineComment = false;
+    for (int i = *start; i <= len; i++) {
+        if (lineComment) {
+            if (source[i] != '\n') continue;
+            lineComment = false;
+            continue;
+
+        }
+        if (multiLineComment) {
+            if (source[i] != '*' || PEEK() != '/') continue;
+            multiLineComment = false;
+            continue;
+        }
+        switch (source[i]) {
+            case '\'': {
+                singleQuote = !singleQuote;
+                break;
+            }
+            case '\\': {
+                if (PEEK() == '\'') i++;
+                break;
+            }
+            case '-':
+                if (PEEK() == '-') {
+                    i++;
+                    lineComment = true;
+                }
+                break;
+            case '/': {
+                if (PEEK() == '*') {
+                    i++;
+                    multiLineComment = true;
+                    break;
+                }
+            }
+            case ';': {
+                if (singleQuote) continue;
+                char* out = malloc(i - *start + 2);
+                strncpy(out, source + *start, i - *start + 1);
+                out[i - *start + 1] = '\0';
+                if (PEEK() == '\0') *start = len; // terminate if this is the last query
+                else *start = i+1; // otherwise increment start
+                return out;
+            }
+            case '\0': {
+                char* out = malloc(i - *start + 1);
+                strncpy(out, source + *start, i - *start + 1);
+                *start = (i+1);
+                return out;
+            }
+        }
+    }
+    return NULL;
+}
+
+/*
 reads a file into a buffer
 mallocs buffer
 */
@@ -123,13 +186,41 @@ static char* readFile(const char* path) {
 
 static void runFile(const char* path) {
     char* source = readFile(path);
-    result_buffer result = interpret(source);
-    free(source);
+    int exCode = 0;
+    int pos = 0;
+    int len = strlen(source);
+    if (len == 0) {
+        printf("Empty input\n");
+        return;
+    }
+    char* query;
+    while (pos < len) {
+        // obtain and interpret query
+        query = isolateQuery(&pos, len, source);
+        if (query == NULL) {
+            exCode = 65;
+            break;
+        }
+        result_buffer result = interpret(query);
 
-    if (result.ir == INTERPRET_LOAD_ERROR) exit(60);
-    if (result.ir == INTERPRET_COMPILE_ERROR) exit(65);
-    if (result.ir == INTERPRET_RUNTIME_ERROR) exit(70);
-    if (result.print) printResult(result);
+        // handle result
+        if (result.ir == INTERPRET_LOAD_ERROR) {
+            exCode = 60;
+            break;
+        }
+        if (result.ir == INTERPRET_COMPILE_ERROR) {
+            exCode = 65;
+            break;
+        }
+        if (result.ir == INTERPRET_RUNTIME_ERROR) {
+            exCode = 70;
+            break;
+        }
+        if (result.print) printResult(result);
+    }
+    // cleanup
+    free(source);
+    if (exCode) exit(exCode);
 }
 
 int main(int argc, char** argv) {
