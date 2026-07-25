@@ -88,6 +88,7 @@ static void repl() {
 /*
 pulls a query out of a source that could contain multiple queries
 returns null if string ends without '\0' or any other failure
+mallocs query
 */
 static char* isolateQuery(int* start, int len, const char* source) {
     #define PEEK() (i < len-1 ? source[i+1] : '\0')
@@ -202,6 +203,7 @@ static void runFile(const char* path) {
             break;
         }
         result_buffer result = interpret(query);
+        free(query);
 
         // handle result
         if (result.ir == INTERPRET_LOAD_ERROR) {
