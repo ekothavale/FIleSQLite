@@ -63,7 +63,8 @@ void freeVM() {
 	}
 }
 
-static void openScanner(const char* tablename) {
+static void openScanner(uint32_t tableNameHash) {
+	const char* tablename = readHT(tableNameHash, vm.schema)->tablename;
 	for (int i = 0; i < MAX_SCANNERS; i++) {
 		if (!vm.scanners[i].open) {
 			table* t = malloc(sizeof(table));
@@ -442,7 +443,7 @@ static interpret_result run() {
 			}
 			case OP_OPEN_SCAN: {
 				value v = pop();
-				openScanner(v.as.text);
+				openScanner(v.as.u32);
 				break;
 			}
 			case OP_CLOSE_SCAN: {

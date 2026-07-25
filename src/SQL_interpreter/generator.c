@@ -386,7 +386,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[1]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
-			writeConst(c, TEXT_VAL(strdup(tname)));
+			writeConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
 			writeChunk(c, OP_REWIND, 0);
 
@@ -461,8 +461,9 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			*/
 			char tname[MAX_IDENT_LEN];
 			tokenToStr(node->children[0]->tok, tname);
+			uint32_t hash = hashString(tname, strlen(tname));
 
-			writeConst(c, TEXT_VAL(strdup(tname)));
+			writeConst(c, UINT_VAL(hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
 
 			int valCount = 0;
@@ -500,7 +501,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[0]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
-			writeConst(c, TEXT_VAL(strdup(tname)));
+			writeConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
 			writeChunk(c, OP_REWIND, 0);
 
@@ -549,7 +550,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[0]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
-			writeConst(c, TEXT_VAL(strdup(tname)));
+			writeConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
 			writeChunk(c, OP_REWIND, 0);
 
