@@ -92,6 +92,7 @@ static void closeScanner(scanner* s) {
 	commit(s->tbl);
 	fclose(s->tbl->source);
 	freeTable(s->tbl);
+	freeSPage(&s->page);
 	s->page = (slotted_page){0};
 	s->leafNode = (node){0};
 	s->tbl     = NULL;
@@ -532,22 +533,21 @@ static interpret_result run() {
 				readNode(t->root, &rootNode, t);
 				address pageAddr = findPage(rootNode.maxPageNumber, t);
 				loadPage(pageAddr, t);
-				slotted_page page = t->page;
 				sp_record r = { .entries = entries, .len = count, .size = totalSize };
-				if (hasSpace(&page, totalSize)) {
-					uint32_t slotID = (page.header.numRecords > 0)
-						? page.slots[page.header.numRecords - 1].ID + 1
+				if (hasSpace(&t->page, totalSize, count)) {
+					uint32_t slotID = (t->page.header.numRecords > 0)
+						? t->page.slots[t->page.header.numRecords - 1].ID + 1
 						: 1;
-					addRecord(&page, slotID, r);
-					markPage(pageAddr, &page, t);
+					addRecord(&t->page, slotID, r);
+					markPage(pageAddr, &t->page, t);
 				} else {
 					// allocate a new page; copy page dimensions from the full page
 					uint32_t newPageNum = rootNode.maxPageNumber + 1;
 					address newAddr = findAndInsert(newPageNum, t);
 					slotted_page* newPage = makeSPage(newPageNum,
-						page.header.maxSlots,
-						page.header.maxEntries,
-						page.header.arrCap);
+						t->page.header.maxSlots,
+						t->page.header.maxEntries,
+						t->page.header.arrCap);
 					addRecord(newPage, 1, r);
 					markPage(newAddr, newPage, t);
 					// newPage lives until commit writes it; freed at process cleanup

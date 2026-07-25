@@ -612,7 +612,9 @@ page layout:
  | 0 | parent | pageNum | usedData | numRecords | numEntries | arrCap |
  | maxEntries | maxSlots | slots | ... | records |
 
-REVERSE ORDER IN WHICH RECORDS ARE ADDED SINCE WE NEED TO READ THE ARRAY BACKWARDS
+the code in page.c -> hasSpace() relies on the number of bytes used to represent entry type and length
+if any changes are made to that encoding, hasSpace() must be updated as well
+please feel free to change the design of this system because I feel unclean using code like this
 */
 static void writePage(slotted_page* p, address address, table* t) {
 	// setup

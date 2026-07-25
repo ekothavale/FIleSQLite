@@ -26,6 +26,8 @@ This representation is not the same used to store pages on disk; the translation
 
 #include "../common.h"
 
+#define SLOTTED_PAGE_SLOT_GROWTH_RATE 1.5
+
 typedef enum datatype {
 	T_INT,
 	T_STRING,
@@ -89,7 +91,7 @@ typedef struct slotted_page {
 }slotted_page;
 
 int readIndex(int pos, char* arr, int arrlen);
-bool hasSpace(slotted_page* p, uint32_t size);
+bool hasSpace(slotted_page* p, uint32_t size, int numNewEntries);
 slotted_page* makeSPage(uint32_t pageNum, uint32_t numSlots, uint32_t numEntries, uint32_t capacity);
 void freeSPage(slotted_page* p);
 

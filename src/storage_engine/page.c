@@ -24,14 +24,20 @@ would need to be overwritten.
 */
 
 #include "page.h"
+#include "../memory.h"
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
 // HELPER FUNCTIONS
 
-
-bool hasSpace(slotted_page* p, uint32_t size) {
-	if (p->header.usedData + size > p->header.arrCap) return false;
+/*
+checks if adding memory to a page would exceed the size limit of the page on disk (causing a write overflow)
+the 6 in the condition represents the 6 bytes that are writted before each entry containing the size and type of the entry
+see the code in tableIO.c -> writePage() to adjust if needed
+*/
+bool hasSpace(slotted_page* p, uint32_t size, int numNewEntries) {
+	uint32_t slotBytes = (p->header.numRecords + 1) * sizeof(sp_slot);
+	if (slotBytes + p->header.usedData + 6 * (numNewEntries + p->header.numEntries) + size > p->header.arrCap) return false;
 	return true;
 }
 
@@ -139,9 +145,23 @@ more complicated version:
 Currently doesn't account for full pages
 */
 bool addRecord(slotted_page* p, uint32_t offset, sp_record r) {
-	if (!hasSpace(p, r.size)) {
+	if (!hasSpace(p, r.size, r.len)) {
 		printf("Tried to add record to page %d but it was full\n", p->header.pageNum);
 		return false;
+	}
+	// if capacity is exceeded, dynamically grow record and slot maximums
+	// can change to use memory.c functionality
+	if (p->header.numRecords >= p->header.maxSlots) {
+		uint32_t newMax = (uint32_t) p->header.maxSlots * SLOTTED_PAGE_SLOT_GROWTH_RATE + 1;
+		p->slots = GROW_ARRAY(sp_slot, p->slots, p->header.maxSlots, newMax);
+		memset(p->slots + p->header.maxSlots, 0, (newMax - p->header.maxSlots) * sizeof(sp_slot));
+		p->header.maxSlots = newMax;
+	}
+	if (p->header.numEntries + r.len > p->header.maxEntries) {
+		uint32_t newMax = (uint32_t) (p->header.numEntries + r.len) * SLOTTED_PAGE_SLOT_GROWTH_RATE + 1;
+		p->entries = GROW_ARRAY(entry, p->entries, p->header.numEntries, newMax);
+		memset(p->entries + p->header.maxEntries, 0, (newMax - p->header.maxEntries) * sizeof(entry));
+		p->header.maxEntries = newMax;
 	}
 	uint32_t index = searchSlotArray(p, offset);
 	shiftSlotArrayR(p->slots, index, p->header.numRecords + 1);
