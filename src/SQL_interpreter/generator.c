@@ -66,11 +66,22 @@ static int lookupColIdx(const char* colname, schema* s) {
 
 /*
 adds v to the chunk's constant pool and emits OP_CONSTANT + its index
+writeDynamicConst should be used for variable size constants
 */
-static void writeConst(chunk* c, value v) {
+static void writeStaticConst(chunk* c, value v) {
     uint8_t idx = (uint8_t)addConstant(c, v);
     writeChunk(c, OP_CONSTANT, 0);
     writeChunk(c, idx, 0);
+}
+
+/*
+adds v to the chunk's const pool and emits OP_CONSTANT + its index
+adds v to the chunk's dynamic constant pool so it can later be freed
+writeStaticConst should be used for fixed size constants
+*/
+static void writeDynamicConst(chunk* c, value v) {
+	writeStaticConst(c, v);
+	addDynamic(c, v);
 }
 
 /*
@@ -319,14 +330,14 @@ static void munchExpr(ast_node* node, chunk* c, hashtable* ht, schema* s) {
 				value v = strchr(numStr, '.')
 				    ? FLOAT_VAL(atof(numStr))
 				    : INTEGER_VAL(atoll(numStr));
-				writeConst(c, v);
+				writeStaticConst(c, v);
 			} else if (t == TOKEN_STRING) {
 				// strip surrounding quote characters
 				int slen = node->tok.length - 2;
 				char* text = malloc(slen + 1);
 				memcpy(text, node->tok.start + 1, slen);
 				text[slen] = '\0';
-				writeConst(c, TEXT_VAL(text));
+				writeDynamicConst(c, TEXT_VAL(text));
 			} else if (t == TOKEN_IDENTIFIER) {
 				if (node->flag) {
 					// function call: no OP_CALL opcode exists yet
@@ -386,7 +397,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[1]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
-			writeConst(c, UINT_VAL(s->hash));
+			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
 			writeChunk(c, OP_REWIND, 0);
 
@@ -441,7 +452,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 			patchJump(c, nextPatch);
 			writeChunk(c, OP_CLOSE_SCAN, 0);
-			writeConst(c, UINT_VAL(s->hash));
+			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_SET_RESULT, 0);
 			break;
 		}
@@ -463,7 +474,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[0]->tok, tname);
 			uint32_t hash = hashString(tname, strlen(tname));
 
-			writeConst(c, UINT_VAL(hash));
+			writeStaticConst(c, UINT_VAL(hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
 
 			int valCount = 0;
@@ -501,7 +512,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[0]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
-			writeConst(c, UINT_VAL(s->hash));
+			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
 			writeChunk(c, OP_REWIND, 0);
 
@@ -550,7 +561,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[0]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
-			writeConst(c, UINT_VAL(s->hash));
+			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
 			writeChunk(c, OP_REWIND, 0);
 

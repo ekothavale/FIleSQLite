@@ -11,7 +11,7 @@ OBJS = main.o debug.o \
 ASAN = -fsanitize=address
 
 main: $(OBJS)
-	clang -g $(OBJS) -o main
+	clang $(ASAN) -g $(OBJS) -o main
 	rm -f $(OBJS)
 
 clean:

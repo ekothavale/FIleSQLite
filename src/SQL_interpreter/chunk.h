@@ -28,7 +28,8 @@ typedef struct chunk {
     int capacity; // bytecode dynamic array size
     int count; // bytecode dynamic array count (grow when count >= capacity)
     int* lines; // line numbers corresponding to each opcode
-    ValueArray constants;
+    ValueArray constants; // constant pool used by the chunk. vm opcodes reference constants with an index into this array
+    ValueArray dynamics; // array tracking heap-allocated constants so that they can be freed safely
 } chunk;
 
 /*
@@ -90,6 +91,7 @@ typedef enum opcode {
 void initChunk(chunk* chunk);
 void writeChunk(chunk* chunk, uint8_t byte, int line);
 int addConstant(chunk* chunk, value value);
+int addDynamic(chunk* chunk, value value);
 void freeChunk(chunk* chunk);
 
 

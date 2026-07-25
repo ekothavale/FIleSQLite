@@ -26,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 // Public API — callable from outside this translation unit
 // (reverse_bits32, pkToIk, tokenToStr, lookupSchema, lookupColIdx,
-//  writeConst, emitJump, patchJump, emitBackJump, munchExpr, munchStmt
+//  writeStaticConst, emitJump, patchJump, emitBackJump, munchExpr, munchStmt
 //  are file-scoped static helpers)
 void generate(ast_node* root, chunk* c, hashtable* schema);
 

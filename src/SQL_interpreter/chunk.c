@@ -27,6 +27,7 @@ void initChunk(chunk* chunk) {
     chunk->count = 0;
     chunk->lines = NULL;
     initValueArray(&chunk->constants);
+    initValueArray(&chunk->dynamics);
 }
 
 /*
@@ -45,16 +46,33 @@ void writeChunk(chunk* chunk, uint8_t byte, int line) {
 }
 
 /*
-adds a constant to a chunk
+adds a constant to a chunk's constant pool
 */
 int addConstant(chunk* chunk, value value) {
     writeValueArray(&chunk->constants, value);
     return chunk->constants.count-1;
 }
 
+/*
+adds a constant to a chunk's dynamics pool
+*/
+int addDynamic(chunk* chunk, value value) {
+    writeValueArray(&chunk->dynamics, value);
+    return chunk->dynamics.count-1;
+}
+
+
+static void freeDynamicArray(ValueArray* v) {
+    for (int i = 0; i < v->count; i++) {
+        free((v->values[i].as.text));
+    }
+}
+
 void freeChunk(chunk* chunk) {
-  FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
-  FREE_ARRAY(int, chunk->lines, chunk->capacity);
-  freeValueArray(&chunk->constants);
-  initChunk(chunk);
+    FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
+    FREE_ARRAY(int, chunk->lines, chunk->capacity);
+    freeValueArray(&chunk->constants);
+    freeDynamicArray(&chunk->dynamics);
+    freeValueArray(&chunk->dynamics);
+    initChunk(chunk);
 }
