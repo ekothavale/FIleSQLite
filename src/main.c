@@ -88,7 +88,7 @@ static void repl() {
 /*
 pulls a query out of a source that could contain multiple queries
 returns null if string ends without '\0' or any other failure
-mallocs query
+mallocs query (caller responsible for buffer lifetime)
 */
 static char* isolateQuery(int* start, int len, const char* source) {
     #define PEEK() (i < len-1 ? source[i+1] : '\0')
@@ -151,7 +151,7 @@ static char* isolateQuery(int* start, int len, const char* source) {
 
 /*
 reads a file into a buffer
-mallocs buffer
+mallocs file buffer (caller responsible for buffer lifetime)
 */
 static char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");

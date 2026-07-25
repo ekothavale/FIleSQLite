@@ -659,6 +659,7 @@ result_buffer interpret(const char* source) {
 	vm.results.ir = run();
 
 	freeHashTable(schema);
+	free(schema);
 	freeChunk(&c);
 	return vm.results;
 }

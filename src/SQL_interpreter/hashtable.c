@@ -35,6 +35,7 @@ void initHashTable(hashtable* table) {
 
 /*
 can use hash as check since FNV1-A algorithm never naturally returns 0
+does not free hash table pointer itself
 */
 void freeHashTable(hashtable* table) {
 

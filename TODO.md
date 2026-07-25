@@ -11,7 +11,9 @@ TODO:
  - write compiler second pass to generate code from AST - DONE
  - test every component of the front end - DONE
  - test the whole project - DONE
- - add ability to process multiple queries in one file
+ - add ability to process multiple queries in one file - DONE
+ - fix memory leaks
+ - merge schema and hash table
  - implement primary keys
  - implement ability to use column reorderings in queries
  - implement transactions
