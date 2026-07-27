@@ -35,8 +35,8 @@ checks if adding memory to a page would exceed the size limit of the page on dis
 the 6 in the condition represents the 6 bytes that are writted before each entry containing the size and type of the entry
 see the code in tableIO.c -> writePage() to adjust if needed
 */
-bool hasSpace(slotted_page* p, uint32_t size, int numNewEntries) {
-	uint32_t slotBytes = (p->header.numRecords + 1) * sizeof(sp_slot);
+static bool hasSpace(slotted_page* p, uint32_t size, int numNewEntries) {
+	uint32_t slotBytes = (p->header.numRecords + 1) * SP_SLOT_DISK_SIZE;
 	if (slotBytes + p->header.usedData + 6 * (numNewEntries + p->header.numEntries) + size > p->header.arrCap) return false;
 	return true;
 }
@@ -45,12 +45,12 @@ bool hasSpace(slotted_page* p, uint32_t size, int numNewEntries) {
 binary search slot array
 @return index of slot
 */
-static uint32_t searchSlotArray(slotted_page* p, uint32_t offset) {
+static uint32_t searchSlotArray(slotted_page* p, page_offset offset) {
 	uint32_t hi = p->header.numRecords;
 	uint32_t lo = 0;
 	while (lo < hi) {
 		uint32_t mid = lo + (hi - lo) / 2;
-		if (p->slots[mid].ID < offset) lo = mid + 1;
+		if (compareOffsets(p->slots[mid].ID, offset) < 0) lo = mid + 1;
 		else hi = mid;
 	}
 	return lo;
@@ -90,7 +90,7 @@ static int shiftSlotArrayL(sp_slot* array, int target, int len) {
 @param - capacity - maximum capacity of the slot array (including both entries and slots)
 Callocs new memory
 */
-slotted_page* makeSPage(uint32_t pageNum, uint32_t numSlots, uint32_t numEntries, uint32_t capacity) {
+slotted_page* makeSPage(page_num pageNum, uint32_t numSlots, uint32_t numEntries, uint32_t capacity) {
 	slotted_page* out = calloc(1, sizeof(slotted_page));
 	out->header.pageNum = pageNum;
 	out->header.arrCap = capacity;
@@ -142,15 +142,15 @@ more complicated version:
 */
 
 /*
-Currently doesn't account for full pages
+insert into a slotted page
+If page is full, insertion will fail
 */
-bool addRecord(slotted_page* p, uint32_t offset, sp_record r) {
+bool SPInsert(slotted_page* p, page_offset offset, sp_record r) {
 	if (!hasSpace(p, r.size, r.len)) {
-		printf("Tried to add record to page %d but it was full\n", p->header.pageNum);
+		printf("Tried to add record to page but it was full\n");
 		return false;
 	}
 	// if capacity is exceeded, dynamically grow record and slot maximums
-	// can change to use memory.c functionality
 	if (p->header.numRecords >= p->header.maxSlots) {
 		uint32_t newMax = (uint32_t) p->header.maxSlots * SLOTTED_PAGE_SLOT_GROWTH_RATE + 1;
 		p->slots = GROW_ARRAY(sp_slot, p->slots, p->header.maxSlots, newMax);
@@ -178,11 +178,12 @@ bool addRecord(slotted_page* p, uint32_t offset, sp_record r) {
 }
 
 /*
+delete a record from a slotted page
 @return true if deletion was successful else return false
 */
-bool deleteRecord(slotted_page* p, uint32_t offset) {
+bool SPDelete(slotted_page* p, page_offset offset) {
 	uint32_t index = searchSlotArray(p, offset);
-	if (index >= p->header.numRecords || p->slots[index].ID != offset) return false;
+	if (index >= p->header.numRecords || compareOffsets(p->slots[index].ID, offset) != 0) return false;
 	sp_slot deleted = p->slots[index];
 	p->header.usedData -= deleted.size;
 	printf("Deleted size: %d\n", deleted.size);
@@ -217,11 +218,14 @@ bool deleteRecord(slotted_page* p, uint32_t offset) {
 	return true;
 }
 
-bool updateRecord(slotted_page* p, uint32_t offset, sp_record r) {
+/*
+update a record in a slotted page
+*/
+bool SPUpdate(slotted_page* p, page_offset offset, sp_record r) {
 	uint32_t index = searchSlotArray(p, offset);
 	if (index >= p->header.numRecords) return false;
 	sp_slot s = p->slots[index];
-	if (s.ID != offset || s.len < r.len) return false;
+	if (compareOffsets(s.ID, offset) != 0 || s.len < r.len) return false;
 	for (uint32_t i = 0; i < r.len; i++) {
 		free(p->entries[s.ptr + i].data);
 		p->entries[s.ptr + i] = r.entries[i];
@@ -233,14 +237,14 @@ bool updateRecord(slotted_page* p, uint32_t offset, sp_record r) {
 @return sp_record pointing into the page's entry array
 @return {NULL, 0} if record not in page
 */
-sp_record readRecord(slotted_page* p, uint32_t offset) {
+sp_record SPRead(slotted_page* p, page_offset offset) {
 	uint32_t index = searchSlotArray(p, offset);
 	if (index >= p->header.numRecords) {
 		sp_record out = {NULL, 0};
 		return out;
 	}
 	sp_slot s = p->slots[index];
-	if (s.ID != offset) {
+	if (compareOffsets(s.ID, offset) != 0) {
 		sp_record out = {NULL, 0};
 		return out;
 	}

@@ -25,8 +25,11 @@ This representation is not the same used to store pages on disk; the translation
 #define PAGE_H
 
 #include "../common.h"
+#include "ordering.h"
 
 #define SLOTTED_PAGE_SLOT_GROWTH_RATE 1.5
+// On-disk size of one sp_slot: ID (PAGE_OFFSET_DISK_SIZE) + ptr(4) + len(4) + size(4)
+#define SP_SLOT_DISK_SIZE (PAGE_OFFSET_DISK_SIZE + 12)
 
 typedef enum datatype {
 	T_INT,
@@ -49,7 +52,7 @@ static const char DATATYPE_CODES[] = {'i', 's', 'd', 't'};
 
 typedef struct header {
 	address parent;
-	uint32_t pageNum;
+	page_num pageNum;
 	uint32_t usedData; // total amount of data used by records
 	uint32_t numRecords; // number of records in array at a time
 	uint32_t numEntries; // number of entries in the the page, this should be a constant multiple of numRecords since row size is constant across a tbale
@@ -73,7 +76,7 @@ typedef struct sp_record {
 }sp_record;
 
 typedef struct sp_slot {
-	uint32_t ID; // record identifier (offset key)
+	page_offset ID; // record identifier (offset key)
 	uint32_t ptr; // index into the entries array where this record begins
 	uint32_t len; // number of entries belonging to this record
 	uint32_t size; // size in bytes of the corresponding record
@@ -90,14 +93,12 @@ typedef struct slotted_page {
 	sp_slot* slots;
 }slotted_page;
 
-int readIndex(int pos, char* arr, int arrlen);
-bool hasSpace(slotted_page* p, uint32_t size, int numNewEntries);
-slotted_page* makeSPage(uint32_t pageNum, uint32_t numSlots, uint32_t numEntries, uint32_t capacity);
+slotted_page* makeSPage(page_num pageNum, uint32_t numSlots, uint32_t numEntries, uint32_t capacity);
 void freeSPage(slotted_page* p);
 
-bool addRecord(slotted_page* p, uint32_t offset, sp_record r);
-bool deleteRecord(slotted_page* p, uint32_t offset);
-bool updateRecord(slotted_page* p, uint32_t offset, sp_record r);
-sp_record readRecord(slotted_page* p, uint32_t offset);
+bool SPInsert(slotted_page* p, page_offset offset, sp_record r);
+bool SPDelete(slotted_page* p, page_offset offset);
+bool SPUpdate(slotted_page* p, page_offset offset, sp_record r);
+sp_record SPRead(slotted_page* p, page_offset offset);
 
 #endif

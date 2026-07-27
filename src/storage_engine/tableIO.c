@@ -93,6 +93,79 @@ static void writeUIntBytewise(char* arr, uint32_t ui) {
 }
 
 /*
+Serializes a page_num into exactly PAGE_NUM_DISK_SIZE bytes at buf.
+Layout: [type(1B)][data(18B)] where data is big-endian u64 zero-padded, or raw string bytes.
+*/
+static void writePageNumBytewise(char* buf, page_num k) {
+	buf[0] = (char)k.type;
+	if (k.type == ORDERING_STRING) {
+		memset(buf + 1, 0, PAGE_NUM_DISK_SIZE - 1);
+		memcpy(buf + 1, k.as.string, TEXT_PAGE_NUM_LEN);
+	} else {
+		writeULongBytewise(buf + 1, k.as.u64);
+		memset(buf + 9, 0, PAGE_NUM_DISK_SIZE - 9);
+	}
+}
+
+/*
+Serializes a page_offset into exactly PAGE_OFFSET_DISK_SIZE bytes at buf.
+Layout: [type(1B)][data(8B)] where data is big-endian u64, or raw string bytes zero-padded.
+*/
+static void writePageOffsetBytewise(char* buf, page_offset k) {
+	buf[0] = (char)k.type;
+	if (k.type == ORDERING_STRING) {
+		memset(buf + 1, 0, PAGE_OFFSET_DISK_SIZE - 1);
+		memcpy(buf + 1, k.as.string, OFFSET_BITS);
+	} else {
+		writeULongBytewise(buf + 1, k.as.u64);
+	}
+}
+
+/*
+Reads a page_num from (cursor + offset), restores cursor.
+*/
+static page_num readPageNum(long offset, table* t) {
+	unsigned char buf[PAGE_NUM_DISK_SIZE];
+	jumpRel(offset, t);
+	fread(buf, 1, PAGE_NUM_DISK_SIZE, t->source);
+	jumpRel(-(long)offset - PAGE_NUM_DISK_SIZE, t);
+	page_num out;
+	out.type = (ordering_type)buf[0];
+	if (out.type == ORDERING_STRING) {
+		memset(out.as.string, 0, sizeof(out.as.string));
+		memcpy(out.as.string, buf + 1, TEXT_PAGE_NUM_LEN);
+	} else {
+		out.as.u64 = ((uint64_t)buf[1] << 56) | ((uint64_t)buf[2] << 48) |
+		             ((uint64_t)buf[3] << 40) | ((uint64_t)buf[4] << 32) |
+		             ((uint64_t)buf[5] << 24) | ((uint64_t)buf[6] << 16) |
+		             ((uint64_t)buf[7] <<  8) | (uint64_t)buf[8];
+	}
+	return out;
+}
+
+/*
+Reads a page_offset from (cursor + offset), restores cursor.
+*/
+static page_offset readPageOffset(long offset, table* t) {
+	unsigned char buf[PAGE_OFFSET_DISK_SIZE];
+	jumpRel(offset, t);
+	fread(buf, 1, PAGE_OFFSET_DISK_SIZE, t->source);
+	jumpRel(-(long)offset - PAGE_OFFSET_DISK_SIZE, t);
+	page_offset out;
+	out.type = (ordering_type)buf[0];
+	if (out.type == ORDERING_STRING) {
+		memset(out.as.string, 0, sizeof(out.as.string));
+		memcpy(out.as.string, buf + 1, OFFSET_BITS);
+	} else {
+		out.as.u64 = ((uint64_t)buf[1] << 56) | ((uint64_t)buf[2] << 48) |
+		             ((uint64_t)buf[3] << 40) | ((uint64_t)buf[4] << 32) |
+		             ((uint64_t)buf[5] << 24) | ((uint64_t)buf[6] << 16) |
+		             ((uint64_t)buf[7] <<  8) | (uint64_t)buf[8];
+	}
+	return out;
+}
+
+/*
 reads one byte at the table's cursor + an offset
 returns the cursor to the original position
 */
@@ -350,7 +423,7 @@ table* createTable(char* tablename) {
 	t->nodeStripeLen = 8;
 	t->pageNodeRatio = 1;
 	t->pageSize      = PAGE_SIZE;
-	t->nodeSize      = 34 + M_GLOBAL * 12; // 34B fixed header + M children (8B) + M keys (4B)
+	t->nodeSize      = 49 + M_GLOBAL * (8 + PAGE_NUM_DISK_SIZE); // 49B fixed header + M children (8B) + M keys (PAGE_NUM_DISK_SIZE)
 	t->M             = M_GLOBAL;
 	t->pageFree      = t->metalen;
 	t->nodeFree      = (uint64_t)t->metalen
@@ -487,25 +560,27 @@ bool readPage(address addr, slotted_page* p, table* t) {
 		return false;
 	}
 	// header
-	p->header.parent = readULong(1, t);
-	p->header.pageNum = readUInt(9, t);
-	p->header.usedData = readUInt(13, t);
-	p->header.numRecords = readUInt(17, t);
-	p->header.numEntries = readUInt(21, t);
-	p->header.arrCap = readUInt(25, t);
-	p->header.maxEntries = readUInt(29, t);
-	p->header.maxSlots = readUInt(33, t);
-	// slots
+	// page header layout: 0(1B) | parent(8B) | pageNum(19B) | usedData(4B) | numRecords(4B) |
+	//                     numEntries(4B) | arrCap(4B) | maxEntries(4B) | maxSlots(4B)  = 52B
+	p->header.parent     = readULong(1,  t);
+	p->header.pageNum    = readPageNum(9, t);
+	p->header.usedData   = readUInt(28, t);
+	p->header.numRecords = readUInt(32, t);
+	p->header.numEntries = readUInt(36, t);
+	p->header.arrCap     = readUInt(40, t);
+	p->header.maxEntries = readUInt(44, t);
+	p->header.maxSlots   = readUInt(48, t);
+	// slots (each slot on disk: ID(9B) | len(4B) | size(4B) | ptr(4B) = 21B)
 	if (!p->slots) {
 		p->slots = calloc(p->header.maxSlots, sizeof(sp_slot));
 	}
-	int offset = 37;
+	int offset = 52;
 	for (int i = 0; i < p->header.numRecords; i++) {
-		p->slots[i].ID = readUInt(offset, t);
-		p->slots[i].len = readUInt(offset+4, t);
-		p->slots[i].size = readUInt(offset+8, t);
-		p->slots[i].ptr = readUInt(offset+12, t);
-		offset += 16;
+		p->slots[i].ID   = readPageOffset(offset,    t);
+		p->slots[i].len  = readUInt(offset + 9,  t);
+		p->slots[i].size = readUInt(offset + 13, t);
+		p->slots[i].ptr  = readUInt(offset + 17, t);
+		offset += SP_SLOT_DISK_SIZE;
 	}
 	// records
 	int entryOffset = 0;
@@ -568,15 +643,17 @@ bool readNode(address addr, node* n, table* t) {
 	}
 
 	// read metadata
+	// node layout: 0(1B) | parent(8B) | prev(8B) | next(8B) | childCount(4B) | maxKey(19B) | isLeaf(1B) |
+	//              children(8B each) | keys(19B each)
 	n->parent = readULong(1, t);
 	n->prev = readULong(9, t);
 	n->next = readULong(17, t);
 	n->childCount = readUInt(25, t);
-	n->maxPageNumber = readUInt(29, t);
-	n->isLeaf = readByte(33, t);
+	n->maxKey = readPageNum(29, t);
+	n->isLeaf = readByte(48, t);
 
 	// read children
-	int offset = 34;
+	int offset = 49;
 	for (int i = 0; i < n->childCount; i++) {
 		n->children[i] = readULong(offset, t);
 		offset += 8;
@@ -587,8 +664,8 @@ bool readNode(address addr, node* n, table* t) {
 		keylim--;
 	}
 	for (int i = 0; i < keylim; i++) {
-		n->keys[i] = readUInt(offset, t);
-		offset += 4;
+		n->keys[i] = readPageNum(offset, t);
+		offset += PAGE_NUM_DISK_SIZE;
 	}
 
 	// return to original cursor position
@@ -621,23 +698,25 @@ static void writePage(slotted_page* p, address address, table* t) {
 	jump(address, t);
 	char* buffer = calloc(t->pageSize, 1);
 	// write header
+	// page header layout: 0(1B) | parent(8B) | pageNum(19B) | usedData(4B) | numRecords(4B) |
+	//                     numEntries(4B) | arrCap(4B) | maxEntries(4B) | maxSlots(4B)  = 52B
 	header h = p->header;
-	writeULongBytewise(buffer+1, h.parent);
-	writeUIntBytewise(buffer+9, h.pageNum);
-	writeUIntBytewise(buffer+13, h.usedData);
-	writeUIntBytewise(buffer+17, h.numRecords);
-	writeUIntBytewise(buffer+21, h.numEntries);
-	writeUIntBytewise(buffer+25, h.arrCap);
-	writeUIntBytewise(buffer+29, h.maxEntries);
-	writeUIntBytewise(buffer+33, h.maxSlots);
-	// write slots
-	int offset = 37;
+	writeULongBytewise(buffer+1,  h.parent);
+	writePageNumBytewise(buffer+9, h.pageNum);
+	writeUIntBytewise(buffer+28, h.usedData);
+	writeUIntBytewise(buffer+32, h.numRecords);
+	writeUIntBytewise(buffer+36, h.numEntries);
+	writeUIntBytewise(buffer+40, h.arrCap);
+	writeUIntBytewise(buffer+44, h.maxEntries);
+	writeUIntBytewise(buffer+48, h.maxSlots);
+	// write slots (each slot on disk: ID(9B) | len(4B) | size(4B) | ptr(4B) = 21B)
+	int offset = 52;
 	for (int i = 0; i < h.numRecords; i++) {
-		writeUIntBytewise(buffer+offset, p->slots[i].ID);
-		writeUIntBytewise(buffer+offset+4, p->slots[i].len);
-		writeUIntBytewise(buffer+offset+8, p->slots[i].size);
-		writeUIntBytewise(buffer+offset+12, p->slots[i].ptr);
-		offset += 16;
+		writePageOffsetBytewise(buffer+offset,    p->slots[i].ID);
+		writeUIntBytewise(buffer+offset+9,  p->slots[i].len);
+		writeUIntBytewise(buffer+offset+13, p->slots[i].size);
+		writeUIntBytewise(buffer+offset+17, p->slots[i].ptr);
+		offset += SP_SLOT_DISK_SIZE;
 	}
 	// write records
 	int entryOffset = 0;
@@ -646,7 +725,7 @@ static void writePage(slotted_page* p, address address, table* t) {
 		entry e = p->entries[i];
 		int addition = e.size + 6;
 		if (entryOffset + addition + offset > t->pageSize) { // records with overwrite slots (without malicious inputs this should never occur)
-			printf("Error: representation of page %u stores more data than the specified page capacity.\n", h.pageNum);
+			printf("Error: page stores more data than the specified page capacity.\n");
 			// once error handling is implemented should kill program here
 		}
 		char* entryStart = buffer + t->pageSize - entryOffset - 1;
@@ -684,15 +763,17 @@ static void writeNode(node* n, address address, table* t) {
 	jump(address, t);
 	char* buffer = calloc(t->nodeSize, 1);
 	// write metadata
+	// node layout: 0(1B) | parent(8B) | prev(8B) | next(8B) | childCount(4B) | maxKey(19B) | isLeaf(1B) |
+	//              children(8B each) | keys(19B each)
 	buffer[0] = 1;
-	writeULongBytewise(buffer+1, n->parent);
-	writeULongBytewise(buffer+9, n->prev);
+	writeULongBytewise(buffer+1,  n->parent);
+	writeULongBytewise(buffer+9,  n->prev);
 	writeULongBytewise(buffer+17, n->next);
-	writeUIntBytewise(buffer+25, n->childCount);
-	writeUIntBytewise(buffer+29, n->maxPageNumber);
-	buffer[33] = n->isLeaf;
+	writeUIntBytewise(buffer+25,  n->childCount);
+	writePageNumBytewise(buffer+29, n->maxKey);
+	buffer[48] = n->isLeaf;
 	// write children
-	int offset = 34;
+	int offset = 49;
 	for (int i = 0; i < n->childCount; i++) {
 		writeULongBytewise(buffer+offset, n->children[i]);
 		offset += 8;
@@ -701,8 +782,8 @@ static void writeNode(node* n, address address, table* t) {
 	int keylim = n->childCount;
 	if (!n->isLeaf) keylim--;
 	for (int i = 0; i < keylim; i++) {
-		writeUIntBytewise(buffer+offset, n->keys[i]);
-		offset += 4;
+		writePageNumBytewise(buffer+offset, n->keys[i]);
+		offset += PAGE_NUM_DISK_SIZE;
 	}
 	// copy buffer to disk and clean up
 	fwrite(buffer, 1, t->nodeSize, t->source);

@@ -12,7 +12,7 @@ TODO:
  - test every component of the front end - DONE
  - test the whole project - DONE
  - add ability to process multiple queries in one file - DONE
- - fix memory leaks
+ - fix memory leaks - DONE
  - merge schema and hash table
  - implement primary keys
  - implement ability to use column reorderings in queries

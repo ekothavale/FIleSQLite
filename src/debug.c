@@ -91,6 +91,20 @@ All nodes and pages are written to disk via the table's dirty queues.
 Requires the table to have a valid source file and configured
 pageSize/nodeSize/pageFree/nodeFree/metalen fields.
 */
+static page_num pageNumFromU64(uint64_t v) {
+    return (page_num){ .type = ORDERING_ULONG, .as.u64 = v };
+}
+
+static void printPageNum(page_num k) {
+    if (k.type == ORDERING_STRING) printf("%s", k.as.string);
+    else printf("%llu", (unsigned long long)k.as.u64);
+}
+
+static void printPageOffset(page_offset k) {
+    if (k.type == ORDERING_STRING) printf("%s", k.as.string);
+    else printf("%llu", (unsigned long long)k.as.u64);
+}
+
 void generateTestBPlusTree(table* t) {
     // Allocate disk addresses for the two leaf nodes and the root
     address leftAddr  = allocNode(t);
@@ -107,7 +121,7 @@ void generateTestBPlusTree(table* t) {
     for (int i = 0; i < 4; i++) {
         slotted_page p;
         memset(&p, 0, sizeof(p));
-        p.header.pageNum    = pageNums[i];
+        p.header.pageNum    = pageNumFromU64(pageNums[i]);
         p.header.parent     = pageParents[i];
         p.header.numRecords = 0;
         p.header.numEntries = 0;
@@ -124,9 +138,9 @@ void generateTestBPlusTree(table* t) {
     left.childCount    = 2;
     left.children[0]   = pageAddrs[0];
     left.children[1]   = pageAddrs[1];
-    left.keys[0]       = 1;
-    left.keys[1]       = 51;
-    left.maxPageNumber = 51;
+    left.keys[0]       = pageNumFromU64(1);
+    left.keys[1]       = pageNumFromU64(51);
+    left.maxKey        = pageNumFromU64(51);
     markNode(leftAddr, &left, t);
 
     // Right leaf node: pages #101 and #151
@@ -139,9 +153,9 @@ void generateTestBPlusTree(table* t) {
     right.childCount    = 2;
     right.children[0]   = pageAddrs[2];
     right.children[1]   = pageAddrs[3];
-    right.keys[0]       = 101;
-    right.keys[1]       = 151;
-    right.maxPageNumber = 151;
+    right.keys[0]       = pageNumFromU64(101);
+    right.keys[1]       = pageNumFromU64(151);
+    right.maxKey        = pageNumFromU64(151);
     markNode(rightAddr, &right, t);
 
     // Root node: two children, one separator key
@@ -154,8 +168,8 @@ void generateTestBPlusTree(table* t) {
     root.childCount    = 2;
     root.children[0]   = leftAddr;
     root.children[1]   = rightAddr;
-    root.keys[0]       = 51;   // max page number of left subtree
-    root.maxPageNumber = 151;
+    root.keys[0]       = pageNumFromU64(51);   // max key of left subtree
+    root.maxKey        = pageNumFromU64(151);
     markNode(rootAddr, &root, t);
 
     // Flush all dirty entries to disk
@@ -191,10 +205,10 @@ void printNode(node* n) {
     printf("%s node\n", n->isLeaf ? "Leaf" : "Internal");
     int keyCount = n->isLeaf ? (int)n->childCount : (int)n->childCount - 1;
     printf("  keys (%d):     ", keyCount);
-    for (int i = 0; i < keyCount; i++) printf("%u ", n->keys[i]);
+    for (int i = 0; i < keyCount; i++) { printPageNum(n->keys[i]); printf(" "); }
     printf("\n");
     printf("  childCount:    %u\n",  n->childCount);
-    printf("  maxPageNumber: %u\n",  n->maxPageNumber);
+    printf("  maxKey:        "); printPageNum(n->maxKey); printf("\n");
     printf("  children:\n");
     for (int i = 0; i < (int)n->childCount; i++)
         printf("    [%d] @%llu\n", i, (unsigned long long)n->children[i]);
@@ -222,8 +236,8 @@ static void printTreeHelper(address addr, int level, table* t) {
     int keyCount = n.isLeaf ? (int)n.childCount : (int)n.childCount - 1;
     printf("[%s @%llu] keys:", n.isLeaf ? "Leaf" : "Internal",
            (unsigned long long)addr);
-    for (int i = 0; i < keyCount; i++) printf(" %u", n.keys[i]);
-    printf("  maxPN=%u\n", n.maxPageNumber);
+    for (int i = 0; i < keyCount; i++) { printf(" "); printPageNum(n.keys[i]); }
+    printf("  maxKey="); printPageNum(n.maxKey); printf("\n");
 
     for (int i = 0; i < (int)n.childCount; i++) {
         if (n.isLeaf) {
@@ -231,8 +245,8 @@ static void printTreeHelper(address addr, int level, table* t) {
             slotted_page p;
             memset(&p, 0, sizeof(p));
             if (readPage(n.children[i], &p, t)) {
-                printf("[Page @%llu] #%u\n",
-                       (unsigned long long)n.children[i], p.header.pageNum);
+                printf("[Page @%llu] #", (unsigned long long)n.children[i]);
+                printPageNum(p.header.pageNum); printf("\n");
                 free(p.slots);
                 free(p.entries);
             } else {
@@ -289,8 +303,9 @@ static bool checkTreePointersHelper(address addr, address expectedParent,
                 return false;
             }
             if (p.header.parent != addr) {
-                printf("Error: page #%u @%llu has parent @%llu, expected @%llu\n",
-                       p.header.pageNum,
+                printf("Error: page #");
+                printPageNum(p.header.pageNum);
+                printf(" @%llu has parent @%llu, expected @%llu\n",
                        (unsigned long long)n.children[i],
                        (unsigned long long)p.header.parent,
                        (unsigned long long)addr);
@@ -343,7 +358,7 @@ void printSPSlot(sp_slot* s) {
         printf("<NULL slot>\n");
         return;
     }
-    printf("{ ID=%-4u  ptr=%-4u  len=%-4u }", s->ID, s->ptr, s->len);
+    printf("{ ID="); printPageOffset(s->ID); printf("  ptr=%-4u  len=%-4u }", s->ptr, s->len);
 }
 
 /*
@@ -365,7 +380,7 @@ void printSlottedPage(slotted_page* p) {
         return;
     }
 
-    printf("=== Slotted Page #%u ===\n", p->header.pageNum);
+    printf("=== Slotted Page #"); printPageNum(p->header.pageNum); printf(" ===\n");
     printf("  parent    : %llu\n", (unsigned long long)p->header.parent);
     printf("  numRecords: %u\n",   p->header.numRecords);
     printf("  numEntries: %u\n",   p->header.numEntries);
@@ -376,13 +391,13 @@ void printSlottedPage(slotted_page* p) {
     printf("  %4s  %6s  %6s  %6s\n", "----", "------", "------", "------");
     for (uint32_t i = 0; i < p->header.numRecords; i++) {
         sp_slot* s = &p->slots[i];
-        printf("  %4u  %6u  %6u  %6u\n", i, s->ID, s->ptr, s->len);
+        printf("  %4u  ", i); printPageOffset(s->ID); printf("  %6u  %6u\n", s->ptr, s->len);
     }
 
     printf("\n  --- Records ---\n");
     for (uint32_t i = 0; i < p->header.numRecords; i++) {
         sp_slot* s = &p->slots[i];
-        printf("  [ID=%-4u]  ", s->ID);
+        printf("  [ID="); printPageOffset(s->ID); printf("]  ");
         for (uint32_t j = 0; j < s->len; j++) {
             if (j > 0) printf(", ");
             printEntry(&p->entries[s->ptr + j]);

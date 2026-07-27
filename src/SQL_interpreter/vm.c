@@ -63,45 +63,6 @@ void freeVM() {
 	}
 }
 
-static void openScanner(uint32_t tableNameHash) {
-	const char* tablename = readHT(tableNameHash, vm.schema)->tablename;
-	for (int i = 0; i < MAX_SCANNERS; i++) {
-		if (!vm.scanners[i].open) {
-			table* t = malloc(sizeof(table));
-			if (!loadTable((char*)tablename, t)) {
-				free(t);
-				return;
-			}
-			vm.scanners[i].tbl      = t;
-			vm.scanners[i].open     = true;
-			vm.scanners[i].started  = false;
-			vm.scanners[i].atEnd    = false;
-			vm.scanners[i].leafNode = (node){0};
-			vm.scanners[i].leafAddr = 0;
-			vm.scanners[i].childIdx = 0;
-			vm.scanners[i].page     = (slotted_page){0};
-			vm.scanners[i].pageAddr = 0;
-			vm.scanners[i].slotIdx  = 0;
-			return;
-		}
-	}
-	printf("Error: no free scanner slots available\n");
-}
-
-static void closeScanner(scanner* s) {
-	if (!s->open) return;
-	commit(s->tbl);
-	fclose(s->tbl->source);
-	freeTable(s->tbl);
-	freeSPage(&s->page);
-	s->page = (slotted_page){0};
-	s->leafNode = (node){0};
-	s->tbl     = NULL;
-	s->open    = false;
-	s->started = false;
-	s->atEnd   = false;
-}
-
 static bool tableAlreadyExists(const char* tablename) {
 	char* dir = TABLE_DIRECTORY;
 	char* ext = TABLE_EXTENSION;
@@ -210,6 +171,51 @@ static bool loadFirstValidPage(scanner* s) {
 		readNode(s->leafAddr, &s->leafNode, t);
 		s->childIdx = 0;
 	}
+}
+
+/*
+opens a new scanner
+*/
+static void openScanner(uint32_t tableNameHash, uint8_t pkIdx) {
+	const char* tablename = readHT(tableNameHash, vm.schema)->tablename;
+	if (vm.numScanners >= MAX_SCANNERS) {
+		printf("Error: no free scanner slots available\n");
+		return;
+	}
+	table* t = malloc(sizeof(table));
+	if (!loadTable((char*)tablename, t)) {
+		free(t);
+		return;
+	}
+	int idx = vm.numScanners++;
+	vm.scanners[idx].tbl      = t;
+	vm.scanners[idx].tblHash  = tableNameHash;
+	vm.scanners[idx].open     = true;
+	vm.scanners[idx].started  = false;
+	vm.scanners[idx].atEnd    = false;
+	vm.scanners[idx].leafNode = (node){0};
+	vm.scanners[idx].leafAddr = 0;
+	vm.scanners[idx].childIdx = 0;
+	vm.scanners[idx].page     = (slotted_page){0};
+	vm.scanners[idx].pageAddr = 0;
+	vm.scanners[idx].slotIdx  = 0;
+	vm.scanners[idx].pkIdx    = pkIdx;
+}
+
+static void closeScanner(scanner* s) {
+	if (!s->open) return;
+	commit(s->tbl);
+	fclose(s->tbl->source);
+	freeTable(s->tbl);
+	freeSPage(&s->page);
+	s->page = (slotted_page){0};
+	s->leafNode = (node){0};
+	s->tbl     = NULL;
+	s->tblHash = 0;
+	s->open    = false;
+	s->started = false;
+	s->atEnd   = false;
+	vm.numScanners--;
 }
 
 /*
@@ -443,7 +449,8 @@ static interpret_result run() {
 			}
 			case OP_OPEN_SCAN: {
 				value v = pop();
-				openScanner(v.as.u32);
+				uint8_t pkIdx = READ_BYTE();
+				openScanner(v.as.u32, pkIdx);
 				break;
 			}
 			case OP_CLOSE_SCAN: {
@@ -519,40 +526,24 @@ static interpret_result run() {
 				break;
 			}
 			case OP_INSERT_ROW: {
+				// get context
 				uint8_t count = READ_BYTE();
-				scanner* s = &vm.scanners[0];
+				// find scanner
+				scanner* s = &vm.scanners[vm.numScanners-1];
 				table* t = s->tbl;
 				// stack top is the last column, so pop in reverse to preserve column order
 				entry* entries = malloc(count * sizeof(entry));
 				uint32_t totalSize = 0;
+				value pk;
 				for (int i = count - 1; i >= 0; i--) {
-					entries[i] = valueToEntry(pop());
+					value v = pop();
+					entries[i] = valueToEntry(v);
 					totalSize += entries[i].size;
+					if (i == s->pkIdx) pk = v; // pkIdx is stored ahead of time in scanner since it's a loop invariant
 				}
-				// find the last page in the tree by reading maxPageNumber from the root node
-				node rootNode;
-				readNode(t->root, &rootNode, t);
-				address pageAddr = findPage(rootNode.maxPageNumber, t);
-				loadPage(pageAddr, t);
+				ordering_key ik = pkToOk(pk);
 				sp_record r = { .entries = entries, .len = count, .size = totalSize };
-				if (hasSpace(&t->page, totalSize, count)) {
-					uint32_t slotID = (t->page.header.numRecords > 0)
-						? t->page.slots[t->page.header.numRecords - 1].ID + 1
-						: 1;
-					addRecord(&t->page, slotID, r);
-					markPage(pageAddr, &t->page, t);
-				} else {
-					// allocate a new page; copy page dimensions from the full page
-					uint32_t newPageNum = rootNode.maxPageNumber + 1;
-					address newAddr = findAndInsert(newPageNum, t);
-					slotted_page* newPage = makeSPage(newPageNum,
-						t->page.header.maxSlots,
-						t->page.header.maxEntries,
-						t->page.header.arrCap);
-					addRecord(newPage, 1, r);
-					markPage(newAddr, newPage, t);
-					// newPage lives until commit writes it; freed at process cleanup
-				}
+				insertRecord(&r, ik, t);
 				free(entries);  // page owns the data pointers; release only the metadata array
 				break;
 			}
@@ -570,9 +561,8 @@ static interpret_result run() {
 			case OP_DELETE_ROW: {
 				scanner* s = &vm.scanners[0];
 				table* t = s->tbl;
-				sp_slot slot = s->page.slots[s->slotIdx];
-				deleteRecord(&s->page, slot.ID);
-				markPage(s->pageAddr, &s->page, t);
+				ordering_key ik = { .pageNum = s->page.header.pageNum, .offset = s->page.slots[s->slotIdx].ID };
+				deleteRecord(ik, t);
 				// step back so the next OP_NEXT's increment lands on the record that shifted into this slot
 				s->slotIdx = (s->slotIdx > 0) ? s->slotIdx - 1 : (uint32_t)(-1);
 				break;
@@ -592,7 +582,7 @@ static interpret_result run() {
 					break;
 				}
 				// otherwise create the table
-				table* t = createTree(s->tablename, 1);
+				table* t = createTree(s->tablename, (page_num){0});
 				if (t) {
 					fclose(t->source);
 					freeTable(t);

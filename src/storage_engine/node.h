@@ -21,18 +21,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #include "common.h"
 #include "const.h"
+#include "ordering.h"
 
 typedef struct node {
 	address children[M_GLOBAL];
 	// keys = [3, 5] means 1, 2, 3 - left child, 4, 5 - middle child, 6+ - right child
 	// nodes have room for M keys but only leaf nodes will use all M slots
-	uint32_t keys[M_GLOBAL];
+	page_num keys[M_GLOBAL];
 	address parent;
 	address next;
 	address prev; // remove if two way scanning not necessary
 
 	uint32_t childCount;
-	uint32_t maxPageNumber;
+	page_num maxKey;
 
 	bool isLeaf; // if the node is a leaf node
 }node;

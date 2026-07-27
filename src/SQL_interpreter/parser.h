@@ -50,10 +50,31 @@ typedef enum ast_type {
 	TYPE_ASSIGNMENT
 } ast_type;
 
+typedef enum {
+	// default value for no signal
+	FLAG_NULL,
+	// primary
+	FLAG_FUNCTION_CALL,
+	// 
+	FLAG_IS_NOT_NULL, FLAG_NOT_IN,
+	// group by
+	FLAG_DESC,
+	// colDef
+	FLAG_NOT_NULL_CONSTRAINT, FLAG_PRIMARY_KEY_CONSTRAINT,
+	// createStmt
+	FLAG_UNIQUE_INDEX,
+	// insertStmt
+	FLAG_COLUMN_LIST,
+	// selectList
+	FLAG_SELECT_STAR,
+	// selectStmt,
+	FLAG_SELECT_DISTINCT
+} ast_flag;
+
 typedef struct ast_node {
 	ast_type type;
 	token tok;   // populated for leaf nodes and nodes whose subtype is encoded by a keyword token
-	bool flag;
+	ast_flag flag;
 	struct ast_node* children[7];
 } ast_node;
 

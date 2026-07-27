@@ -47,6 +47,10 @@ static entry* makeRecord() {
     return out;
 }
 
+static SQL_type getType(char c) {
+    return (SQL_type) (c & 0b00011111);
+}
+
 /*
 pretty prints the rows in the results of a query 
 */
@@ -55,7 +59,7 @@ static void printResult(result_buffer result) {
         for (int c = 0; c < result.cols; c++) {
             if (c > 0) printf(" | ");
             value v = result.rows[r][c];
-            SQL_type type = (SQL_type) result.types[c];
+            SQL_type type = getType(result.types[c]);
             switch (type) {
                 case SQL_NULL:  printf("NULL");              break;
                 case SQL_BOOL:  printf("%s", v.as.boolean ? "true" : "false"); break;
@@ -226,7 +230,7 @@ static void runFile(const char* path) {
 }
 
 int main(int argc, char** argv) {
-    /*
+    /*test_page();
     test_tableio();
     test_table_mgmt();
     test_btree();
@@ -237,8 +241,7 @@ int main(int argc, char** argv) {
     test_hashtable();
     test_schema();
     test_generator();
-    test_vm();
-    */
+    test_vm();*/
 
     struct timespec start, end;
 

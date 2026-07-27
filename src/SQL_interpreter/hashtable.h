@@ -23,9 +23,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define MAX_LOAD_FACTOR 0.8 // load factor at which the hash table is resized
 
+typedef enum column_constraint{
+	CONSTRAINT_UNCONSTRAINED,
+	CONSTRAINT_NOT_NULL,
+	CONSTRAINT_PRIMARY_KEY,
+	CONSTRAINT_UNQUE,
+	CONSTRAINT_FOREIGN_KEY,
+	CONSTRAINT_CHECK,
+	CONSTRAINT_DEFAULT
+} column_constraints;
+
 typedef struct schema {
 	char** colNames; // names of columns
-	char* colTypes;// types of columns
+	char* colTypes;// types of columns - first three bits are constraints - last five bits are sql types
 	char* tablename; // corresponding name of table (key)
 	uint32_t hash; // hash of key to id the entry
 	int count; // number of columns in the entry

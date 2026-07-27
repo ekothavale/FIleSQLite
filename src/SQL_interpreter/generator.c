@@ -23,18 +23,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define MAX_IDENT_LEN 256
 
-static uint32_t reverse_bits32(uint32_t x) {
-    x = (x >> 16) | (x << 16);
-    x = ((x & 0xFF00FF00) >> 8) | ((x & 0x00FF00FF) << 8);
-    x = ((x & 0xF0F0F0F0) >> 4) | ((x & 0x0F0F0F0F) << 4);
-    x = ((x & 0xCCCCCCCC) >> 2) | ((x & 0x33333333) << 2);
-    x = ((x & 0xAAAAAAAA) >> 1) | ((x & 0x55555555) << 1);
-    return x;
+static uint32_t getConstraint(uint8_t typeCode) {
+	return (typeCode & 0b11100000) >> 5;
 }
 
-static uint32_t pkToIk(uint32_t pk, uint32_t num_internal_keys) {
-    uint32_t reversed = reverse_bits32(pk);
-    return (uint32_t)(((uint64_t)reversed * num_internal_keys) >> 32);
+static uint8_t getPkIdx(schema* s) {
+	uint8_t pkIdx = 255;
+	for (int i = 0; i < s->count; i++) {
+		if (getConstraint(s->colTypes[i]) == CONSTRAINT_PRIMARY_KEY) {
+			pkIdx = i;
+			break;
+		}
+	}
+	return pkIdx;
 }
 
 /*
@@ -399,6 +400,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
+			writeChunk(c, 255, 0); // primary key support for select not yet implemented
 			writeChunk(c, OP_REWIND, 0);
 
 			int loopTop = c->count;
@@ -460,22 +462,27 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 		case TYPE_INSERT_STMT: {
 			/*
 			Bytecode layout:
-			  CONSTANT <tname>         push table name string
-			  OPEN_SCAN                open scanner
+			  CONSTANT <hash>  		   push table's hash
+			  OPEN_SCAN <pkIdx>        open scanner
 			  [val_0 ... val_n-1]      evaluate each value expression in order
 			  INSERT_ROW <val_count>   pop val_count values and insert as new row
 			  CLOSE_SCAN
 
-			Note: if an explicit column list is present (node->flag == true), values
+			Note: if an explicit column list is present (node->flag), values
 			are pushed in the order written and assumed to be in schema column order.
 			Reordering to match an arbitrary column list is not yet supported.
 			*/
 			char tname[MAX_IDENT_LEN];
 			tokenToStr(node->children[0]->tok, tname);
 			uint32_t hash = hashString(tname, strlen(tname));
+			schema* s = readHT(hash, ht);
+
+			// obtain primary key index
+			uint8_t pkIdx = getPkIdx(s);
 
 			writeStaticConst(c, UINT_VAL(hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
+			writeChunk(c, pkIdx, 0);
 
 			int valCount = 0;
 			ast_node* valIt = node->children[2];
@@ -484,7 +491,6 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 				valCount++;
 				valIt = valIt->children[1];
 			}
-
 			writeChunk(c, OP_INSERT_ROW, 0);
 			writeChunk(c, (uint8_t)valCount, 0);
 			writeChunk(c, OP_CLOSE_SCAN, 0);
@@ -514,6 +520,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
+			writeChunk(c, 255, 0); // primary key support for update not yet supported
 			writeChunk(c, OP_REWIND, 0);
 
 			int loopTop = c->count;
@@ -546,7 +553,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			/*
 			Bytecode layout:
 			  CONSTANT <tname>       push table name string
-			  OPEN_SCAN              open scanner
+			  OPEN_SCAN <pkIdx>      open scanner
 			  REWIND
 			[loop_top:]
 			  NEXT <exit_offset>     advance; jump to exit if done
@@ -563,6 +570,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
+			writeChunk(c, 255, 0); // delete support for primary keys not yet implemented
 			writeChunk(c, OP_REWIND, 0);
 
 			int loopTop = c->count;
@@ -595,8 +603,8 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 				// Count columns in the col_def list
 				int colCount = 0;
-				ast_node* it = node->children[1];
-				while (it) { colCount++; it = it->children[1]; }
+				ast_node* cdList = node->children[1];
+				while (cdList) { colCount++; cdList = cdList->children[1]; }
 
 				// Build schema entry and register it for the VM to find at runtime
 				schema* s = malloc(sizeof(schema));
@@ -605,12 +613,14 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 				s->count = colCount;
 				s->colNames = malloc(colCount * sizeof(char*));
 				s->colTypes = malloc(colCount);
-				it = node->children[1];
+				cdList = node->children[1];
 				for (int i = 0; i < colCount; i++) {
-					ast_node* def = it->children[0];  // TYPE_COL_DEF
+					ast_node* def = cdList->children[0];  // TYPE_COL_DEF
+					// column name
 					char colname[MAX_IDENT_LEN];
 					tokenToStr(def->children[0]->tok, colname);
 					s->colNames[i] = strdup(colname);
+					// column type
 					char typename[MAX_IDENT_LEN];
 					tokenToStr(def->children[1]->tok, typename);
 					if      (strcasecmp(typename, "TEXT")     == 0) s->colTypes[i] = SQL_TEXT;
@@ -623,8 +633,15 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 					else if (strcasecmp(typename, "DATETIME") == 0) s->colTypes[i] = SQL_DATETIME;
 					else if (strcasecmp(typename, "DATE")     == 0) s->colTypes[i] = SQL_DATE;
 					else if (strcasecmp(typename, "TIME")     == 0) s->colTypes[i] = SQL_TIME;
-					else                                             s->colTypes[i] = SQL_TEXT;
-					it = it->children[1];
+					else                                             s->colTypes[i] = SQL_TEXT; // replace this for dynamic typing
+					// column constraint
+					uint8_t constraint = 0;
+					if (def->flag == FLAG_NOT_NULL_CONSTRAINT) constraint = CONSTRAINT_NOT_NULL;
+					else if (def->flag == FLAG_PRIMARY_KEY_CONSTRAINT) constraint = CONSTRAINT_PRIMARY_KEY;
+					constraint <<= 5;
+					s->colTypes[i] |= constraint;
+					// continue through linked list
+					cdList = cdList->children[1];
 				}
 				insertHT(s, ht);
 

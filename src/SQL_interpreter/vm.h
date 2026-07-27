@@ -31,17 +31,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 // state for scanning over a btree
 typedef struct scanner {
 	table* tbl;          // open table
+	uint32_t tblHash;	 // hash of table's name (the table itself stores the string)
 	bool open;           // whether scanner is connected to a table
 	bool started;        // whether OP_NEXT has been called at least once
 	bool atEnd;          // whether all rows have been exhausted
 
-	node leafNode;      // currently loaded leaf node (scanner-owned)
+	node leafNode;       // currently loaded leaf node (scanner-owned)
 	address leafAddr;    // disk address of leafNode
 	uint32_t childIdx;   // which child of leafNode is the current page
 
-	slotted_page page;  // currently loaded page (scanner-owned)
+	slotted_page page;   // currently loaded page (scanner-owned)
 	address pageAddr;    // disk address of page
 	uint32_t slotIdx;    // which slot (row) within page is current
+
+	int pkIdx;			 // the column containing the primary key in the input query (-1 = no pk)
 } scanner;
 
 typedef enum {
@@ -64,12 +67,13 @@ typedef struct result_buffer {
 // a virtual computer to manage a local database
 typedef struct VM {
 	chunk* chunk;
-	uint8_t* ip; // instruction pointer
+	uint8_t* ip; 					// instruction pointer
 	value* stackTop;
-	hashtable* schema; // contains the schema for each table
+	hashtable* schema; 				// contains the schema for each table
 	result_buffer results;
 	scanner scanners[MAX_SCANNERS]; // concurrent database processes
-	value stack[STACK_MAX]; // where values are stored
+	int numScanners; 				// number of scanners currently open
+	value stack[STACK_MAX]; 		// where values are stored
 } VM;
 
 // Public API — callable from outside this translation unit

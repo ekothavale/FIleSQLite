@@ -911,7 +911,7 @@ void test_parse_select_star() {
     ast_node* sel = ast->children[0];
     assert(sel->type == TYPE_SELECT_STMT);
     // select list is a listNode whose first child is the star item (flag=true)
-    assert(sel->children[0]->children[0]->flag == true);
+    assert(sel->children[0]->children[0]->flag == FLAG_SELECT_STAR);
     freeAST(ast); free(t.tokens);
 }
 
@@ -941,7 +941,7 @@ void test_parse_select_distinct() {
     COMPILE("select distinct * from users", t, ast);
     ast_node* sel = ast->children[0];
     assert(sel->type == TYPE_SELECT_STMT);
-    assert(sel->flag == true);                        // DISTINCT
+    assert(sel->flag == FLAG_SELECT_DISTINCT);                        // DISTINCT
     assert(sel->children[1]->type == TYPE_IDENTIFIER);
     freeAST(ast); free(t.tokens);
 }
@@ -963,7 +963,7 @@ void test_parse_select_order_by() {
     assert(sel->children[5]->type == TYPE_ORDER_CLAUSE);
     ast_node* item = sel->children[5]->children[0];
     assert(item->type == TYPE_LIST_NODE);
-    assert(item->flag == true);   // DESC
+    assert(item->flag == FLAG_DESC);   // DESC
     freeAST(ast); free(t.tokens);
 }
 
@@ -982,7 +982,7 @@ void test_parse_select_expr_alias() {
     ast_node* sel = ast->children[0];
     ast_node* sel_item = sel->children[0]->children[0];  // listNode → selectItem
     assert(sel_item->type == TYPE_SELECT_ITEM);
-    assert(sel_item->flag == false);           // not a star
+    assert(sel_item->flag == FLAG_NULL);           // not a star
     assert(sel_item->children[1] != NULL);     // alias present
     assert(sel_item->children[1]->type == TYPE_IDENTIFIER);
     freeAST(ast); free(t.tokens);
@@ -994,7 +994,7 @@ void test_parse_insert_with_cols() {
     COMPILE("insert into users (id, name) values (1, 'alice')", t, ast);
     ast_node* ins = ast->children[0];
     assert(ins->type == TYPE_INSERT_STMT);
-    assert(ins->flag == true);               // explicit column list
+    assert(ins->flag == FLAG_COLUMN_LIST);               // explicit column list
     assert(ins->children[1] != NULL);        // col list
     assert(ins->children[2] != NULL);        // val list
     freeAST(ast); free(t.tokens);
@@ -1004,7 +1004,7 @@ void test_parse_insert_without_cols() {
     COMPILE("insert into users values (1, 'alice')", t, ast);
     ast_node* ins = ast->children[0];
     assert(ins->type == TYPE_INSERT_STMT);
-    assert(ins->flag == false);              // no explicit column list
+    assert(ins->flag == FLAG_NULL);              // no explicit column list
     assert(ins->children[1] == NULL);        // no col list
     assert(ins->children[2] != NULL);        // val list present
     freeAST(ast); free(t.tokens);
@@ -1072,7 +1072,7 @@ void test_parse_create_index() {
     ast_node* crt = ast->children[0];
     assert(crt->type == TYPE_CREATE_STMT);
     assert(crt->tok.type == TOKEN_INDEX);
-    assert(crt->flag == false);              // not UNIQUE
+    assert(crt->flag == FLAG_NULL);              // not UNIQUE
     assert(crt->children[0]->type == TYPE_IDENTIFIER);  // index name
     freeAST(ast); free(t.tokens);
 }
@@ -1082,7 +1082,7 @@ void test_parse_create_unique_index() {
     ast_node* crt = ast->children[0];
     assert(crt->type == TYPE_CREATE_STMT);
     assert(crt->tok.type == TOKEN_INDEX);
-    assert(crt->flag == true);               // UNIQUE
+    assert(crt->flag == FLAG_UNIQUE_INDEX);               // UNIQUE
     assert(crt->children[0]->type == TYPE_IDENTIFIER);
     freeAST(ast); free(t.tokens);
 }

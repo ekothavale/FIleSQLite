@@ -174,7 +174,7 @@ static ast_node* primary() {
 		node->tok = advance();
 		if (peek() == TOKEN_LEFT_PAREN) {
 			advance();
-			node->flag = true;  // function call
+			node->flag = FLAG_FUNCTION_CALL;  // function call
 			if (peek() != TOKEN_RIGHT_PAREN) node->children[0] = valList();
 			expect(TOKEN_RIGHT_PAREN);
 		}
@@ -267,7 +267,7 @@ static ast_node* comparison() {
 			ast_node* node = makeNode(TYPE_COMPARISON);
 			node->tok = advance();
 			node->children[0] = left;
-			if (peek() == TOKEN_NOT) { advance(); node->flag = true; }
+			if (peek() == TOKEN_NOT) { advance(); node->flag = FLAG_IS_NOT_NULL; }
 			expect(TOKEN_NULL);
 			left = node;
 		} else if (t == TOKEN_BETWEEN) {
@@ -290,7 +290,7 @@ static ast_node* comparison() {
 			ast_node* node = makeNode(TYPE_COMPARISON);
 			advance();
 			node->tok = expect(TOKEN_IN);
-			node->flag = true;  // NOT IN
+			node->flag = FLAG_NOT_IN;  // NOT IN
 			node->children[0] = left;
 			expect(TOKEN_LEFT_PAREN);
 			node->children[1] = valList();
@@ -394,7 +394,7 @@ static ast_node* orderClause() {
 		advance();
 		ast_node* next = makeNode(TYPE_LIST_NODE);
 		next->children[0] = expr();
-		if (peek() == TOKEN_DESC) { advance(); next->flag = true; }
+		if (peek() == TOKEN_DESC) { advance(); next->flag = FLAG_DESC; }
 		else if (peek() == TOKEN_ASC) { advance(); }
 		tail->children[1] = next;
 		tail = next;
@@ -496,7 +496,11 @@ static ast_node* colDef() {
 	if (peek() == TOKEN_NOT) {
 		advance();
 		expect(TOKEN_NULL);
-		node->flag = true;
+		node->flag = FLAG_NOT_NULL_CONSTRAINT;
+	} else if (peek() == TOKEN_PRIMARY) {
+		advance();
+		expect(TOKEN_KEY);
+		node->flag = FLAG_PRIMARY_KEY_CONSTRAINT;
 	}
 	return node;
 }
@@ -613,7 +617,7 @@ static ast_node* createStmt() {
 		expect(TOKEN_RIGHT_PAREN);
 	} else if (peek() == TOKEN_UNIQUE || peek() == TOKEN_INDEX) {
 		if (peek() == TOKEN_UNIQUE) {
-			node->flag = true;
+			node->flag = FLAG_UNIQUE_INDEX;
 			advance();
 		}
 		node->tok = expect(TOKEN_INDEX);
@@ -681,7 +685,7 @@ static ast_node* insertStmt() {
 		advance();
 		node->children[1] = colList();
 		expect(TOKEN_RIGHT_PAREN);
-		node->flag = true;  // explicit column list present
+		node->flag = FLAG_COLUMN_LIST;  // explicit column list present
 	}
 	expect(TOKEN_VALUES);
 	expect(TOKEN_LEFT_PAREN);
@@ -711,7 +715,7 @@ static ast_node* selectList() {
 	if (peek() == TOKEN_STAR) {
 		advance();
 		ast_node* star = makeNode(TYPE_SELECT_ITEM);
-		star->flag = true;  // flag signals SELECT *
+		star->flag = FLAG_SELECT_STAR;  // flag signals SELECT *
 		return listNode(star, NULL);
 	}
 	ast_node* head = listNode(selectItem(), NULL);
@@ -737,7 +741,7 @@ static ast_node* selectStmt() {
 	token_type type = peek();
 	if (type == TOKEN_DISTINCT) {
 		advance();
-		out->flag = true;
+		out->flag = FLAG_SELECT_DISTINCT;
 	}
 	out->children[0] = selectList();
 	expect(TOKEN_FROM);

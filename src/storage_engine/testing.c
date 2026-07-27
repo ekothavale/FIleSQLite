@@ -22,6 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 // ##########################################################################################################################################
 // SHARED TEST HELPERS
 
+/* Convenience constructors so tests can write pn(42) instead of a compound literal. */
+static page_num pn(uint64_t v) {
+    return (page_num){ .type = ORDERING_ULONG, .as.u64 = v };
+}
+static page_offset po(uint64_t v) {
+    return (page_offset){ .type = ORDERING_ULONG, .as.u64 = v };
+}
+
 /* Build the full path "tables/<name>.tbl" into a heap-allocated string. */
 static char* build_tbl_path(const char* name) {
     size_t len = strlen(TABLE_DIRECTORY) + strlen(name) + strlen(TABLE_EXTENSION) + 1;
@@ -61,19 +69,22 @@ static uint64_t stripe_boundary(table* t) {
 
 /* Allocate a fresh slotted_page with room for up to 64 slots and 256 entries. */
 static slotted_page* make_test_page(void) {
-    slotted_page* p = malloc(sizeof(slotted_page));
+    slotted_page* p = calloc(1, sizeof(slotted_page));
     p->header.parent     = 0;
-    p->header.pageNum    = 1;
+    p->header.pageNum    = pn(1);
     p->header.usedData   = 0;
     p->header.numRecords = 0;
     p->header.numEntries = 0;
+    p->header.arrCap     = 8192;
+    p->header.maxSlots   = 64;
+    p->header.maxEntries = 256;
     p->slots   = calloc(64,  sizeof(sp_slot));
     p->entries = calloc(256, sizeof(entry));
     return p;
 }
 
 /*
-Free a test page.  deleteRecord already frees data strings for deleted
+Free a test page.  SPDelete already frees data strings for deleted
 entries, so we only iterate up to the current numEntries count.
 */
 static void free_test_page(slotted_page* p) {
@@ -89,14 +100,15 @@ static void free_test_page(slotted_page* p) {
 static entry make_entry(const char* str, datatype t) {
     entry e;
     e.type = t;
-    e.data = malloc(strlen(str) + 1);
+    e.size = (uint32_t)(strlen(str) + 1);
+    e.data = malloc(e.size);
     strcpy(e.data, str);
     return e;
 }
 
 /* Wrap an array of entries into an sp_record (does not copy). */
 static sp_record make_sp_record(entry* entries, uint32_t len) {
-    sp_record r = { entries, len };
+    sp_record r = { entries, len, 0 };
     return r;
 }
 
@@ -109,12 +121,12 @@ void test_page_add(void) {
     slotted_page* p = make_test_page();
 
     entry es[] = { make_entry("Alice", T_STRING), make_entry("30", T_INT) };
-    bool ok = addRecord(p, 10, make_sp_record(es, 2));
+    bool ok = SPInsert(p, po(10), make_sp_record(es, 2));
 
     assert(ok);
     assert(p->header.numRecords == 1);
     assert(p->header.numEntries == 2);
-    assert(p->slots[0].ID  == 10);
+    assert(compareOffsets(p->slots[0].ID, po(10)) == 0);
     assert(p->slots[0].ptr == 0);
     assert(p->slots[0].len == 2);
 
@@ -131,15 +143,15 @@ void test_page_read(void) {
     slotted_page* p = make_test_page();
 
     entry es[] = { make_entry("Bob", T_STRING), make_entry("25", T_INT) };
-    addRecord(p, 5, make_sp_record(es, 2));
+    SPInsert(p, po(5), make_sp_record(es, 2));
 
-    sp_record result = readRecord(p, 5);
+    sp_record result = SPRead(p, po(5));
     assert(result.len == 2);
     assert(result.entries != NULL);
     assert(strcmp(result.entries[0].data, "Bob") == 0);
     assert(strcmp(result.entries[1].data, "25")  == 0);
 
-    sp_record missing = readRecord(p, 99);
+    sp_record missing = SPRead(p, po(99));
     assert(missing.entries == NULL);
     assert(missing.len == 0);
 
@@ -159,22 +171,22 @@ void test_page_delete(void) {
 
     entry es1[] = { make_entry("Carol", T_STRING) };
     entry es2[] = { make_entry("Dave",  T_STRING) };
-    addRecord(p, 1, make_sp_record(es1, 1));
-    addRecord(p, 2, make_sp_record(es2, 1));
+    SPInsert(p, po(1), make_sp_record(es1, 1));
+    SPInsert(p, po(2), make_sp_record(es2, 1));
     assert(p->header.numRecords == 2);
 
-    bool ok = deleteRecord(p, 1);
+    bool ok = SPDelete(p, po(1));
     assert(ok);
     assert(p->header.numRecords == 1);
 
-    sp_record gone = readRecord(p, 1);
+    sp_record gone = SPRead(p, po(1));
     assert(gone.entries == NULL);
 
-    sp_record kept = readRecord(p, 2);
+    sp_record kept = SPRead(p, po(2));
     assert(kept.len == 1);
     assert(strcmp(kept.entries[0].data, "Dave") == 0);
 
-    /* deleteRecord already freed Carol's data; only Dave's remains. */
+    /* SPDelete already freed Carol's data; only Dave's remains. */
     free_test_page(p);
     printf("PASS\n");
 }
@@ -188,14 +200,14 @@ void test_page_update(void) {
     slotted_page* p = make_test_page();
 
     entry es[] = { make_entry("Eve", T_STRING), make_entry("20", T_INT) };
-    addRecord(p, 7, make_sp_record(es, 2));
+    SPInsert(p, po(7), make_sp_record(es, 2));
 
     /* Replace both entries with fresh heap strings. */
     entry new_es[] = { make_entry("Eve", T_STRING), make_entry("21", T_INT) };
-    bool ok = updateRecord(p, 7, make_sp_record(new_es, 2));
+    bool ok = SPUpdate(p, po(7), make_sp_record(new_es, 2));
     assert(ok);
 
-    sp_record result = readRecord(p, 7);
+    sp_record result = SPRead(p, po(7));
     assert(strcmp(result.entries[0].data, "Eve") == 0);
     assert(strcmp(result.entries[1].data, "21")  == 0);
 
@@ -216,27 +228,27 @@ void test_page_multiple_records(void) {
     entry e10[] = { make_entry("Alice",   T_STRING) };
     entry e20[] = { make_entry("Bob",     T_STRING) };
 
-    addRecord(p, 30, make_sp_record(e30, 1));
-    addRecord(p, 10, make_sp_record(e10, 1));
-    addRecord(p, 20, make_sp_record(e20, 1));
+    SPInsert(p, po(30), make_sp_record(e30, 1));
+    SPInsert(p, po(10), make_sp_record(e10, 1));
+    SPInsert(p, po(20), make_sp_record(e20, 1));
 
     assert(p->header.numRecords == 3);
 
     /* Slot array must be sorted by ID after each insertion. */
-    assert(p->slots[0].ID == 10);
-    assert(p->slots[1].ID == 20);
-    assert(p->slots[2].ID == 30);
+    assert(compareOffsets(p->slots[0].ID, po(10)) == 0);
+    assert(compareOffsets(p->slots[1].ID, po(20)) == 0);
+    assert(compareOffsets(p->slots[2].ID, po(30)) == 0);
 
-    sp_record r = readRecord(p, 20);
+    sp_record r = SPRead(p, po(20));
     assert(r.len == 1);
     assert(strcmp(r.entries[0].data, "Bob") == 0);
 
     /* Delete the middle record and verify neighbours are still accessible. */
-    deleteRecord(p, 20);
+    SPDelete(p, po(20));
     assert(p->header.numRecords == 2);
-    assert(readRecord(p, 20).entries == NULL);
-    assert(strcmp(readRecord(p, 10).entries[0].data, "Alice")   == 0);
-    assert(strcmp(readRecord(p, 30).entries[0].data, "Charlie") == 0);
+    assert(SPRead(p, po(20)).entries == NULL);
+    assert(strcmp(SPRead(p, po(10)).entries[0].data, "Alice")   == 0);
+    assert(strcmp(SPRead(p, po(30)).entries[0].data, "Charlie") == 0);
 
     free_test_page(p);
     printf("PASS\n");
@@ -264,7 +276,7 @@ void test_page(void) {
 bool writeMeta(FILE* file, table* t);
 
 #define TEST_PAGE_SIZE 512
-#define TEST_NODE_SIZE 128
+#define TEST_NODE_SIZE (49 + M_GLOBAL * (8 + PAGE_NUM_DISK_SIZE))
 
 /* Create an in-memory table backed by a fresh tmpfile. */
 static table make_test_table(void) {
@@ -307,7 +319,7 @@ static void free_test_table(table* t) {
 }
 
 /* Build a page with the given pageNum and parent, zeroed slot/entry arrays. */
-static slotted_page* make_io_page(uint32_t pageNum, address parent) {
+static slotted_page* make_io_page(page_num pageNum, address parent) {
     slotted_page* p = calloc(1, sizeof(slotted_page));
     p->header.pageNum    = pageNum;
     p->header.parent     = parent;
@@ -425,7 +437,7 @@ Marking the same address twice must not increase the dirty count.
 void test_mark_page_dedup(void) {
     printf("  test_mark_page_dedup ... ");
     table t = make_test_table();
-    slotted_page* p = make_io_page(1, 0);
+    slotted_page* p = make_io_page(pn(1), 0);
 
     markPage(100, p, &t);
     assert(t.pageDirty.count == 1);
@@ -448,13 +460,13 @@ after marking must not change the copy held in the dirty stack.
 void test_mark_page_snapshot(void) {
     printf("  test_mark_page_snapshot ... ");
     table t = make_test_table();
-    slotted_page* p = make_io_page(7, 0);
+    slotted_page* p = make_io_page(pn(7), 0);
 
     markPage(300, p, &t);
-    p->header.pageNum = 99;              // mutate original after mark
+    p->header.pageNum = pn(99);          // mutate original after mark
 
     // The snapshot in the dirty stack should still have pageNum == 7
-    assert(t.pageDirty.stack[0].page->header.pageNum == 7);
+    assert(comparePageNums(t.pageDirty.stack[0].page->header.pageNum, pn(7)) == 0);
 
     free_io_page(p);
     free_test_table(&t);
@@ -475,7 +487,7 @@ void test_mark_page_growth(void) {
     t.pageDirty.count = 0;
     t.pageDirty.stack = malloc(4 * sizeof(page_write_order));
 
-    slotted_page* p = make_io_page(1, 0);
+    slotted_page* p = make_io_page(pn(1), 0);
     for (int i = 0; i < 6; i++)         // 6 > initial size of 4
         markPage((address)(1000 + i), p, &t);
 
@@ -682,7 +694,7 @@ survives the round-trip.
 void test_page_roundtrip(void) {
     printf("  test_page_roundtrip ... ");
     table t = make_test_table();
-    slotted_page* p = make_io_page(42, 999);
+    slotted_page* p = make_io_page(pn(42), 999);
     p->header.usedData   = 128;
     p->header.numRecords = 3;
     p->header.arrCap     = 200;
@@ -698,7 +710,7 @@ void test_page_roundtrip(void) {
     memset(&r, 0, sizeof(r));
     bool ok = readPage(addr, &r, &t);
     assert(ok);
-    assert(r.header.pageNum    == 42);
+    assert(comparePageNums(r.header.pageNum, pn(42)) == 0);
     assert(r.header.parent     == 999);
     assert(r.header.usedData   == 128);
     assert(r.header.numRecords == 3);
@@ -717,15 +729,14 @@ void test_page_roundtrip(void) {
 Mark 3 pages, then call writeNextPage 3 times. Verify the stack drains in
 LIFO order — the last-marked page is written first — by reading each
 address back and checking its pageNum.
-NOTE: field value assertions require the && -> & fix.
 */
 void test_page_write_lifo(void) {
     printf("  test_page_write_lifo ... ");
     table t = make_test_table();
 
-    slotted_page* p1 = make_io_page(1, 0);
-    slotted_page* p2 = make_io_page(2, 0);
-    slotted_page* p3 = make_io_page(3, 0);
+    slotted_page* p1 = make_io_page(pn(1), 0);
+    slotted_page* p2 = make_io_page(pn(2), 0);
+    slotted_page* p3 = make_io_page(pn(3), 0);
     address a1 = allocPage(&t);
     address a2 = allocPage(&t);
     address a3 = allocPage(&t);
@@ -744,9 +755,9 @@ void test_page_write_lifo(void) {
 
     // Each address should now contain its corresponding page
     slotted_page r1 = {0}, r2 = {0}, r3 = {0};
-    assert(readPage(a1, &r1, &t) && r1.header.pageNum == 1);
-    assert(readPage(a2, &r2, &t) && r2.header.pageNum == 2);
-    assert(readPage(a3, &r3, &t) && r3.header.pageNum == 3);
+    assert(readPage(a1, &r1, &t) && comparePageNums(r1.header.pageNum, pn(1)) == 0);
+    assert(readPage(a2, &r2, &t) && comparePageNums(r2.header.pageNum, pn(2)) == 0);
+    assert(readPage(a3, &r3, &t) && comparePageNums(r3.header.pageNum, pn(3)) == 0);
 
     free(r1.slots); free(r1.entries);
     free(r2.slots); free(r2.entries);
@@ -778,18 +789,18 @@ void test_node_roundtrip(void) {
     table t = make_test_table();
 
     node n = {0};
-    n.childCount    = 3;
-    n.maxPageNumber = 77;
-    n.isLeaf        = true;
-    n.parent        = 1000;
-    n.prev          = 2000;
-    n.next          = 3000;
-    n.children[0]   = 100;
-    n.children[1]   = 200;
-    n.children[2]   = 300;
-    n.keys[0]       = 10;
-    n.keys[1]       = 20;
-    n.keys[2]       = 30;
+    n.childCount  = 3;
+    n.maxKey      = pn(77);
+    n.isLeaf      = true;
+    n.parent      = 1000;
+    n.prev        = 2000;
+    n.next        = 3000;
+    n.children[0] = 100;
+    n.children[1] = 200;
+    n.children[2] = 300;
+    n.keys[0]     = pn(10);
+    n.keys[1]     = pn(20);
+    n.keys[2]     = pn(30);
 
     address addr = allocNode(&t);
     markNode(addr, &n, &t);
@@ -799,17 +810,17 @@ void test_node_roundtrip(void) {
     node r = {0};
     bool ok = readNode(addr, &r, &t);
     assert(ok);
-    assert(r.childCount    == 3);
-    assert(r.maxPageNumber == 77);
-    assert(r.isLeaf        == true);
-    assert(r.parent        == 1000);
-    assert(r.prev          == 2000);
-    assert(r.next          == 3000);
-    assert(r.children[0]   == 100);
-    assert(r.children[1]   == 200);
-    assert(r.children[2]   == 300);
-    assert(r.keys[0]       == 10);
-    assert(r.keys[1]       == 20);
+    assert(r.childCount == 3);
+    assert(comparePageNums(r.maxKey, pn(77)) == 0);
+    assert(r.isLeaf     == true);
+    assert(r.parent     == 1000);
+    assert(r.prev       == 2000);
+    assert(r.next       == 3000);
+    assert(r.children[0] == 100);
+    assert(r.children[1] == 200);
+    assert(r.children[2] == 300);
+    assert(comparePageNums(r.keys[0], pn(10)) == 0);
+    assert(comparePageNums(r.keys[1], pn(20)) == 0);
 
     free_test_table(&t);
     printf("PASS\n");
@@ -817,15 +828,14 @@ void test_node_roundtrip(void) {
 
 /*
 Mark 3 nodes LIFO, write them all, and verify each address holds its node.
-NOTE: field value assertions require the && -> & fix.
 */
 void test_node_write_lifo(void) {
     printf("  test_node_write_lifo ... ");
     table t = make_test_table();
 
-    node n1 = {0}; n1.childCount = 1; n1.maxPageNumber = 10;
-    node n2 = {0}; n2.childCount = 2; n2.maxPageNumber = 20;
-    node n3 = {0}; n3.childCount = 3; n3.maxPageNumber = 30;
+    node n1 = {0}; n1.childCount = 1; n1.maxKey = pn(10);
+    node n2 = {0}; n2.childCount = 2; n2.maxKey = pn(20);
+    node n3 = {0}; n3.childCount = 3; n3.maxKey = pn(30);
     address a1 = allocNode(&t);
     address a2 = allocNode(&t);
     address a3 = allocNode(&t);
@@ -840,9 +850,9 @@ void test_node_write_lifo(void) {
     writeNextNode(&t); assert(t.nodeDirty.count == 0);
 
     node r1 = {0}, r2 = {0}, r3 = {0};
-    assert(readNode(a1, &r1, &t) && r1.maxPageNumber == 10);
-    assert(readNode(a2, &r2, &t) && r2.maxPageNumber == 20);
-    assert(readNode(a3, &r3, &t) && r3.maxPageNumber == 30);
+    assert(readNode(a1, &r1, &t) && comparePageNums(r1.maxKey, pn(10)) == 0);
+    assert(readNode(a2, &r2, &t) && comparePageNums(r2.maxKey, pn(20)) == 0);
+    assert(readNode(a3, &r3, &t) && comparePageNums(r3.maxKey, pn(30)) == 0);
 
     free_test_table(&t);
     printf("PASS\n");
@@ -910,7 +920,7 @@ void test_create_table_fields(void) {
     assert(strcmp(t->name, "mgmt_c2") == 0);
     assert(t->source    != NULL);
     assert(t->pageSize  == PAGE_SIZE);
-    assert(t->nodeSize  == 34 + M_GLOBAL * 12);
+    assert(t->nodeSize  == 49 + M_GLOBAL * (8 + PAGE_NUM_DISK_SIZE));
     assert(t->M         == M_GLOBAL);
     assert(t->root      == 0);
     assert(t->metalen   == METALEN * 4);
@@ -1047,7 +1057,7 @@ createTree must return a non-NULL, properly initialised table.
 */
 void test_create_tree_not_null(void) {
     printf("  test_create_tree_not_null ... ");
-    table* t = createTree("mgmt_t1", 1);
+    table* t = createTree("mgmt_t1", pn(1));
     assert(t != NULL);
     assert(t->root != 0);
     deleteTree(t);
@@ -1056,11 +1066,11 @@ void test_create_tree_not_null(void) {
 
 /*
 The root node written by createTree must be a leaf with one child and the
-correct key and maxPageNumber.
+correct key and maxKey.
 */
 void test_create_tree_root_node(void) {
     printf("  test_create_tree_root_node ... ");
-    table* t = createTree("mgmt_t2", 42);
+    table* t = createTree("mgmt_t2", pn(42));
     assert(t != NULL);
 
     node n = {0};
@@ -1068,8 +1078,8 @@ void test_create_tree_root_node(void) {
     assert(ok);
     assert(n.isLeaf     == true);
     assert(n.childCount == 1);
-    assert(n.keys[0]    == 42);
-    assert(n.maxPageNumber == 42);
+    assert(comparePageNums(n.keys[0], pn(42)) == 0);
+    assert(comparePageNums(n.maxKey,  pn(42)) == 0);
     assert(n.parent     == 0);
 
     deleteTree(t);
@@ -1082,7 +1092,7 @@ pageNum and parent address passed to createTree.
 */
 void test_create_tree_initial_page(void) {
     printf("  test_create_tree_initial_page ... ");
-    table* t = createTree("mgmt_t3", 99);
+    table* t = createTree("mgmt_t3", pn(99));
     assert(t != NULL);
 
     node n = {0};
@@ -1091,7 +1101,7 @@ void test_create_tree_initial_page(void) {
     slotted_page p = {0};
     bool ok = readPage(n.children[0], &p, t);
     assert(ok);
-    assert(p.header.pageNum == 99);
+    assert(comparePageNums(p.header.pageNum, pn(99)) == 0);
     assert(p.header.parent  == t->root);
 
     free(p.slots);
@@ -1150,7 +1160,7 @@ static sp_record make_btree_record(entry* entries, uint32_t count) {
 /* Call findAndInsert for page numbers [first, first+count). */
 static void insert_pages(table* t, uint32_t first, uint32_t count) {
     for (uint32_t i = 0; i < count; i++)
-        findAndInsert(first + i, t);
+        findAndInsert(pn(first + i), t);
 }
 
 /* Free every entry.data still live in p, then the slot/entry arrays. */
@@ -1163,7 +1173,7 @@ static void free_page_contents(slotted_page* p) {
 
 /* Return a tree pre-loaded with pages 1..5 and one split already performed. */
 static table* create_split_tree(char* name) {
-    table* t = createTree(name, 1);
+    table* t = createTree(name, pn(1));
     assert(t != NULL);
     insert_pages(t, 2, 4);
     return t;
@@ -1171,7 +1181,7 @@ static table* create_split_tree(char* name) {
 
 /* Find page 1, assert it exists, read it into p, and return its address. */
 static address load_initial_page(table* t, slotted_page* p) {
-    address addr = findPage(1, t);
+    address addr = findPage(pn(1), t);
     assert(addr != 0);
     readPage(addr, p, t);
     return addr;
@@ -1189,9 +1199,9 @@ static void read_root_leaves(table* t, node* root, node* left, node* right) {
 /* findPage must return a non-zero address for the page created by createTree. */
 void test_btree_find_initial(void) {
     printf("  test_btree_find_initial ... ");
-    table* t = createTree("bt_fi", 1);
+    table* t = createTree("bt_fi", pn(1));
     assert(t != NULL);
-    assert(findPage(1, t) != 0);
+    assert(findPage(pn(1), t) != 0);
     deleteTree(t);
     printf("PASS\n");
 }
@@ -1199,9 +1209,9 @@ void test_btree_find_initial(void) {
 /* findPage must return 0 for a page number not present in the tree. */
 void test_btree_find_nonexistent(void) {
     printf("  test_btree_find_nonexistent ... ");
-    table* t = createTree("bt_fn", 1);
+    table* t = createTree("bt_fn", pn(1));
     assert(t != NULL);
-    assert(findPage(99, t) == 0);
+    assert(findPage(pn(99), t) == 0);
     deleteTree(t);
     printf("PASS\n");
 }
@@ -1215,17 +1225,17 @@ writePage/readPage entry-count convention (numRecords == numEntries) holds.
 */
 void test_btree_record_add(void) {
     printf("  test_btree_record_add ... ");
-    table* t = createTree("bt_ra", 1);
+    table* t = createTree("bt_ra", pn(1));
     assert(t != NULL);
 
     slotted_page p = {0};
     address addr = load_initial_page(t, &p);
 
     entry e = make_btree_entry("Alice");
-    assert(addRecord(&p, 10, make_btree_record(&e, 1)));
+    assert(SPInsert(&p, po(10), make_btree_record(&e, 1)));
     assert(p.header.numRecords == 1);
 
-    sp_record r = readRecord(&p, 10);
+    sp_record r = SPRead(&p, po(10));
     assert(r.len == 1);
     assert(strcmp(r.entries[0].data, "Alice") == 0);
 
@@ -1235,35 +1245,35 @@ void test_btree_record_add(void) {
     printf("PASS\n");
 }
 
-/* updateRecord must replace the stored entry; old data must not leak. */
+/* SPUpdate must replace the stored entry; old data must not leak. */
 void test_btree_record_update(void) {
     printf("  test_btree_record_update ... ");
-    table* t = createTree("bt_ru", 1);
+    table* t = createTree("bt_ru", pn(1));
     assert(t != NULL);
 
     slotted_page p = {0};
     address addr = load_initial_page(t, &p);
 
     entry e1 = make_btree_entry("old");
-    addRecord(&p, 5, make_btree_record(&e1, 1));
+    SPInsert(&p, po(5), make_btree_record(&e1, 1));
 
-    // updateRecord frees the old entry data internally
+    // SPUpdate frees the old entry data internally
     entry e2 = make_btree_entry("new");
-    assert(updateRecord(&p, 5, make_btree_record(&e2, 1)));
+    assert(SPUpdate(&p, po(5), make_btree_record(&e2, 1)));
 
-    sp_record r = readRecord(&p, 5);
+    sp_record r = SPRead(&p, po(5));
     assert(strcmp(r.entries[0].data, "new") == 0);
 
-    // e1.data freed by updateRecord; p.entries[0].data == e2.data
+    // e1.data freed by SPUpdate; p.entries[0].data == e2.data
     free_page_contents(&p);
     deleteTree(t);
     printf("PASS\n");
 }
 
-/* deleteRecord must remove one record while leaving others intact. */
+/* SPDelete must remove one record while leaving others intact. */
 void test_btree_record_delete(void) {
     printf("  test_btree_record_delete ... ");
-    table* t = createTree("bt_rd", 1);
+    table* t = createTree("bt_rd", pn(1));
     assert(t != NULL);
 
     slotted_page p = {0};
@@ -1271,17 +1281,17 @@ void test_btree_record_delete(void) {
 
     entry e1 = make_btree_entry("Alice");
     entry e2 = make_btree_entry("Bob");
-    addRecord(&p, 1, make_btree_record(&e1, 1));
-    addRecord(&p, 2, make_btree_record(&e2, 1));
+    SPInsert(&p, po(1), make_btree_record(&e1, 1));
+    SPInsert(&p, po(2), make_btree_record(&e2, 1));
     assert(p.header.numRecords == 2);
 
-    // deleteRecord frees e1.data internally
-    assert(deleteRecord(&p, 1));
+    // SPDelete frees e1.data internally
+    assert(SPDelete(&p, po(1)));
     assert(p.header.numRecords == 1);
-    assert(readRecord(&p, 1).entries == NULL);
-    assert(strcmp(readRecord(&p, 2).entries[0].data, "Bob") == 0);
+    assert(SPRead(&p, po(1)).entries == NULL);
+    assert(strcmp(SPRead(&p, po(2)).entries[0].data, "Bob") == 0);
 
-    // e1.data freed by deleteRecord; remaining data lives in p.entries
+    // e1.data freed by SPDelete; remaining data lives in p.entries
     free_page_contents(&p);
     deleteTree(t);
     printf("PASS\n");
@@ -1294,11 +1304,11 @@ After marking dirty objects, commit() must drain all three stacks to zero.
 */
 void test_btree_commit_drains_stacks(void) {
     printf("  test_btree_commit_drains_stacks ... ");
-    table* t = createTree("bt_cds", 1);
+    table* t = createTree("bt_cds", pn(1));
     assert(t != NULL);
 
     // findAndInsert dirtifies the root node via markNode
-    findAndInsert(2, t);
+    findAndInsert(pn(2), t);
     assert(t->nodeDirty.count > 0);
 
     commit(t);
@@ -1316,13 +1326,13 @@ numRecords.  Uses single-entry records so writePage/readPage counts match.
 */
 void test_btree_commit_persist(void) {
     printf("  test_btree_commit_persist ... ");
-    table* t = createTree("bt_cp", 1);
+    table* t = createTree("bt_cp", pn(1));
     assert(t != NULL);
 
     slotted_page p = {0};
     address addr = load_initial_page(t, &p);
     entry e = make_btree_entry("persist");
-    addRecord(&p, 7, make_btree_record(&e, 1));
+    SPInsert(&p, po(7), make_btree_record(&e, 1));
     markPage(addr, &p, t);
 
     // commit before freeing: writePage will dereference the slot/entry arrays
@@ -1332,7 +1342,7 @@ void test_btree_commit_persist(void) {
 
     table* t2 = calloc(1, sizeof(table));
     assert(loadTable("bt_cp", t2));
-    address addr2 = findPage(1, t2);
+    address addr2 = findPage(pn(1), t2);
     assert(addr2 != 0);
 
     slotted_page p2 = {0};
@@ -1350,10 +1360,10 @@ to 2 on disk, making a subsequent readPage on that address return false.
 */
 void test_btree_commit_delete_persist(void) {
     printf("  test_btree_commit_delete_persist ... ");
-    table* t = createTree("bt_cdp", 1);
+    table* t = createTree("bt_cdp", pn(1));
     assert(t != NULL);
 
-    address pageAddr = findPage(1, t);
+    address pageAddr = findPage(pn(1), t);
     assert(pageAddr != 0);
 
     markDelete(pageAddr, t);
@@ -1381,18 +1391,18 @@ findAndInsert on a new page number must add a child to the root node.
 */
 void test_btree_insert_new_page(void) {
     printf("  test_btree_insert_new_page ... ");
-    table* t = createTree("bt_inp", 1);
+    table* t = createTree("bt_inp", pn(1));
     assert(t != NULL);
 
     node root = {0};
     readNode(t->root, &root, t);
     assert(root.childCount == 1);
 
-    findAndInsert(2, t);
+    findAndInsert(pn(2), t);
 
     readNode(t->root, &root, t);
     assert(root.childCount == 2);
-    assert(root.keys[1] == 2);
+    assert(comparePageNums(root.keys[1], pn(2)) == 0);
 
     deleteTree(t);
     printf("PASS\n");
@@ -1404,15 +1414,15 @@ childCount.
 */
 void test_btree_insert_existing_page(void) {
     printf("  test_btree_insert_existing_page ... ");
-    table* t = createTree("bt_iep", 1);
+    table* t = createTree("bt_iep", pn(1));
     assert(t != NULL);
 
-    findAndInsert(2, t);
+    findAndInsert(pn(2), t);
     node root = {0};
     readNode(t->root, &root, t);
     uint32_t before = root.childCount;
 
-    findAndInsert(2, t);  // duplicate
+    findAndInsert(pn(2), t);  // duplicate
 
     readNode(t->root, &root, t);
     assert(root.childCount == before);
@@ -1448,7 +1458,7 @@ void test_btree_split_find_all(void) {
     table* t = create_split_tree("bt_sfa");
 
     for (uint32_t i = 1; i <= 5; i++)
-        assert(findPage(i, t) != 0);
+        assert(findPage(pn(i), t) != 0);
 
     deleteTree(t);
     printf("PASS\n");
@@ -1484,16 +1494,16 @@ must then return 0 while all other pages remain accessible.
 */
 void test_btree_delete_page(void) {
     printf("  test_btree_delete_page ... ");
-    table* t = createTree("bt_dp", 1);
+    table* t = createTree("bt_dp", pn(1));
     assert(t != NULL);
 
-    findAndInsert(2, t);
-    findAndInsert(3, t);
+    findAndInsert(pn(2), t);
+    findAndInsert(pn(3), t);
 
-    assert(findAndDelete(2, t));
-    assert(findPage(2, t) == 0);
-    assert(findPage(1, t) != 0);
-    assert(findPage(3, t) != 0);
+    assert(findAndDelete(pn(2), t));
+    assert(findPage(pn(2), t) == 0);
+    assert(findPage(pn(1), t) != 0);
+    assert(findPage(pn(3), t) != 0);
 
     deleteTree(t);
     printf("PASS\n");
@@ -1511,33 +1521,33 @@ void test_btree_delete_triggers_borrow(void) {
     printf("  test_btree_delete_triggers_borrow ... ");
     table* t = create_split_tree("bt_dtb");
 
-    assert(findAndDelete(1, t));
+    assert(findAndDelete(pn(1), t));
 
     // Root separator key must be updated to 3 (new max of left leaf)
     node root = {0};
     readNode(t->root, &root, t);
-    assert(root.keys[0] == 3);
+    assert(comparePageNums(root.keys[0], pn(3)) == 0);
 
     // Left leaf must contain pages 2 and 3 (page 3 was borrowed from right)
     node left = {0};
     readNode(root.children[0], &left, t);
     assert(left.childCount == 2);
-    assert(left.keys[0] == 2);
-    assert(left.keys[1] == 3);
+    assert(comparePageNums(left.keys[0], pn(2)) == 0);
+    assert(comparePageNums(left.keys[1], pn(3)) == 0);
 
     // Right leaf must now hold only pages 4 and 5
     node right = {0};
     readNode(root.children[1], &right, t);
     assert(right.childCount == 2);
-    assert(right.keys[0] == 4);
-    assert(right.keys[1] == 5);
+    assert(comparePageNums(right.keys[0], pn(4)) == 0);
+    assert(comparePageNums(right.keys[1], pn(5)) == 0);
 
     // Both deleted and surviving pages accessible by findPage
-    assert(findPage(1, t) == 0);
-    assert(findPage(2, t) != 0);
-    assert(findPage(3, t) != 0);
-    assert(findPage(4, t) != 0);
-    assert(findPage(5, t) != 0);
+    assert(findPage(pn(1), t) == 0);
+    assert(findPage(pn(2), t) != 0);
+    assert(findPage(pn(3), t) != 0);
+    assert(findPage(pn(4), t) != 0);
+    assert(findPage(pn(5), t) != 0);
 
     deleteTree(t);
     printf("PASS\n");
@@ -1554,23 +1564,23 @@ merge and the now-single-child internal root collapses.
 void test_btree_delete_triggers_merge(void) {
     printf("  test_btree_delete_triggers_merge ... ");
     table* t = create_split_tree("bt_dtm");
-    findAndDelete(1, t);       // borrow: left=[2,3] right=[4,5]
-    assert(findAndDelete(2, t));
+    findAndDelete(pn(1), t);       // borrow: left=[2,3] right=[4,5]
+    assert(findAndDelete(pn(2), t));
 
     // After merge + root collapse the root must be a leaf
     node root = {0};
     readNode(t->root, &root, t);
     assert(root.isLeaf);
     assert(root.childCount == 3);
-    assert(root.keys[0] == 3);
-    assert(root.keys[1] == 4);
-    assert(root.keys[2] == 5);
+    assert(comparePageNums(root.keys[0], pn(3)) == 0);
+    assert(comparePageNums(root.keys[1], pn(4)) == 0);
+    assert(comparePageNums(root.keys[2], pn(5)) == 0);
 
-    assert(findPage(1, t) == 0);
-    assert(findPage(2, t) == 0);
-    assert(findPage(3, t) != 0);
-    assert(findPage(4, t) != 0);
-    assert(findPage(5, t) != 0);
+    assert(findPage(pn(1), t) == 0);
+    assert(findPage(pn(2), t) == 0);
+    assert(findPage(pn(3), t) != 0);
+    assert(findPage(pn(4), t) != 0);
+    assert(findPage(pn(5), t) != 0);
 
     deleteTree(t);
     printf("PASS\n");
@@ -1590,7 +1600,7 @@ void test_btree_full_roundtrip(void) {
     slotted_page p = {0};
     address addr = load_initial_page(t, &p);
     entry e = make_btree_entry("hello");
-    addRecord(&p, 42, make_btree_record(&e, 1));
+    SPInsert(&p, po(42), make_btree_record(&e, 1));
     markPage(addr, &p, t);
 
     commit(t);
@@ -1601,9 +1611,9 @@ void test_btree_full_roundtrip(void) {
     assert(loadTable("bt_fr", t2));
 
     for (uint32_t i = 1; i <= 5; i++)
-        assert(findPage(i, t2) != 0);
+        assert(findPage(pn(i), t2) != 0);
 
-    address addr2 = findPage(1, t2);
+    address addr2 = findPage(pn(1), t2);
     slotted_page p2 = {0};
     assert(readPage(addr2, &p2, t2));
     assert(p2.header.numRecords == 1);
@@ -1618,7 +1628,7 @@ void test_btree_full_roundtrip(void) {
 /* deleteTree must remove the backing file from disk. */
 void test_btree_delete_tree(void) {
     printf("  test_btree_delete_tree ... ");
-    table* t = createTree("bt_dt", 1);
+    table* t = createTree("bt_dt", pn(1));
     assert(t != NULL);
     assert(tbl_file_exists("bt_dt"));
     deleteTree(t);
@@ -1629,7 +1639,7 @@ void test_btree_delete_tree(void) {
 /* After deleteTree, loadTable must fail for the same name. */
 void test_btree_delete_tree_not_reloadable(void) {
     printf("  test_btree_delete_tree_not_reloadable ... ");
-    table* t = createTree("bt_dtnr", 1);
+    table* t = createTree("bt_dtnr", pn(1));
     assert(t != NULL);
     char* name = strdup(t->name);
     deleteTree(t);

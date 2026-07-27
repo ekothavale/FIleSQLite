@@ -16,36 +16,52 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef BPLUS_H
-#define BPLUS_H
+#ifndef ORDERING_H
+#define ORDERING_H
 
 #include "../common.h"
-#include "ordering.h"
-#include "page.h"
-#include "node.h"
-#include "tableIO.h"
+#include "value.h"
 
-// UNTESTED
-#define MAX_KEY(n) \
-	((n)->keys[n->childCount-1])
+#define OFFSET_BITS 6
+#define TEXT_KEY_LENGTH_MINIMUM 16
+#define TEXT_KEY_MAX_LEN 24
+#define TEXT_PAGE_NUM_LEN (TEXT_KEY_MAX_LEN - OFFSET_BITS)
 
-// UNTESTED
-#define MIN_KEY(n) \
-	((n)->keys[0])
+// On-disk serialization sizes (fixed regardless of numeric vs string key type)
+// page_num:    1 byte type + TEXT_PAGE_NUM_LEN bytes data  = 19 bytes
+// page_offset: 1 byte type + 8 bytes data (max of u64/str) =  9 bytes
+#define PAGE_NUM_DISK_SIZE    (1 + TEXT_PAGE_NUM_LEN)
+#define PAGE_OFFSET_DISK_SIZE (1 + 8)
 
-#define HALF_M (M_GLOBAL / 2)
+typedef enum {
+	ORDERING_ULONG,
+	ORDERING_STRING,
+	ORDERING_DOUBLE
+} ordering_type;
 
-table* createTree(char* tablename, page_num firstKey);
-void deleteTree(table* t);
+typedef struct {
+	ordering_type type;
+	union {
+		uint64_t u64;
+		char string[TEXT_PAGE_NUM_LEN + 1];
+	} as;
+} page_num;
 
+typedef struct {
+	ordering_type type;
+	union {
+		uint64_t u64;
+		char string[OFFSET_BITS + 1];
+	} as;
+} page_offset;
 
-address findPage(page_num pageNum, table* t);
-address findAndInsert(page_num pageNum, table* t);
-bool findAndDelete(page_num pageNum, table* tree);
+typedef struct {
+	page_num    pageNum;
+	page_offset offset;
+} ordering_key;
 
-bool insertRecord(sp_record* record, ordering_key key, table* t);
-sp_record readRecord(ordering_key key, table* t);
-bool updateRecord(sp_record* record, ordering_key key, table* t);
-bool deleteRecord(ordering_key key, table* t);
+ordering_key pkToOk(value pk);
+int comparePageNums(page_num a, page_num b);
+int compareOffsets(page_offset a, page_offset b);
 
-#endif // BPLUS_H
+#endif // ORDERING_H

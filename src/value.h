@@ -34,7 +34,6 @@ typedef enum {
 REPRESENTATION OF SQL DATATYPES
 real sql types have size parameters that customize the maximum sizes of each type
 this has not yet been implemented
-
 */
 typedef enum {
 	SQL_NULL, // null
