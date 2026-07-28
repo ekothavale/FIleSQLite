@@ -75,6 +75,20 @@ static bool tableAlreadyExists(const char* tablename) {
 	return exists;
 }
 
+// could potentially be abstracted into a general print value type
+/*
+prints a primary key based on its type. prints illegal pk types as hex
+*/
+static void printPK(value pk) {
+	switch (pk.type) {
+		case VAL_FLOAT: printf("%lf", pk.as.floating); break;
+		case VAL_INT: printf("%lli", pk.as.integer); break;
+		case VAL_TEXT: printf("%s", pk.as.text); break;
+		case VAL_U32: printf("%u", pk.as.u32); break;
+		default: printf("%llx", pk.as.integer); break;
+	}
+}
+
 /*
 determines if two values are equal
 */
@@ -543,7 +557,11 @@ static interpret_result run() {
 				}
 				ordering_key ik = pkToOk(pk);
 				sp_record r = { .entries = entries, .len = count, .size = totalSize };
-				insertRecord(&r, ik, t);
+				if (readRecord(ik ,t).len != 0) {
+					printf("Entry with primary key: ");
+					printPK(pk);
+					printf(" already exists\n");
+				} else insertRecord(&r, ik, t);
 				free(entries);  // page owns the data pointers; release only the metadata array
 				break;
 			}

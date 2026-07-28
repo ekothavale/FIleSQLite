@@ -1,0 +1,5 @@
+/.vscode
+/tables
+/tests
+Makefile
+.gitignore
