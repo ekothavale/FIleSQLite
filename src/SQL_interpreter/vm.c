@@ -272,7 +272,6 @@ static bool scannerKeySearch(scanner* s, ordering_key key) {
 	if (!addr) return false;
 	s->pageAddr = addr;
 	readPage(addr, &s->page, s->tbl);
-	// modify searchRecord so that it returns the records slot index as an int if found or -1 if not found
 	int slotIdx = SPSearch(&s->page, key.offset);
 	if (slotIdx < 0) return false;
 	s->slotIdx = slotIdx;
