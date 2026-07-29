@@ -130,6 +130,7 @@ return NULL if value is not found
 can use found->hash as a check because FNV1-A never returns 0 naturally
 */
 schema* readHT(uint32_t hash, hashtable* table) {
+	if (table->capacity == 0) return NULL;
 	schema* found = findEntry(hash, table->entries, table->capacity);
 	return found->hash ? found : NULL;
 }

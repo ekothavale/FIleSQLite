@@ -824,6 +824,14 @@ bool insertRecord(sp_record* record, ordering_key key, table* t) {
 	markPage(addr, &t->page, t);
 	return out;
 }
+
+bool searchRecord(ordering_key key, table* t) {
+	address addr = findPage(key.pageNum, t);
+	if (!addr) return false;
+	loadPage(addr, t);
+	return SPSearch(&t->page, key.offset);
+}
+
 sp_record readRecord(ordering_key key, table* t) {
 	address addr = findPage(key.pageNum, t);
 	if (!addr) return (sp_record){0};

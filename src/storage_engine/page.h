@@ -99,6 +99,7 @@ void freeSPage(slotted_page* p);
 bool SPInsert(slotted_page* p, page_offset offset, sp_record r);
 bool SPDelete(slotted_page* p, page_offset offset);
 bool SPUpdate(slotted_page* p, page_offset offset, sp_record r);
+int SPSearch(slotted_page* p, page_offset);
 sp_record SPRead(slotted_page* p, page_offset offset);
 
 #endif

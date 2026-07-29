@@ -68,15 +68,16 @@ typedef enum opcode {
     // scanner ops
     OP_OPEN_SCAN,
     OP_CLOSE_SCAN,
-    OP_NEXT,
+    OP_NEXT,  // technically also a jump
+    OP_KEY_SEARCH, // technically also a jump
     OP_REWIND,
     OP_COLUMN,
-    // database management language
+    // data manipulation language
     OP_EMIT_ROW,
     OP_INSERT_ROW,
     OP_UPDATE_COL,
     OP_DELETE_ROW,
-    // database definition language
+    // data definition language
     OP_CREATE_TABLE,
     OP_DROP_TABLE,
     // result set ops

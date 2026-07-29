@@ -44,6 +44,7 @@ typedef struct scanner {
 	address pageAddr;    // disk address of page
 	uint32_t slotIdx;    // which slot (row) within page is current
 
+	// CHANGE TO UINT8_T for consistency
 	int pkIdx;			 // the column containing the primary key in the input query (-1 = no pk)
 } scanner;
 

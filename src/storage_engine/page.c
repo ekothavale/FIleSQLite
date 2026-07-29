@@ -251,3 +251,15 @@ sp_record SPRead(slotted_page* p, page_offset offset) {
 	sp_record out = {p->entries + s.ptr, s.len};
 	return out;
 }
+
+/*
+@return slotIndex if record in page
+@return -1 if record not in page
+*/
+int SPSearch(slotted_page* p, page_offset offset) {
+	uint32_t index = searchSlotArray(p, offset);
+	if (index >= p->header.numRecords) return -1;
+	sp_slot s = p->slots[index];
+	if (compareOffsets(s.ID, offset) != 0) return -1;
+	return index;
+}

@@ -265,6 +265,21 @@ static bool advanceScanner(scanner* s) {
 }
 
 /*
+searches for and loads a record into the given scanner by primary key lookup
+*/
+static bool scannerKeySearch(scanner* s, ordering_key key) {
+	address addr = findPage(key.pageNum, s->tbl);
+	if (!addr) return false;
+	s->pageAddr = addr;
+	readPage(addr, &s->page, s->tbl);
+	// modify searchRecord so that it returns the records slot index as an int if found or -1 if not found
+	int slotIdx = SPSearch(&s->page, key.offset);
+	if (slotIdx < 0) return false;
+	s->slotIdx = slotIdx;
+	return true;
+}
+
+/*
 Converts a VM value to a heap-allocated storage engine entry.
 Caller must eventually free e.data (or transfer ownership to a slotted_page).
 VAL_FLOAT is stored as raw IEEE 754 bytes under T_STRING — no T_FLOAT type exists yet.
@@ -468,18 +483,30 @@ static interpret_result run() {
 				break;
 			}
 			case OP_CLOSE_SCAN: {
-				closeScanner(&vm.scanners[0]);
+				closeScanner(&vm.scanners[vm.numScanners-1]);
 				break;
 			}
+			// advance scanner to next record. if at the end of the tree, jump to target
 			case OP_NEXT: {
 				uint16_t offset = READ_TWO_BYTES();
-				if (!advanceScanner(&vm.scanners[0])) {
+				if (!advanceScanner(&vm.scanners[vm.numScanners-1])) {
+					vm.ip += (int16_t)offset;
+				}
+				break;
+			}
+			// search for a record by primary key. if found, load it into scanner. if not found, jump to target
+			case OP_KEY_SEARCH: {
+				value pk = pop();
+				ordering_key ik = pkToOk(pk);
+				uint16_t offset = READ_TWO_BYTES();
+				scanner* s = &vm.scanners[vm.numScanners-1];
+				if (!scannerKeySearch(s, ik)) {
 					vm.ip += (int16_t)offset;
 				}
 				break;
 			}
 			case OP_REWIND: {
-				scanner* s = &vm.scanners[0];
+				scanner* s = &vm.scanners[vm.numScanners-1];
 				s->started  = false;
 				s->atEnd    = false;
 				s->childIdx = 0;
@@ -488,7 +515,7 @@ static interpret_result run() {
 			}
 			case OP_COLUMN: {
 				uint8_t col_idx = READ_BYTE();
-				scanner* s = &vm.scanners[0];
+				scanner* s = &vm.scanners[vm.numScanners-1];
 				sp_slot slot = s->page.slots[s->slotIdx];
 				entry e = s->page.entries[slot.ptr + col_idx];
 				value v;
@@ -567,7 +594,7 @@ static interpret_result run() {
 			}
 			case OP_UPDATE_COL: {
 				uint8_t col_idx = READ_BYTE();
-				scanner* s = &vm.scanners[0];
+				scanner* s = &vm.scanners[vm.numScanners-1];
 				table* t = s->tbl;
 				sp_slot slot = s->page.slots[s->slotIdx];
 				entry* target = &s->page.entries[slot.ptr + col_idx];
@@ -577,7 +604,7 @@ static interpret_result run() {
 				break;
 			}
 			case OP_DELETE_ROW: {
-				scanner* s = &vm.scanners[0];
+				scanner* s = &vm.scanners[vm.numScanners-1];
 				table* t = s->tbl;
 				ordering_key ik = { .pageNum = s->page.header.pageNum, .offset = s->page.slots[s->slotIdx].ID };
 				deleteRecord(ik, t);

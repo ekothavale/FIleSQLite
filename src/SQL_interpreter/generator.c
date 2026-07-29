@@ -23,10 +23,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 #define MAX_IDENT_LEN 256
 
+static void munchExpr(ast_node* node, chunk* c, hashtable* ht, schema* s);
+
 static uint32_t getConstraint(uint8_t typeCode) {
 	return (typeCode & 0b11100000) >> 5;
 }
 
+/*
+finds the index of the column with the primary key restriction in a table
+returns 255 if there is no primary key (maximum 250 columns per table)
+*/
 static uint8_t getPkIdx(schema* s) {
 	uint8_t pkIdx = 255;
 	for (int i = 0; i < s->count; i++) {
@@ -63,6 +69,42 @@ static int lookupColIdx(const char* colname, schema* s) {
         if (strcmp(s->colNames[i], colname) == 0) return i;
     }
     return -1;
+}
+
+/*
+checks a where AST to determine if the where condition references the primary key
+if so, the vm can search for nodes by primary key instead of doing a linear search
+*/
+static bool checkWhereForPK(ast_node* where, schema* s, uint8_t pkIdx, chunk* c, hashtable* ht) {
+    // unwrap grammar layers: WHERE_CLAUSE → EXPR → OR → AND → NOT → COMPARISON
+    ast_node* n = where->children[0]; // EXPR
+	// unwrap the precedence layers to get a primary
+    if (n->type == TYPE_OR_EXPR)  n = n->children[0];
+    if (n->type == TYPE_AND_EXPR) n = n->children[0];
+    if (n->type == TYPE_NOT_EXPR) n = n->children[0];
+    if (n->type != TYPE_COMPARISON || n->tok.type != TOKEN_EQUAL) return false;
+
+    ast_node* lhs = n->children[0];
+    ast_node* rhs = n->children[1];
+    // get identifier on left and literal on right
+    if (rhs->type == TYPE_PRIMARY && rhs->tok.type == TOKEN_IDENTIFIER) {
+        ast_node* tmp = lhs; lhs = rhs; rhs = tmp;
+    }
+    if (lhs->type != TYPE_PRIMARY || lhs->tok.type != TOKEN_IDENTIFIER) return false;
+    if (rhs->type != TYPE_PRIMARY) return false;
+
+	// read identifier into buffer
+    char colname[MAX_IDENT_LEN];
+    tokenToStr(lhs->tok, colname);
+    if (pkIdx >= s->count) return false;
+    // get pk column name from schema and compare
+    // (depends on how schema stores column names — adjust accordingly)
+    if (strcmp(colname, s->colNames[pkIdx]) != 0) return false;
+
+	// rhs must be a literal, not another column reference
+	if (rhs->tok.type == TOKEN_IDENTIFIER) return false;
+	munchExpr(rhs, c, ht, s);
+    return true;
 }
 
 /*
@@ -381,43 +423,63 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 		case TYPE_SELECT_STMT: {
 			/*
 			Bytecode layout:
-			  CONSTANT <tname>       push table name string
-			  OPEN_SCAN              open scanner on the table
-			  REWIND                 reset scanner to start
+			  CONSTANT <tname>         push table name string
+			  OPEN_SCAN <pkIdx>        open scanner on the table
+			  REWIND                   reset scanner to start
+			(if scanning via pk)		   
+			  [WHERE expr] 			   evaluate filter expression
+			  KEY_SEARCH <exit_offset> search for record directly by pk
+			  [OP_COLUMN ...]		   push each selected column (or matchExpr for expressions)
+			  EMIT_ROW <col_count> 	   emit the result row
+			(else)
 			[loop_top:]
-			  NEXT <exit_offset>     advance; if exhausted jump forward to exit
-			  [WHERE expr]           evaluate filter condition (if present)
-			  [JUMP_FALSE loop_top]  skip row if filter is false (backward)
-			  [OP_COLUMN ...]        push each selected column (or matchExpr for expressions)
-			  EMIT_ROW <col_count>   emit the result row
-			  JUMP <loop_top>        loop back (backward)
+			  NEXT <exit_offset>       advance; if exhausted jump forward to exit
+			  [WHERE expr]             evaluate filter condition (if present)
+			  [JUMP_FALSE loop_top]    skip row if filter is false (backward)
+			  [OP_COLUMN ...]          push each selected column (or matchExpr for expressions)
+			  EMIT_ROW <col_count>     emit the result row
+			  JUMP <loop_top>          loop back (backward)
 			[exit:]
 			  CLOSE_SCAN
 			*/
+			// setup
 			char tname[MAX_IDENT_LEN];
 			tokenToStr(node->children[1]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
+			// get primary key index
+			uint8_t pkIdx = getPkIdx(s);
+
 			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
-			writeChunk(c, 255, 0); // primary key support for select not yet implemented
+			writeChunk(c, pkIdx, 0); // give scanner the primary key column index
 			writeChunk(c, OP_REWIND, 0);
 
+			// setup variables
+			int nextPatch;
 			int loopTop = c->count;
-			int nextPatch = emitJump(c, OP_NEXT);
+			bool pkScan = node->children[2] && checkWhereForPK(node->children[2], s, pkIdx, c, ht);
 
-			// WHERE: emit condition; jump back to loopTop (next row) if false
-			if (node->children[2]) {
-				munchExpr(node->children[2]->children[0], c, ht, s);
-				emitBackJump(c, OP_JUMP_FALSE, loopTop);
+			// write bytecode for either a pk search or a linear scan
+			if (pkScan) {
+				// don't need to evaluate the where in this case since checkWhereForPK() already evaluates it
+				// munchExpr(node->children[2]->children[0], c, ht, s);
+				nextPatch = emitJump(c, OP_KEY_SEARCH);
+			} else {
+				nextPatch = emitJump(c, OP_NEXT);
+
+				// WHERE: emit condition; jump back to loopTop (next row) if false
+				if (node->children[2]) {
+					munchExpr(node->children[2]->children[0], c, ht, s);
+					emitBackJump(c, OP_JUMP_FALSE, loopTop);
+				}
 			}
 
 			// Emit selected columns
 			int colCount = 0;
 			ast_node* listIt = node->children[0];
 			ast_node* firstItem = listIt ? listIt->children[0] : NULL;
-			if (firstItem && firstItem->flag) {
-				// SELECT *: emit OP_COLUMN for every schema column in order
+			if (firstItem && firstItem->flag) { // SELECT *: emit OP_COLUMN for every schema column in order
 				if (s) {
 					for (int i = 0; i < s->count; i++) {
 						writeChunk(c, OP_COLUMN, 0);
@@ -425,7 +487,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 						colCount++;
 					}
 				}
-			} else {
+			} else { // SELECT column0 column1 ...
 				// Named items: resolve simple column identifiers to OP_COLUMN;
 				// fall back to munchExpr for computed expressions
 				while (listIt) {
@@ -450,8 +512,11 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 
 			writeChunk(c, OP_EMIT_ROW, 0);
 			writeChunk(c, (uint8_t)colCount, 0);
-			emitBackJump(c, OP_JUMP, loopTop);
 
+			// loop if doing a linear scan
+			if (!pkScan) emitBackJump(c, OP_JUMP, loopTop);
+
+			// cleanup
 			patchJump(c, nextPatch);
 			writeChunk(c, OP_CLOSE_SCAN, 0);
 			writeStaticConst(c, UINT_VAL(s->hash));

@@ -44,8 +44,9 @@ address findAndInsert(page_num pageNum, table* t);
 bool findAndDelete(page_num pageNum, table* tree);
 
 bool insertRecord(sp_record* record, ordering_key key, table* t);
-sp_record readRecord(ordering_key key, table* t);
 bool updateRecord(sp_record* record, ordering_key key, table* t);
 bool deleteRecord(ordering_key key, table* t);
+bool searchRecord(ordering_key key, table* t);
+sp_record readRecord(ordering_key key, table* t);
 
 #endif // BPLUS_H
