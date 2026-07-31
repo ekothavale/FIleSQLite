@@ -565,17 +565,24 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 		case TYPE_UPDATE_STMT: {
 			/*
 			Bytecode layout:
-			  CONSTANT <tname>       push table name string
-			  OPEN_SCAN              open scanner
+			  CONSTANT <tname>         push table name string
+			  OPEN_SCAN <pkIdx>        open scanner
 			  REWIND
-			[loop_top:]
-			  NEXT <exit_offset>     advance; jump to exit if done
-			  [WHERE expr]           evaluate filter (if present)
-			  [JUMP_FALSE loop_top]  skip row if filter is false
+			(if scanning via pk)
+			  [WHERE expr]             evaluate pk literal
+			  KEY_SEARCH <exit_offset> seek directly to row
 			  [for each assignment:]
-			    [new_value expr]     evaluate right-hand side
-			    UPDATE_COL <idx>     replace column at idx in current slot
-			  JUMP <loop_top>        loop back
+			    [new_value expr]       evaluate right-hand side
+			    UPDATE_COL <idx>       replace column at idx in current slot
+			(else)
+			[loop_top:]
+			  NEXT <exit_offset>       advance; jump to exit if done
+			  [WHERE expr]             evaluate filter (if present)
+			  [JUMP_FALSE loop_top]    skip row if filter is false
+			  [for each assignment:]
+			    [new_value expr]       evaluate right-hand side
+			    UPDATE_COL <idx>       replace column at idx in current slot
+			  JUMP <loop_top>          loop back
 			[exit:]
 			  CLOSE_SCAN
 			*/
@@ -583,17 +590,25 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[0]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
+			uint8_t pkIdx = getPkIdx(s);
+
 			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
-			writeChunk(c, 255, 0); // primary key support for update not yet supported
+			writeChunk(c, pkIdx, 0);
 			writeChunk(c, OP_REWIND, 0);
 
+			int nextPatch;
 			int loopTop = c->count;
-			int nextPatch = emitJump(c, OP_NEXT);
+			bool pkScan = node->children[2] && checkWhereForPK(node->children[2], s, pkIdx, c, ht);
 
-			if (node->children[2]) {
-				munchExpr(node->children[2]->children[0], c, ht, s);
-				emitBackJump(c, OP_JUMP_FALSE, loopTop);
+			if (pkScan) {
+				nextPatch = emitJump(c, OP_KEY_SEARCH);
+			} else {
+				nextPatch = emitJump(c, OP_NEXT);
+				if (node->children[2]) {
+					munchExpr(node->children[2]->children[0], c, ht, s);
+					emitBackJump(c, OP_JUMP_FALSE, loopTop);
+				}
 			}
 
 			ast_node* asgmtIt = node->children[1];
@@ -608,7 +623,7 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 				asgmtIt = asgmtIt->children[1];
 			}
 
-			emitBackJump(c, OP_JUMP, loopTop);
+			if (!pkScan) emitBackJump(c, OP_JUMP, loopTop);
 			patchJump(c, nextPatch);
 			writeChunk(c, OP_CLOSE_SCAN, 0);
 			break;
@@ -617,15 +632,20 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 		case TYPE_DELETE_STMT: {
 			/*
 			Bytecode layout:
-			  CONSTANT <tname>       push table name string
-			  OPEN_SCAN <pkIdx>      open scanner
+			  CONSTANT <tname>         push table name string
+			  OPEN_SCAN <pkIdx>        open scanner
 			  REWIND
+			(if scanning via pk)
+			  [WHERE expr]             evaluate pk literal
+			  KEY_SEARCH <exit_offset> seek directly to row
+			  DELETE_ROW               delete current slot
+			(else)
 			[loop_top:]
-			  NEXT <exit_offset>     advance; jump to exit if done
-			  [WHERE expr]           evaluate filter (if present)
-			  [JUMP_FALSE loop_top]  skip row if filter is false
-			  DELETE_ROW             delete current slot (vm steps slotIdx back)
-			  JUMP <loop_top>        loop back
+			  NEXT <exit_offset>       advance; jump to exit if done
+			  [WHERE expr]             evaluate filter (if present)
+			  [JUMP_FALSE loop_top]    skip row if filter is false
+			  DELETE_ROW               delete current slot (vm steps slotIdx back)
+			  JUMP <loop_top>          loop back
 			[exit:]
 			  CLOSE_SCAN
 			*/
@@ -633,21 +653,29 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			tokenToStr(node->children[0]->tok, tname);
 			schema* s = lookupSchema(tname, ht);
 
+			uint8_t pkIdx = getPkIdx(s);
+
 			writeStaticConst(c, UINT_VAL(s->hash));
 			writeChunk(c, OP_OPEN_SCAN, 0);
-			writeChunk(c, 255, 0); // delete support for primary keys not yet implemented
+			writeChunk(c, pkIdx, 0);
 			writeChunk(c, OP_REWIND, 0);
 
+			int nextPatch;
 			int loopTop = c->count;
-			int nextPatch = emitJump(c, OP_NEXT);
+			bool pkScan = node->children[1] && checkWhereForPK(node->children[1], s, pkIdx, c, ht);
 
-			if (node->children[1]) {
-				munchExpr(node->children[1]->children[0], c, ht, s);
-				emitBackJump(c, OP_JUMP_FALSE, loopTop);
+			if (pkScan) {
+				nextPatch = emitJump(c, OP_KEY_SEARCH);
+			} else {
+				nextPatch = emitJump(c, OP_NEXT);
+				if (node->children[1]) {
+					munchExpr(node->children[1]->children[0], c, ht, s);
+					emitBackJump(c, OP_JUMP_FALSE, loopTop);
+				}
 			}
 
 			writeChunk(c, OP_DELETE_ROW, 0);
-			emitBackJump(c, OP_JUMP, loopTop);
+			if (!pkScan) emitBackJump(c, OP_JUMP, loopTop);
 
 			patchJump(c, nextPatch);
 			writeChunk(c, OP_CLOSE_SCAN, 0);
