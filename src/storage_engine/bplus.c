@@ -861,6 +861,11 @@ bool deleteRecord(ordering_key key, table* t) {
 	if (!out) return false;
 	out = SPDelete(&t->page, key.offset);
 	if (!out) return false;
-	markDelete(addr, t);
+	if (t->page.header.numRecords == 0) {
+		loadNode(t->page.header.parent, t);
+		deletePage(&t->node, t->page.header.parent, key.pageNum, t);
+	} else {
+		markPage(addr, &t->page, t);
+	}
 	return out;
 }

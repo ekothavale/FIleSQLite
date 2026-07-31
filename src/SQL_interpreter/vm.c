@@ -607,8 +607,24 @@ static interpret_result run() {
 				table* t = s->tbl;
 				ordering_key ik = { .pageNum = s->page.header.pageNum, .offset = s->page.slots[s->slotIdx].ID };
 				deleteRecord(ik, t);
-				// step back so the next OP_NEXT's increment lands on the record that shifted into this slot
-				s->slotIdx = (s->slotIdx > 0) ? s->slotIdx - 1 : (uint32_t)(-1);
+				// Sync scanner page with the updated state from deleteRecord.
+				// markPage deep-copies t->page into the dirty stack, so we can safely
+				// transfer t->page ownership here without affecting the pending write.
+				freeSPage(&s->page);
+				s->page = t->page;
+				t->page = (slotted_page){0};
+				if (s->page.header.numRecords == 0) {
+					// Page was emptied and removed from the B+ tree. Refresh the
+					// scanner's leaf node (deletePage updated t->node) and back up
+					// childIdx so advanceScanner's childIdx++ lands on the correct
+					// slot after the deletion shifted remaining children left.
+					s->leafNode = t->node;
+					s->childIdx = (s->childIdx > 0) ? s->childIdx - 1 : (uint32_t)(-1);
+				} else {
+					// Page still has records. Step back so advanceScanner's slotIdx++
+					// lands on the record that shifted into the deleted slot.
+					s->slotIdx = (s->slotIdx > 0) ? s->slotIdx - 1 : (uint32_t)(-1);
+				}
 				break;
 			}
 			case OP_CREATE_TABLE: {
