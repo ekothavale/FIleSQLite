@@ -402,9 +402,9 @@ static void addPage(node* n, address nodeAddr, slotted_page* p, address pageAddr
 		if (comparePageNums(p->header.pageNum, n->maxKey) > 0) {
 			insertPageIntoChildren(new, newNodeAddr, p, pageAddr, t);
 			// Propagate the new max up to the root so findPage stays accurate
-			if (comparePageNums(p->header.pageNum, t->node.maxKey) > 0) {
-				node root;
-				readNode(t->root, &root, t);
+			node root;
+			readNode(t->root, &root, t);
+			if (comparePageNums(p->header.pageNum, root.maxKey) > 0) {
 				root.maxKey = p->header.pageNum;
 				markNode(t->root, &root, t);
 			}
@@ -700,31 +700,28 @@ static bool deletePage(node* n, address nAddr, page_num pageNum, table* t)  {
 // finds a page in a tree by page number and returns its address
 // returns null if page is not in tree
 address findPage(page_num pageNum, table* t) {
-	loadNode(t->root, t);
-    if (t->node.childCount == 0) {
+	node cur;
+	readNode(t->root, &cur, t);
+    if (cur.childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
-        return 0; // input was an invalid tree
+        return 0;
     }
-    // Compare pageNum against keys in node
-    while (!t->node.isLeaf) {
+    while (!cur.isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node.childCount - 1; i++) {
-            // Searching for the correct key position
-            if (comparePageNums(pageNum, t->node.keys[i]) <= 0) {
-                loadNode(t->node.children[i], t);
+        for (int i = 0; i < cur.childCount - 1; i++) {
+            if (comparePageNums(pageNum, cur.keys[i]) <= 0) {
+                readNode(cur.children[i], &cur, t);
                 found = 1;
                 break;
             }
         }
-        // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node.children[t->node.childCount - 1], t);
+            readNode(cur.children[cur.childCount - 1], &cur, t);
         }
     }
-    // We have found the correct leaf
-    for (int i = 0; i < t->node.childCount; i++) {
-        if (comparePageNums(t->node.keys[i], pageNum) == 0) {
-            return t->node.children[i];
+    for (int i = 0; i < cur.childCount; i++) {
+        if (comparePageNums(cur.keys[i], pageNum) == 0) {
+            return cur.children[i];
         }
     }
 	return 0;
@@ -735,36 +732,36 @@ finds a page in a tree by page number and returns its address
 if the page does not exist, creates a page in the right spot and returns it
 */
 address findAndInsert(page_num pageNum, table* t) {
-	loadNode(t->root, t);
-    if (t->node.childCount == 0) {
+	node cur;
+	address nAddr = t->root;
+	readNode(nAddr, &cur, t);
+    if (cur.childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
-        return 0; // input was an invalid tree
+        return 0;
     }
-    // Compare pageNum against keys in node
-    while (!t->node.isLeaf) {
+    while (!cur.isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node.childCount - 1; i++) {
-            // Searching for the correct key position
-            if (comparePageNums(pageNum, t->node.keys[i]) <= 0) {
-                loadNode(t->node.children[i], t);
+        for (int i = 0; i < cur.childCount - 1; i++) {
+            if (comparePageNums(pageNum, cur.keys[i]) <= 0) {
+                nAddr = cur.children[i];
+                readNode(nAddr, &cur, t);
                 found = 1;
                 break;
             }
         }
-        // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node.children[t->node.childCount - 1], t);
+            nAddr = cur.children[cur.childCount - 1];
+            readNode(nAddr, &cur, t);
         }
     }
-    // We have found the correct leaf
-    for (int i = 0; i < t->node.childCount; i++) {
-        page_num key = t->node.keys[i];
+    for (int i = 0; i < cur.childCount; i++) {
+        page_num key = cur.keys[i];
         if (comparePageNums(key, pageNum) == 0) {
-            return t->node.children[i];
+            return cur.children[i];
         } else if (comparePageNums(key, pageNum) > 0) {
 			slotted_page* p = makeSPage(pageNum, PAGE_NUM_SLOTS, PAGE_NUM_ENTRIES, PAGE_ARR_CAP);
 			address pageAddr = allocPage(t);
-			addPage(&t->node, t->cursor, p, pageAddr, t);
+			addPage(&cur, nAddr, p, pageAddr, t);
 			markPage(pageAddr, p, t);
 			freeSPage(p); free(p);
 			return pageAddr;
@@ -772,7 +769,7 @@ address findAndInsert(page_num pageNum, table* t) {
     }
 	slotted_page* p = makeSPage(pageNum, PAGE_NUM_SLOTS, PAGE_NUM_ENTRIES, PAGE_ARR_CAP);
 	address pageAddr = allocPage(t);
-    addPage(&t->node, t->cursor, p, pageAddr, t);
+    addPage(&cur, nAddr, p, pageAddr, t);
 	markPage(pageAddr, p, t);
 	freeSPage(p); free(p);
 	return pageAddr;
@@ -781,35 +778,35 @@ address findAndInsert(page_num pageNum, table* t) {
 /*
 Searches for a page by number in the tree and deletes it
 @return true - page is found and deleted
-@return false - page deletiosn was unsuccessful
+@return false - page deletion was unsuccessful
 */
 bool findAndDelete(page_num pageNum, table* t) {
-	loadNode(t->root, t);
-    if (t->node.childCount == 0) {
+	node cur;
+	address nAddr = t->root;
+	readNode(nAddr, &cur, t);
+    if (cur.childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
-        return false; // input was an invalid tree
+        return false;
     }
-    // Compare pageNum against keys in node
-    while (!t->node.isLeaf) {
+    while (!cur.isLeaf) {
         int found = 0;
-        for (int i = 0; i < t->node.childCount - 1; i++) {
-            // Searching for the correct key position
-            if (comparePageNums(pageNum, t->node.keys[i]) <= 0) {
-                loadNode(t->node.children[i], t);
+        for (int i = 0; i < cur.childCount - 1; i++) {
+            if (comparePageNums(pageNum, cur.keys[i]) <= 0) {
+                nAddr = cur.children[i];
+                readNode(nAddr, &cur, t);
                 found = 1;
                 break;
             }
         }
-        // If key wasn't less than any indices, the last child is the correct path
         if (!found) {
-            loadNode(t->node.children[t->node.childCount - 1], t);
+            nAddr = cur.children[cur.childCount - 1];
+            readNode(nAddr, &cur, t);
         }
     }
-    // We have found the correct leaf
-    for (int i = 0; i < t->node.childCount; i++) {
-        page_num key = t->node.keys[i];
+    for (int i = 0; i < cur.childCount; i++) {
+        page_num key = cur.keys[i];
         if (comparePageNums(key, pageNum) == 0) {
-            return deletePage(&t->node, t->cursor, pageNum, t);
+            return deletePage(&cur, nAddr, pageNum, t);
 		}
     }
 	return false;
@@ -817,55 +814,65 @@ bool findAndDelete(page_num pageNum, table* t) {
 
 bool insertRecord(sp_record* record, ordering_key key, table* t) {
 	address addr = findAndInsert(key.pageNum, t);
-	bool out = loadPage(addr, t);
-	if (!out) return false;
-	out = SPInsert(&t->page, key.offset, *record);
-	if (!out) return false;
-	markPage(addr, &t->page, t);
+	slotted_page p = {0};
+	if (!readPage(addr, &p, t)) return false;
+	bool out = SPInsert(&p, key.offset, *record);
+	if (out) markPage(addr, &p, t);
+	freeSPage(&p);
 	return out;
 }
 
 bool searchRecord(ordering_key key, table* t) {
 	address addr = findPage(key.pageNum, t);
 	if (!addr) return false;
-	loadPage(addr, t);
-	return SPSearch(&t->page, key.offset);
+	slotted_page p = {0};
+	readPage(addr, &p, t);
+	int idx = SPSearch(&p, key.offset);
+	freeSPage(&p);
+	return idx >= 0;
 }
 
-sp_record readRecord(ordering_key key, table* t) {
+/*
+Reads a record by key. The caller provides a page buffer that backs the returned sp_record;
+the caller must call freeSPage(page) when done with the record data.
+Returns {0} if the record does not exist (page is left uninitialized in that case).
+*/
+sp_record readRecord(ordering_key key, table* t, slotted_page* page) {
 	address addr = findPage(key.pageNum, t);
 	if (!addr) return (sp_record){0};
-	loadPage(addr, t);
-	sp_record out = SPRead(&t->page, key.offset);
-	return out;
+	readPage(addr, page, t);
+	return SPRead(page, key.offset);
 }
+
 bool updateRecord(sp_record* record, ordering_key key, table* t) {
 	address addr = findAndInsert(key.pageNum, t);
-	bool out = loadPage(addr, t);
-	if (!out) return false;
-	out = SPUpdate(&t->page, key.offset, *record);
-	if (!out) return false;
-	markPage(addr, &t->page, t);
+	slotted_page p = {0};
+	if (!readPage(addr, &p, t)) return false;
+	bool out = SPUpdate(&p, key.offset, *record);
+	if (out) markPage(addr, &p, t);
+	freeSPage(&p);
 	return out;
 }
 
 /*
-deletes a record from t's bplus tree
-returns true if item was successfully deleted or if it never existed
-returns false if delete failed
+Deletes a record from the B+ tree.
+page and leafNode are caller-provided buffers; on return they hold the post-deletion state
+of the page and (if the page was emptied) the updated leaf node, which the caller
+(typically a scanner) can use to keep its own view consistent.
+Returns true if the record was deleted or did not exist; false on failure.
 */
-bool deleteRecord(ordering_key key, table* t) {
+bool deleteRecord(ordering_key key, table* t, slotted_page* page, node* leafNode) {
 	address addr = findPage(key.pageNum, t);
 	if (!addr) return true;
-	bool out = loadPage(addr, t);
+	if (!readPage(addr, page, t)) return false;
+	bool out = SPDelete(page, key.offset);
 	if (!out) return false;
-	out = SPDelete(&t->page, key.offset);
-	if (!out) return false;
-	if (t->page.header.numRecords == 0) {
-		loadNode(t->page.header.parent, t);
-		deletePage(&t->node, t->page.header.parent, key.pageNum, t);
+	if (page->header.numRecords == 0) {
+		address parentAddr = page->header.parent;
+		readNode(parentAddr, leafNode, t);
+		deletePage(leafNode, parentAddr, key.pageNum, t);
 	} else {
-		markPage(addr, &t->page, t);
+		markPage(addr, page, t);
 	}
 	return out;
 }

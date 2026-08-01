@@ -16,37 +16,15 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef BPLUS_H
-#define BPLUS_H
+/*
+This file defines a bunch of constructs used to represent a slotted page in memory.
+This representation is not the same used to store pages on disk; the translation algorithms are in tableIO.
+*/
 
-#include "../common.h"
-#include "ordering.h"
-#include "page.h"
-#include "node.h"
-#include "tableIO.h"
+/*
+Scans forward through pages and leaf nodes until finding one with records.
+Returns true if a valid row is now current, false if the table is exhausted.
+*/
 
-// UNTESTED
-#define MAX_KEY(n) \
-	((n)->keys[n->childCount-1])
+#include "scanner.h"
 
-// UNTESTED
-#define MIN_KEY(n) \
-	((n)->keys[0])
-
-#define HALF_M (M_GLOBAL / 2)
-
-table* createTree(char* tablename, page_num firstKey);
-void deleteTree(table* t);
-
-
-address findPage(page_num pageNum, table* t);
-address findAndInsert(page_num pageNum, table* t);
-bool findAndDelete(page_num pageNum, table* tree);
-
-bool insertRecord(sp_record* record, ordering_key key, table* t);
-bool updateRecord(sp_record* record, ordering_key key, table* t);
-bool deleteRecord(ordering_key key, table* t, slotted_page* page, node* leafNode);
-bool searchRecord(ordering_key key, table* t);
-sp_record readRecord(ordering_key key, table* t, slotted_page* page);
-
-#endif // BPLUS_H

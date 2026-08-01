@@ -24,29 +24,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "../value.h"
 #include "../storage_engine/bplus.h"
 #include "../storage_engine/tableIO.h"
+#include "../storage_engine/scanner.h"
 
 #define STACK_MAX 256
-#define MAX_SCANNERS 4 // maximum amount of concurrent scanners
-
-// state for scanning over a btree
-typedef struct scanner {
-	table* tbl;          // open table
-	uint32_t tblHash;	 // hash of table's name (the table itself stores the string)
-	bool open;           // whether scanner is connected to a table
-	bool started;        // whether OP_NEXT has been called at least once
-	bool atEnd;          // whether all rows have been exhausted
-
-	node leafNode;       // currently loaded leaf node (scanner-owned)
-	address leafAddr;    // disk address of leafNode
-	uint32_t childIdx;   // which child of leafNode is the current page
-
-	slotted_page page;   // currently loaded page (scanner-owned)
-	address pageAddr;    // disk address of page
-	uint32_t slotIdx;    // which slot (row) within page is current
-
-	// CHANGE TO UINT8_T for consistency
-	int pkIdx;			 // the column containing the primary key in the input query (-1 = no pk)
-} scanner;
 
 typedef enum {
 	INTERPRET_OK, // successful interpret but query did not request data

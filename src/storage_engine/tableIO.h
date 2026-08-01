@@ -67,12 +67,10 @@ typedef struct table {
 	delete_stack delete; // stack of objects to be deleted
 	FILE* source; // physical file
 	char* name; // name of table (corresponding file path is tables/[name].tbl)
-	address cursor; // current address
+	address cursor; // current file position (low-level; callers own their page/node state)
 	address pageFree; // address of next free page space
 	address nodeFree; // address of next free node space
 	address root; // pointer to the root of the tree
-	slotted_page page; // pointer to current object if it's a page
-	node node; // pointer to current object if it's a node
 	int metalen; // size of the metadata in the table file in bytes
 	int pageStripes; // number of page stripes in file
 	int pageStripeLen; // number of pages per page stripe
@@ -90,12 +88,9 @@ void freeTable(table* t);
 table* createTable(char* tablename);
 bool loadTable(char* tablename, table* t);
 bool deleteTable(table* t);
-// loading pages
+// loading pages and nodes into caller-provided structs
 bool readPage(address address, slotted_page* p, table* t);
-bool loadPage(address address, table* t);
-// loading nodes
 bool readNode(address address, node* n, table* t);
-bool loadNode(address address, table* t);
 void loadParent(node* n, node* parent, table* t);
 void loadPrev(node* n, node* prev, table* t);
 void loadNext(node* n, node* next, table* t);

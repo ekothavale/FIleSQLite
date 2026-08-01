@@ -89,6 +89,117 @@ static void printPK(value pk) {
 	}
 }
 
+static bool loadFirstValidPage(scanner* s) {
+	table* t = s->tbl;
+	while (true) {
+		while (s->childIdx < s->leafNode.childCount) {
+			s->pageAddr = s->leafNode.children[s->childIdx];
+			readPage(s->pageAddr, &s->page, t);
+			s->slotIdx = 0;
+			if (s->page.header.numRecords > 0) return true;
+			s->childIdx++;
+		}
+		if (s->leafNode.next == 0) {
+			s->atEnd = true;
+			return false;
+		}
+		s->leafAddr = s->leafNode.next;
+		readNode(s->leafAddr, &s->leafNode, t);
+		s->childIdx = 0;
+	}
+}
+
+/*
+opens a new scanner
+*/
+void openScanner(uint32_t tableNameHash, uint8_t pkIdx) {
+	const char* tablename = readHT(tableNameHash, vm.schema)->tablename;
+	if (vm.numScanners >= MAX_SCANNERS) {
+		printf("Error: no free scanner slots available\n");
+		return;
+	}
+	table* t = malloc(sizeof(table));
+	if (!loadTable((char*)tablename, t)) {
+		free(t);
+		return;
+	}
+	int idx = vm.numScanners++;
+	vm.scanners[idx].tbl      = t;
+	vm.scanners[idx].tblHash  = tableNameHash;
+	vm.scanners[idx].open     = true;
+	vm.scanners[idx].started  = false;
+	vm.scanners[idx].atEnd    = false;
+	vm.scanners[idx].leafNode = (node){0};
+	vm.scanners[idx].leafAddr = 0;
+	vm.scanners[idx].childIdx = 0;
+	vm.scanners[idx].page     = (slotted_page){0};
+	vm.scanners[idx].pageAddr = 0;
+	vm.scanners[idx].slotIdx  = 0;
+	vm.scanners[idx].pkIdx    = pkIdx;
+}
+
+void closeScanner(scanner* s) {
+	if (!s->open) return;
+	commit(s->tbl);
+	fclose(s->tbl->source);
+	freeTable(s->tbl);
+	freeSPage(&s->page);
+	s->page = (slotted_page){0};
+	s->leafNode = (node){0};
+	s->tbl     = NULL;
+	s->tblHash = 0;
+	s->open    = false;
+	s->started = false;
+	s->atEnd   = false;
+	vm.numScanners--;
+}
+
+/*
+Advances the scanner to the next row.
+On the first call (started == false), walks from root to the first row.
+Returns true if a valid row is now current, false if the table is exhausted.
+*/
+bool advanceScanner(scanner* s) {
+	if (s->atEnd) return false;
+	table* t = s->tbl;
+
+	if (!s->started) {
+		// walk down to leftmost leaf
+		address nAddr = t->root;
+		readNode(nAddr, &s->leafNode, t);
+		while (!s->leafNode.isLeaf) {
+			nAddr = s->leafNode.children[0];
+			readNode(nAddr, &s->leafNode, t);
+		}
+		s->leafAddr = nAddr;
+		s->childIdx = 0;
+		s->started  = true;
+		return loadFirstValidPage(s);
+	}
+
+	// advance within current page
+	s->slotIdx++;
+	if (s->slotIdx < s->page.header.numRecords) return true;
+
+	// move to next page
+	s->childIdx++;
+	return loadFirstValidPage(s);
+}
+
+/*
+searches for and loads a record into the given scanner by primary key lookup
+*/
+bool scannerKeySearch(scanner* s, ordering_key key) {
+	address addr = findPage(key.pageNum, s->tbl);
+	if (!addr) return false;
+	s->pageAddr = addr;
+	readPage(addr, &s->page, s->tbl);
+	int slotIdx = SPSearch(&s->page, key.offset);
+	if (slotIdx < 0) return false;
+	s->slotIdx = slotIdx;
+	return true;
+}
+
 /*
 determines if two values are equal
 */
@@ -161,121 +272,6 @@ Pop value from top of VM's stack
 value pop() {
 	vm.stackTop--;
 	return *vm.stackTop;
-}
-
-/*
-Scans forward through pages and leaf nodes until finding one with records.
-Returns true if a valid row is now current, false if the table is exhausted.
-*/
-static bool loadFirstValidPage(scanner* s) {
-	table* t = s->tbl;
-	while (true) {
-		while (s->childIdx < s->leafNode.childCount) {
-			s->pageAddr = s->leafNode.children[s->childIdx];
-			readPage(s->pageAddr, &s->page, t);
-			s->slotIdx = 0;
-			if (s->page.header.numRecords > 0) return true;
-			s->childIdx++;
-		}
-		if (s->leafNode.next == 0) {
-			s->atEnd = true;
-			return false;
-		}
-		s->leafAddr = s->leafNode.next;
-		readNode(s->leafAddr, &s->leafNode, t);
-		s->childIdx = 0;
-	}
-}
-
-/*
-opens a new scanner
-*/
-static void openScanner(uint32_t tableNameHash, uint8_t pkIdx) {
-	const char* tablename = readHT(tableNameHash, vm.schema)->tablename;
-	if (vm.numScanners >= MAX_SCANNERS) {
-		printf("Error: no free scanner slots available\n");
-		return;
-	}
-	table* t = malloc(sizeof(table));
-	if (!loadTable((char*)tablename, t)) {
-		free(t);
-		return;
-	}
-	int idx = vm.numScanners++;
-	vm.scanners[idx].tbl      = t;
-	vm.scanners[idx].tblHash  = tableNameHash;
-	vm.scanners[idx].open     = true;
-	vm.scanners[idx].started  = false;
-	vm.scanners[idx].atEnd    = false;
-	vm.scanners[idx].leafNode = (node){0};
-	vm.scanners[idx].leafAddr = 0;
-	vm.scanners[idx].childIdx = 0;
-	vm.scanners[idx].page     = (slotted_page){0};
-	vm.scanners[idx].pageAddr = 0;
-	vm.scanners[idx].slotIdx  = 0;
-	vm.scanners[idx].pkIdx    = pkIdx;
-}
-
-static void closeScanner(scanner* s) {
-	if (!s->open) return;
-	commit(s->tbl);
-	fclose(s->tbl->source);
-	freeTable(s->tbl);
-	freeSPage(&s->page);
-	s->page = (slotted_page){0};
-	s->leafNode = (node){0};
-	s->tbl     = NULL;
-	s->tblHash = 0;
-	s->open    = false;
-	s->started = false;
-	s->atEnd   = false;
-	vm.numScanners--;
-}
-
-/*
-Advances the scanner to the next row.
-On the first call (started == false), walks from root to the first row.
-Returns true if a valid row is now current, false if the table is exhausted.
-*/
-static bool advanceScanner(scanner* s) {
-	if (s->atEnd) return false;
-	table* t = s->tbl;
-
-	if (!s->started) {
-		// walk down to leftmost leaf
-		address nAddr = t->root;
-		readNode(nAddr, &s->leafNode, t);
-		while (!s->leafNode.isLeaf) {
-			nAddr = s->leafNode.children[0];
-			readNode(nAddr, &s->leafNode, t);
-		}
-		s->leafAddr = nAddr;
-		s->childIdx = 0;
-		s->started  = true;
-		return loadFirstValidPage(s);
-	}
-
-	// advance within current page
-	s->slotIdx++;
-	if (s->slotIdx < s->page.header.numRecords) return true;
-
-	// move to next page
-	s->childIdx++;
-	return loadFirstValidPage(s);
-}
-
-/*
-searches for and loads a record into the given scanner by primary key lookup
-*/
-static bool scannerKeySearch(scanner* s, ordering_key key) {
-	address addr = findPage(key.pageNum, s->tbl);
-	if (!addr) return false;
-	s->pageAddr = addr;
-	readPage(addr, &s->page, s->tbl);
-	int slotIdx = SPSearch(&s->page, key.offset);
-	if (slotIdx < 0) return false;
-	s->slotIdx = slotIdx;
-	return true;
 }
 
 /*
@@ -583,7 +579,7 @@ static interpret_result run() {
 				}
 				ordering_key ik = pkToOk(pk);
 				sp_record r = { .entries = entries, .len = count, .size = totalSize };
-				if (readRecord(ik ,t).len != 0) {
+				if (searchRecord(ik, t)) {
 					printf("Entry with primary key: ");
 					printPK(pk);
 					printf(" already exists\n");
@@ -606,23 +602,12 @@ static interpret_result run() {
 				scanner* s = &vm.scanners[vm.numScanners-1];
 				table* t = s->tbl;
 				ordering_key ik = { .pageNum = s->page.header.pageNum, .offset = s->page.slots[s->slotIdx].ID };
-				deleteRecord(ik, t);
-				// Sync scanner page with the updated state from deleteRecord.
-				// markPage deep-copies t->page into the dirty stack, so we can safely
-				// transfer t->page ownership here without affecting the pending write.
 				freeSPage(&s->page);
-				s->page = t->page;
-				t->page = (slotted_page){0};
+				s->page = (slotted_page){0};
+				deleteRecord(ik, t, &s->page, &s->leafNode);
 				if (s->page.header.numRecords == 0) {
-					// Page was emptied and removed from the B+ tree. Refresh the
-					// scanner's leaf node (deletePage updated t->node) and back up
-					// childIdx so advanceScanner's childIdx++ lands on the correct
-					// slot after the deletion shifted remaining children left.
-					s->leafNode = t->node;
 					s->childIdx = (s->childIdx > 0) ? s->childIdx - 1 : (uint32_t)(-1);
 				} else {
-					// Page still has records. Step back so advanceScanner's slotIdx++
-					// lands on the record that shifted into the deleted slot.
 					s->slotIdx = (s->slotIdx > 0) ? s->slotIdx - 1 : (uint32_t)(-1);
 				}
 				break;
