@@ -176,7 +176,12 @@ static token_type identifierType() {
         case 'b':
             switch (tolower((unsigned char)lex.start[1])) {
                 case 'a': return checkKeyword(1, 5, "ackup", TOKEN_BACKUP);
-                case 'e': return checkKeyword(1, 6, "etween", TOKEN_BETWEEN);
+                case 'e': {
+                    switch(tolower((unsigned char)lex.start[2])) {
+                        case 'g': return checkKeyword(1, 4, "egin", TOKEN_BEGIN);
+                        case 't': return checkKeyword(1, 6, "etween", TOKEN_BETWEEN);
+                    }
+                }
                 case 'y': return checkKeyword(1, 1, "y", TOKEN_BY);
             }
             break;
@@ -186,7 +191,13 @@ static token_type identifierType() {
                 case 'h': return checkKeyword(1, 4, "heck", TOKEN_CHECK);
                 case 'o':
                     switch (tolower((unsigned char)lex.start[2])) {
-                        case 'l': return checkKeyword(1, 5, "olumn", TOKEN_COLUMN);
+                        case 'l': {
+                            switch(tolower((unsigned char)lex.start[3])) {
+                                case 'l': return checkKeyword(1, 6, "ollect", TOKEN_COLLECT);
+                                case 'u': return checkKeyword(1, 5, "olumn", TOKEN_COLUMN);
+                            }
+                        }
+                        case 'm': return checkKeyword(1, 5, "ommit", TOKEN_COMMIT);
                         case 'n': return checkKeyword(1, 9, "onstraint", TOKEN_CONSTRAINT);
                     }
                     break;
@@ -203,7 +214,12 @@ static token_type identifierType() {
                         case 's': return checkKeyword(1, 3, "esc", TOKEN_DESC);
                     }
                     break;
-                case 'i': return checkKeyword(1, 7, "istinct", TOKEN_DISTINCT);
+                case 'i':
+                    switch (tolower((unsigned char)lex.start[3])) {
+                        case 'c': return checkKeyword(1, 6, "iscard", TOKEN_DISCARD);
+                        case 't': return checkKeyword(1, 7, "istinct", TOKEN_DISTINCT);
+                    }
+                    break;
                 case 'r': return checkKeyword(1, 3, "rop", TOKEN_DROP);
             }
             break;
@@ -300,7 +316,12 @@ static token_type identifierType() {
             switch (tolower((unsigned char)lex.start[1])) {
                 case 'a': return checkKeyword(1, 4, "able", TOKEN_TABLE);
                 case 'o': return checkKeyword(1, 2, "op", TOKEN_TOP);
-                case 'r': return checkKeyword(1, 7, "runcate", TOKEN_TRUNCATE);
+                case 'r':
+                    switch (tolower((unsigned char)lex.start[2])) {
+                        case 'a': return checkKeyword(1, 10, "ransaction", TOKEN_TRANSACTION);
+                        case 'u': return checkKeyword(1, 7, "runcate", TOKEN_TRUNCATE);
+                    }
+                    break;
             }
             break;
         case 'u':

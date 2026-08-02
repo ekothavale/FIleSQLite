@@ -775,6 +775,21 @@ static void munchStmt(ast_node* node, chunk* c, hashtable* ht) {
 			break;
 		}
 
+		case TYPE_BEGIN_TRANSACTION_STMT: {
+			writeChunk(c, OP_BEGIN_TRANSACTION, 0);
+			break;
+		}
+
+		case TYPE_COMMIT_STMT: {
+			writeChunk(c, OP_COMMIT, 0);
+			break;
+		}
+
+		case TYPE_DISCARD_STMT: {
+			writeChunk(c, OP_DISCARD, 0);
+			break;
+		}
+
 		case TYPE_WHERE_CLAUSE:
 		case TYPE_HAVING_CLAUSE: {
 			// Emit the filter expression; leaves a bool on the stack

@@ -884,6 +884,26 @@ void commit(table* t) {
 }
 
 /*
+Discards a table's pending (uncommitted) changes instead of writing them.
+Frees the dirty-write stacks without touching the file, so the on-disk state
+is left exactly as it was before the transaction started. Since nothing is
+written here (not even writeMeta), the caller must not keep using this table
+struct afterward — reload it fresh if further access is needed.
+*/
+void discard(table* t) {
+	while (t->pageDirty.count > 0) {
+		page_write_order order = t->pageDirty.stack[--t->pageDirty.count];
+		freeSPage(order.page);
+		free(order.page);
+	}
+	while (t->nodeDirty.count > 0) {
+		node_write_order order = t->nodeDirty.stack[--t->nodeDirty.count];
+		free(order.node);
+	}
+	t->delete.count = 0;
+}
+
+/*
 header
 node | node | ... | node
 page | page | ... | page

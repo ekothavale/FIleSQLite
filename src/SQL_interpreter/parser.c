@@ -789,8 +789,35 @@ static ast_node* selectStmt() {
 }
 
 /*
+begin_transaction_stmt → [BEGIN] TRANSACTION
+consumed by caller: BEGIN
+*/
+static ast_node* beginTransactionStmt() {
+	ast_node* node = makeNode(TYPE_BEGIN_TRANSACTION_STMT);
+	expect(TOKEN_TRANSACTION);
+	return node;
+}
+
+/*
+commit_stmt → [COMMIT]
+consumed by caller: COMMIT
+*/
+static ast_node* commitStmt() {
+	return makeNode(TYPE_COMMIT_STMT);
+}
+
+/*
+discard_stmt → [DISCARD]
+consumed by caller: DISCARD
+*/
+static ast_node* discardStmt() {
+	return makeNode(TYPE_DISCARD_STMT);
+}
+
+/*
 query → select_stmt | insert_stmt | update_stmt | delete_stmt
       | create_stmt | drop_stmt | alter_stmt
+      | begin_transaction_stmt | commit_stmt | discard_stmt
 consumes the leading statement keyword and dispatches to the appropriate stmt function
 */
 static ast_node* query() {
@@ -825,9 +852,21 @@ static ast_node* query() {
 			out->children[0] = alterStmt();
 			break;
 		}
+		case TOKEN_BEGIN: {
+			out->children[0] = beginTransactionStmt();
+			break;
+		}
+		case TOKEN_COMMIT: {
+			out->children[0] = commitStmt();
+			break;
+		}
+		case TOKEN_DISCARD: {
+			out->children[0] = discardStmt();
+			break;
+		}
 		default: {
 			reportUnexpected();
-			printf("Expected SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, or ALTER\n");
+			printf("Expected SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, BEGIN, COMMIT, or DISCARD\n");
 		}
 	}
 	return out;

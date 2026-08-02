@@ -103,6 +103,7 @@ void markPage(address address, slotted_page* p, table* t);
 void markNode(address address, node* n, table* t);
 void markDelete(address address, table* t); // can be used for any object type
 void commit(table* t);
+void discard(table* t);
 // allocate new addresses
 void newStripe(table* t);
 address allocNode(table* t);

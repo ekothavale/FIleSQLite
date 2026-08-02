@@ -9,6 +9,54 @@
 
 VM vm;
 
+/*
+Session-scoped transaction state. Deliberately kept outside the VM struct:
+initVM()/freeVM() run once per statement (every interpret() call), but a
+transaction spans multiple statements/interpret() calls, so its state must
+survive across them. Tables touched during an active transaction stay open
+here (dirty writes accumulating in their normal write stacks, see tableIO.c)
+instead of being committed and closed at the end of each statement; COMMIT
+or DISCARD is what finally closes them out.
+*/
+#define MAX_TXN_TABLES MAX_SCANNERS
+
+typedef struct txn_table_entry {
+	uint32_t tableHash;
+	table* tbl;
+} txn_table_entry;
+
+static struct {
+	bool active;
+	int count;
+	txn_table_entry tables[MAX_TXN_TABLES];
+} transaction = {0};
+
+/*
+returns the transaction's already-open handle for a table, or NULL if no
+transaction is active or it hasn't touched this table yet
+*/
+static table* findTxnTable(uint32_t tableHash) {
+	if (!transaction.active) return NULL;
+	for (int i = 0; i < transaction.count; i++) {
+		if (transaction.tables[i].tableHash == tableHash) return transaction.tables[i].tbl;
+	}
+	return NULL;
+}
+
+/*
+registers a freshly opened table handle with the active transaction so later
+statements in the same transaction reuse it instead of reloading from disk
+*/
+static void registerTxnTable(uint32_t tableHash, table* t) {
+	if (transaction.count >= MAX_TXN_TABLES) {
+		printf("Error: transaction has touched too many tables\n");
+		return;
+	}
+	transaction.tables[transaction.count].tableHash = tableHash;
+	transaction.tables[transaction.count].tbl = t;
+	transaction.count++;
+}
+
 static void resetStack(){
 	vm.stackTop = vm.stack;
 }
@@ -118,10 +166,14 @@ void openScanner(uint32_t tableNameHash, uint8_t pkIdx) {
 		printf("Error: no free scanner slots available\n");
 		return;
 	}
-	table* t = malloc(sizeof(table));
-	if (!loadTable((char*)tablename, t)) {
-		free(t);
-		return;
+	table* t = findTxnTable(tableNameHash);
+	if (!t) {
+		t = malloc(sizeof(table));
+		if (!loadTable((char*)tablename, t)) {
+			free(t);
+			return;
+		}
+		if (transaction.active) registerTxnTable(tableNameHash, t);
 	}
 	int idx = vm.numScanners++;
 	vm.scanners[idx].tbl      = t;
@@ -140,9 +192,12 @@ void openScanner(uint32_t tableNameHash, uint8_t pkIdx) {
 
 void closeScanner(scanner* s) {
 	if (!s->open) return;
-	commit(s->tbl);
-	fclose(s->tbl->source);
-	freeTable(s->tbl);
+	// tables owned by an active transaction stay open until COMMIT/DISCARD
+	if (!findTxnTable(s->tblHash)) {
+		commit(s->tbl);
+		fclose(s->tbl->source);
+		freeTable(s->tbl);
+	}
 	freeSPage(&s->page);
 	s->page = (slotted_page){0};
 	s->leafNode = (node){0};
@@ -648,6 +703,45 @@ static interpret_result run() {
 					printf("Error: table '%s' not found\n", name);
 				}
 				saveSchema(vm.schema);
+				break;
+			}
+			case OP_BEGIN_TRANSACTION: {
+				if (transaction.active) {
+					printf("Error: a transaction is already in progress\n");
+					break;
+				}
+				transaction.active = true;
+				transaction.count = 0;
+				break;
+			}
+			case OP_COMMIT: {
+				if (!transaction.active) {
+					printf("Error: no transaction in progress to commit\n");
+					break;
+				}
+				for (int i = 0; i < transaction.count; i++) {
+					table* t = transaction.tables[i].tbl;
+					commit(t);
+					fclose(t->source);
+					freeTable(t);
+				}
+				transaction.active = false;
+				transaction.count = 0;
+				break;
+			}
+			case OP_DISCARD: {
+				if (!transaction.active) {
+					printf("Error: no transaction in progress to discard\n");
+					break;
+				}
+				for (int i = 0; i < transaction.count; i++) {
+					table* t = transaction.tables[i].tbl;
+					discard(t);
+					fclose(t->source);
+					freeTable(t);
+				}
+				transaction.active = false;
+				transaction.count = 0;
 				break;
 			}
 			case OP_SET_RESULT: {

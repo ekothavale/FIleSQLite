@@ -85,7 +85,12 @@ typedef enum opcode {
     OP_LIMIT,
     // execution management
     OP_SET_RESULT,
-    OP_HALT
+    OP_HALT,
+    // version control and housekeeping
+    OP_BEGIN_TRANSACTION,
+    OP_COMMIT,
+    OP_DISCARD,
+    OP_COLLECT_GARBAGE
 }opcode;
 
 // Public API — callable from outside this translation unit

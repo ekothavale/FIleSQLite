@@ -139,7 +139,13 @@ static char* isolateQuery(int* start, int len, const char* source) {
                 strncpy(out, source + *start, i - *start + 1);
                 out[i - *start + 1] = '\0';
                 if (PEEK() == '\0') *start = len; // terminate if this is the last query
-                else *start = i+1; // otherwise increment start
+                else {
+                    int j = i + 1;
+                    while (j < len && (source[j] == '\n' || source[j] == '\t' || source[j] == ' ' || source[j] == '\r')) {
+                        j++;
+                    }
+                    *start = j; // skips trailing whitespace; lands on next stmt, or on `len` if it was all trailing whitespace
+                }
                 return out;
             }
             case '\0': {
