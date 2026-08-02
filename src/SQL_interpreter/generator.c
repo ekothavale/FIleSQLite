@@ -396,6 +396,15 @@ static void munchExpr(ast_node* node, chunk* c, hashtable* ht, schema* s) {
 					} else {
 						printf("Error: unknown column '%s'\n", colname);
 					}
+				} else {
+					// no schema context (e.g. an INSERT VALUES list) — a bare
+					// identifier here isn't a valid value. Likely a string
+					// literal that wasn't quoted with single quotes. Report
+					// it instead of silently emitting nothing, since the
+					// caller still counts this as one value on the stack.
+					char text[MAX_IDENT_LEN];
+					tokenToStr(node->tok, text);
+					printf("Error: unexpected identifier '%s' where a value was expected (string literals must use single quotes)\n", text);
 				}
 			} else if (t == TOKEN_NULL) {
 				writeChunk(c, OP_NULL, 0);

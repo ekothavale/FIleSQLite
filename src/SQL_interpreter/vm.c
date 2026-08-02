@@ -317,6 +317,10 @@ static bool greaterThan(value a, value b) {
 Push value to VM's stack
 */
 void push(value value) {
+	if (vm.stackTop - vm.stack >= STACK_MAX) {
+		runtimeError("Stack overflow");
+		return;
+	}
 	*vm.stackTop = value;
 	vm.stackTop++;
 }
@@ -325,6 +329,10 @@ void push(value value) {
 Pop value from top of VM's stack
 */
 value pop() {
+	if (vm.stackTop <= vm.stack) {
+		runtimeError("Stack underflow");
+		return NULL_VAL(0);
+	}
 	vm.stackTop--;
 	return *vm.stackTop;
 }
