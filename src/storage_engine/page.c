@@ -186,7 +186,6 @@ bool SPDelete(slotted_page* p, page_offset offset) {
 	if (index >= p->header.numRecords || compareOffsets(p->slots[index].ID, offset) != 0) return false;
 	sp_slot deleted = p->slots[index];
 	p->header.usedData -= deleted.size;
-	printf("Deleted size: %d\n", deleted.size);
 	for (uint32_t i = 0; i < deleted.len; i++) {
 		free((p->entries[deleted.ptr + i]).data);
 		p->entries[deleted.ptr + i].data = NULL;

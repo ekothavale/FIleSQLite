@@ -383,13 +383,15 @@ static node* balanceTreeAdd(node* n, address addr, address* newAddrOut, table* t
 		printf("Error: called balanceTreeAdd() on a node that wasn't full\n");
 		return NULL;
 	}
-	node parent;
-	readNode(n->parent, &parent, t);
 	if (isRoot(n)) {
 		newRoot(n, addr, t);
-	} else if (isNodeFull(&parent)) {
-		address dummy;
-		balanceTreeAdd(&parent, n->parent, &dummy, t);
+	} else {
+		node parent;
+		readNode(n->parent, &parent, t);
+		if (isNodeFull(&parent)) {
+			address dummy;
+			balanceTreeAdd(&parent, n->parent, &dummy, t);
+		}
 	}
 	return splitNode(n, addr, newAddrOut, t);
 }
