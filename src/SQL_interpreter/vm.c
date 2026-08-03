@@ -123,6 +123,34 @@ static bool tableAlreadyExists(const char* tablename) {
 	return exists;
 }
 
+/*
+maps a SQL column type to the storage engine's key-ordering type, mirroring
+the type mapping pkToOk() applies to real values (ordering.c)
+*/
+static ordering_type sqlTypeToOrdering(SQL_type t) {
+	switch (t) {
+		case SQL_TEXT: return ORDERING_STRING;
+		case SQL_FLOAT:
+		case SQL_DOUBLE: return ORDERING_DOUBLE;
+		default: return ORDERING_ULONG; // SQL_INT and other numeric-ish types
+	}
+}
+
+/*
+finds the ordering type of a table's primary key column, so the placeholder
+page created at CREATE TABLE time can be tagged with the correct type instead
+of defaulting to ORDERING_ULONG (see createTree() below)
+*/
+static ordering_type getPkOrderingType(schema* s) {
+	for (int i = 0; i < s->count; i++) {
+		if (((s->colTypes[i] & 0b11100000) >> 5) == CONSTRAINT_PRIMARY_KEY) {
+			return sqlTypeToOrdering((SQL_type)(s->colTypes[i] & 0b00011111));
+		}
+	}
+	printf("Error: table '%s' has no primary key column\n", s->tablename);
+	return ORDERING_ULONG;
+}
+
 // could potentially be abstracted into a general print value type
 /*
 prints a primary key based on its type. prints illegal pk types as hex
@@ -690,7 +718,8 @@ static interpret_result run() {
 					break;
 				}
 				// otherwise create the table
-				table* t = createTree(s->tablename, (page_num){0});
+				page_num firstKey = { .type = getPkOrderingType(s) };
+				table* t = createTree(s->tablename, firstKey);
 				if (t) {
 					fclose(t->source);
 					freeTable(t);
