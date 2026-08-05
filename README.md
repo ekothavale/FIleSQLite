@@ -13,7 +13,7 @@ A SQL query moves through five stages before touching the disk:
   │   SQL Query                                              │
   │      │                                                   │
   │      ▼                                                   │
-  │  ┌────────┐    token     ┌────────┐    AST               │
+  │  ┌────────┐    token    ┌────────┐    AST                │
   │  │ Lexer  │ ──────────► │ Parser │ ──────────────┐       │
   │  │lexer.c │             │parser.c│               │       │
   │  └────────┘             └────────┘               ▼       │
@@ -21,8 +21,8 @@ A SQL query moves through five stages before touching the disk:
   │                                         │  Generator  │  │
   │                                         │generator.c  │  │
   │                                         └──────┬──────┘  │
-  │                                                │ bytecode │
-  │                                                ▼          │
+  │                                                │ bytecode│
+  │                                                ▼         │
   │                                         ┌─────────────┐  │
   │                                         │     VM      │  │
   │                                         │    vm.c     │  │
@@ -36,21 +36,21 @@ A SQL query moves through five stages before touching the disk:
   │                                        │   B+ Tree   │   │
   │                                        │   bplus.c   │   │
   │                                        └──────┬──────┘   │
-  │                                               │           │
-  │               ┌───────────────────────────────┤           │
-  │               │               │               │           │
-  │               ▼               ▼               ▼           │
+  │                                               │          │
+  │               ┌───────────────────────────────┤          │
+  │               │               │               │          │
+  │               ▼               ▼               ▼          │
   │        ┌───────────┐  ┌────────────┐  ┌────────────┐     │
   │        │   Page    │  │    Node    │  │  Ordering  │     │
   │        │  page.c   │  │   node.h   │  │ordering.c  │     │
   │        └─────┬─────┘  └────────────┘  └────────────┘     │
-  │              │                                            │
-  │              ▼                                            │
-  │        ┌───────────┐                                      │
-  │        │ Table I/O │   (.tbl files in tables/)            │
-  │        │ tableIO.c │                                      │
-  │        └───────────┘                                      │
-  └───────────────────────────────────────────────────────────┘
+  │              │                                           │
+  │              ▼                                           │
+  │        ┌───────────┐                                     │
+  │        │ Table I/O │   (.tbl files in tables/)           │
+  │        │ tableIO.c │                                     │
+  │        └───────────┘                                     │
+  └──────────────────────────────────────────────────────────┘
 
   Schema (.scma) loaded by schema.c is shared between the Generator
   and VM to resolve column names and primary key positions.
@@ -62,7 +62,7 @@ A SQL query moves through five stages before touching the disk:
 
 **Generator** (`src/SQL_interpreter/generator.c`) — walks the AST and emits a bytecode `chunk` against the schema. Detects primary-key equality in `WHERE` clauses and emits `OP_KEY_SEARCH` instead of a scan loop.
 
-**VM** (`src/SQL_interpreter/vm.c`) — stack-based interpreter that executes the bytecode chunk. Maintains up to four concurrent scanners, each holding a cursor into a B+ tree.
+**VM** (`src/SQL_interpreter/vm.c`) — stack-based interpreter that executes the bytecode chunk. Maintains up to four concurrent scanners, each holding a cursor into a B+ tree (`src/storage_engine/scanner.h`). A session-scoped transaction registry, kept outside the per-statement VM state, lets `BEGIN TRANSACTION` hold a table open — dirty writes uncommitted — across multiple statements until `COMMIT` or `DISCARD`.
 
 **B+ tree** (`src/storage_engine/bplus.c`) — the index structure that maps page numbers to disk addresses. Leaf nodes link bidirectionally for sequential scans.
 
@@ -81,11 +81,18 @@ A SQL query moves through five stages before touching the disk:
 - `PRIMARY KEY` constraint on a single column per table
 
 **Data Manipulation**
-- `INSERT INTO table VALUES (v1, v2, ...)` — inserts a row; primary key is hashed to an internal page number
+- `INSERT INTO table VALUES (v1, v2, ...)` — inserts a row; the primary key is converted to an internal page number via a reversible ordering transform (not a hash). String literals must be single-quoted (`'...'`); double-quoted or unquoted string values are reported as an error at compile time instead of being silently misparsed.
 - `SELECT * FROM table` and `SELECT col1, col2, ... FROM table`
 - `SELECT DISTINCT ...` — deduplicates result rows
 - `UPDATE table SET col = expr [WHERE ...]`
 - `DELETE FROM table [WHERE ...]`
+
+**Transactions**
+- `BEGIN TRANSACTION` — starts a transaction; every table touched by a subsequent statement stays open, with its writes buffered but not flushed to disk
+- `COMMIT` — writes all changes made since `BEGIN TRANSACTION` to disk and closes the tables
+- `DISCARD` — drops all changes made since `BEGIN TRANSACTION` without writing anything to disk
+- A single transaction may span multiple tables
+- `BEGIN TRANSACTION` while already in a transaction, or `COMMIT`/`DISCARD` with none active, reports an error and is a no-op
 
 **Filtering and Expressions**
 - `WHERE` clause with `=`, `!=`, `<`, `<=`, `>`, `>=`
@@ -99,7 +106,7 @@ A SQL query moves through five stages before touching the disk:
 - `LIMIT n`
 
 **Query Optimization**
-- Primary key equality (`WHERE pk_col = literal`) uses `OP_KEY_SEARCH` — a direct B+ tree lookup — instead of a full table scan
+- Primary key equality (`WHERE pk_col = literal`) uses `OP_KEY_SEARCH` — a direct B+ tree lookup — instead of a full table scan, in `SELECT`, `UPDATE`, and `DELETE` statements alike
 
 **Execution Modes**
 - Interactive REPL (`./main`)
@@ -112,11 +119,11 @@ A SQL query moves through five stages before touching the disk:
 
 The following features are next on the todo list, roughly in priority order:
 
-1. **Merge schema and hash table** — the schema struct and the in-memory hash table currently maintain separate representations of column metadata; unifying them will simplify the generator and VM.
-2. **Column reordering in queries** — `INSERT INTO t (b, a) VALUES (2, 1)` and `SELECT b, a FROM t` with non-natural column ordering are not yet handled.
-3. **Transactions** — `BEGIN`, `COMMIT`, and `ROLLBACK` with rollback support.
-4. **File-level garbage collection** — `condenseStripe` and `condenseAll` are stubbed in `tableIO.c`; implementing them will reclaim space from deleted records.
-5. **Propagate I/O errors** — `readNode` and `readPage` currently do not propagate failure to callers.
+1. **Column reordering in queries** — `INSERT INTO t (b, a) VALUES (2, 1)` and `SELECT b, a FROM t` with non-natural column ordering are not yet handled.
+2. **File-level garbage collection** — `condenseStripe` and `condenseAll` are stubbed in `tableIO.c`; implementing them will reclaim space from deleted records.
+3. **Propagate I/O errors** — `readNode` and `readPage` currently do not propagate failure to callers.
+4. **Merge schema and hash table** — the schema struct and the in-memory hash table currently maintain separate representations of column metadata; unifying them will simplify the generator and VM.
+5. **File structure analysis mode** - a new mode which creates a new database populated with the attributes of a given directory's files and subdirectories.
 
 ---
 
@@ -129,6 +136,7 @@ The following features are next on the todo list, roughly in priority order:
 | 3 | The primary key string limit is 24 characters (see `SYNTAX.md`). Longer primary key values will be truncated silently. |
 | 4 | A table can have at most 250 columns. |
 | 5 | Column reordering in `INSERT` and `SELECT` is not supported — column order in a query must match the order declared in `CREATE TABLE`. |
+| 6 | A fatal error partway through a transaction (e.g. a compile error, which calls `exit()`) does not auto-`DISCARD` — the transaction's open table handles are simply leaked without committing or writing back. |
 
 ---
 
@@ -182,6 +190,20 @@ Expected output:
 (1 row)
 ```
 
+### Example session with a transaction
+
+```sql
+BEGIN TRANSACTION;
+INSERT INTO users VALUES (7, 'grace');
+DISCARD;
+SELECT * FROM users WHERE id = 7;
+```
+
+Expected output: `grace` was never committed, so the lookup returns nothing.
+```
+(0 rows)
+```
+
 ---
 
 ## VI. Extending the Engine
@@ -195,7 +217,7 @@ Add the new keyword to the `token_type` enum and register it in the keyword-matc
 If the new feature introduces a new clause or statement, add a variant to `ast_type` and, if needed, a flag to `ast_flag`.
 
 **3. Parse the new syntax** (`src/SQL_interpreter/parser.c`)
-Write a `parse*` function that consumes the relevant tokens and returns an `ast_node`. Hook it into the top-level `parseStatement` dispatcher.
+Write a `parse*` function that consumes the relevant tokens and returns an `ast_node`. Hook it into the top-level `query()` dispatcher.
 
 **4. Add opcodes** (`src/SQL_interpreter/chunk.h`)
 If new VM behaviour is needed, extend the `opcode` enum. Single-byte opcodes with optional one- or two-byte operands follow the existing pattern.
@@ -235,6 +257,6 @@ These figures are rough baselines; performance will vary with page fill factor, 
 
 ## VIII. Attributions and Outro
 
-The interpreter architecture — bytecode chunk, stack-based VM, single-pass code generator — was inspired by Robert Nystrom's [*Crafting Interpreters*](https://craftinginterpreters.com/). The storage engine (B+ tree, slotted pages, dirty-stack write-back) was designed and implemented independently.
+The interpreter architecture — bytecode chunk, stack-based VM, single-pass code generator — was inspired by Robert Nystrom's [*Crafting Interpreters*](https://craftinginterpreters.com/). The storage engine (B+ tree, slotted pages, dirty-stack write-back, etc.) was designed and implemented independently.
 
 Copyright (c) 2026 Ethan Kothavale. Distributed under the MIT License — see the license header in any source file for the full text.
