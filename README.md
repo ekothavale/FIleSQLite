@@ -1,4 +1,4 @@
-FileSQLite is a relational database management system written from scratch in C, using only the C standard library. It supports a SQL front end backed by a custom B+ tree storage engine with slotted-page file format.
+StripeSQL is a relational database management system written from scratch in C, using only the C standard library. It supports a SQL front end backed by a custom B+ tree storage engine with slotted-page file format.
 
 ---
 
