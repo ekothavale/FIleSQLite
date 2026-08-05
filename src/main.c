@@ -83,6 +83,10 @@ static void repl() {
             printf("\n");
             break;
         }
+        if (strncasecmp(line, "quit\0", 5)) {
+            printf("\n");
+            break;
+        }
 
         result_buffer result = interpret(line);
         if (result.print) printResult(result);

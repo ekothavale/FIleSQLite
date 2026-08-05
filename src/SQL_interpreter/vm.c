@@ -811,6 +811,10 @@ result_buffer interpret(const char* source) {
 	initVM(schema);
 	initChunk(&c);
 	tokenized t = lexQuery(source);
+	if (t.count <= 1) { // return if there is no meaningful input TOKEN_EOF is automatic
+		vm.results.ir = INTERPRET_OK;
+		return vm.results;
+	}
 	ast_node* root = compile(t);
 	freeTokenized(&t);
 	if (!root) {
