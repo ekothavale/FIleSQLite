@@ -446,12 +446,22 @@ static address mergeNode(node* n, address addr, table* t) {
 		// copy keys and children
 		for (int i = 0; i < source->childCount; i++) {
 			survivor->keys[survivor->childCount] = source->keys[i];
-			survivor->children[survivor->childCount++] = source->children[i];
+			address childAddr = source->children[i];
+			survivor->children[survivor->childCount++] = childAddr;
+			// the moved page's stored parent must follow it to the survivor
+			slotted_page cp = {0};
+			if (readPage(childAddr, &cp, t)) {
+				cp.header.parent = survAddr;
+				markPage(childAddr, &cp, t);
+			}
+			freeSPage(&cp);
 		}
 
-		// update linked list
+		// update linked list — must run even when source->next is 0 (source was
+		// the tail), otherwise survivor keeps a stale ->next pointing at the
+		// now-deleted source, and the scanner resurrects it forever
+		survivor->next = source->next;
 		if (source->next) {
-			survivor->next = source->next;
 			node tmp;
 			readNode(source->next, &tmp, t);
 			tmp.prev = survAddr;
@@ -474,7 +484,14 @@ static address mergeNode(node* n, address addr, table* t) {
 		// copy keys and children
 		for (int i = 0; i < source->childCount; i++) {
 			survivor->keys[survivor->childCount-1] = source->keys[i]; // copies extra garbage key
-			survivor->children[survivor->childCount++] = source->children[i];
+			address childAddr = source->children[i];
+			survivor->children[survivor->childCount++] = childAddr;
+			// the moved child's stored parent must follow it to the survivor
+			node cn = {0};
+			if (readNode(childAddr, &cn, t)) {
+				cn.parent = survAddr;
+				markNode(childAddr, &cn, t);
+			}
 		}
 	}
 	// update maxKey
@@ -512,15 +529,23 @@ static bool isValidBorrow(node* n, node* target) {
 
 // assumes that next is a valid target for a borrow
 static void borrowNext(node* n, address nAddr, node* next, address nextAddr, table* t) {
-	n->children[n->childCount] = next->children[0];
+	address borrowedAddr = next->children[0];
+	n->children[n->childCount] = borrowedAddr;
 	n->keys[n->childCount++] = next->keys[0];
 	next->childCount--;
 	shiftAddressArrayL(next->children, 0, M_GLOBAL);
 	shiftPageNumArrayL(next->keys, 0, M_GLOBAL);
+	// the borrowed page's stored parent must be updated to n
+	slotted_page bp = {0};
+	if (readPage(borrowedAddr, &bp, t)) {
+		bp.header.parent = nAddr;
+		markPage(borrowedAddr, &bp, t);
+	}
+	freeSPage(&bp);
 	markNode(nAddr, n, t);
 	markNode(nextAddr, next, t);
 	// update parent
-	node parent;
+	node parent = {0};
 	loadParent(n, &parent, t);
 	page_num borrowed = n->keys[n->childCount-1];
 	for (int i = 0; i < parent.childCount; i++) {
@@ -541,14 +566,22 @@ static void borrowPrev(node* n, address nAddr, node* prev, address prevAddr, tab
 	shiftAddressArrayR(n->children, 0, M_GLOBAL);
 	prev->childCount--;
 	n->keys[0] = prev->keys[prev->childCount];
-	n->children[0] = prev->children[prev->childCount];
+	address borrowedAddr = prev->children[prev->childCount];
+	n->children[0] = borrowedAddr;
 	prev->keys[prev->childCount] = (page_num){0};
 	prev->children[prev->childCount] = 0;
 	n->childCount++;
+	// the borrowed page's stored parent must be updated to n
+	slotted_page bp = {0};
+	if (readPage(borrowedAddr, &bp, t)) {
+		bp.header.parent = nAddr;
+		markPage(borrowedAddr, &bp, t);
+	}
+	freeSPage(&bp);
 	markNode(nAddr, n, t);
 	markNode(prevAddr, prev, t);
 	// update parent
-	node parent;
+	node parent = {0};
 	loadParent(n, &parent, t);
 	page_num borrowed = n->keys[0];
 	for (int i = 0; i < parent.childCount; i++) {
@@ -565,7 +598,7 @@ implements b+ tree borrowing for internal nodes
 assumes n, next and their parent are valid and internal nodes
 */
 static void borrowNextThroughParent(node* n, address nAddr, node* next, address nextAddr, table* t) {
-	node parent;
+	node parent = {0};
 	loadParent(n, &parent, t);
 	for (int i = 0; i < parent.childCount; i++) {
 		if (parent.children[i] == nAddr) {
@@ -573,9 +606,12 @@ static void borrowNextThroughParent(node* n, address nAddr, node* next, address 
 			parent.keys[i] = next->keys[0];
 			address borrowedAddr = next->children[0];
 			n->children[n->childCount++] = borrowedAddr;
-			node borrowed;
+			node borrowed = {0};
 			readNode(borrowedAddr, &borrowed, t);
 			n->maxKey = borrowed.maxKey;
+			// the borrowed child's stored parent must be updated to n
+			borrowed.parent = nAddr;
+			markNode(borrowedAddr, &borrowed, t);
 			shiftPageNumArrayL(next->keys, 0, M_GLOBAL-1);
 			shiftAddressArrayL(next->children, 0, M_GLOBAL);
 			next->childCount--;
@@ -590,7 +626,7 @@ static void borrowNextThroughParent(node* n, address nAddr, node* next, address 
 }
 
 static void borrowPrevThroughParent(node* n, address nAddr, node* prev, address prevAddr, table* t) {
-	node parent;
+	node parent = {0};
 	loadParent(n, &parent, t);
 	for (int i = 1; i < parent.childCount; i++) {
 		if (parent.children[i] == nAddr) {
@@ -598,10 +634,17 @@ static void borrowPrevThroughParent(node* n, address nAddr, node* prev, address 
 			shiftAddressArrayR(n->children, 0, M_GLOBAL);
 			n->keys[0] = parent.keys[i-1];
 			prev->childCount--;
-			n->children[0] = prev->children[prev->childCount];
+			address borrowedAddr = prev->children[prev->childCount];
+			n->children[0] = borrowedAddr;
 			parent.keys[i-1] = prev->keys[prev->childCount-1];
 			prev->children[prev->childCount] = 0;
 			prev->keys[prev->childCount-1] = (page_num){0};
+			// the borrowed child's stored parent must be updated to n
+			node borrowed = {0};
+			if (readNode(borrowedAddr, &borrowed, t)) {
+				borrowed.parent = nAddr;
+				markNode(borrowedAddr, &borrowed, t);
+			}
 			markNode(nAddr, n, t);
 			markNode(prevAddr, prev, t);
 			markNode(n->parent, &parent, t);
@@ -613,7 +656,7 @@ static void borrowPrevThroughParent(node* n, address nAddr, node* prev, address 
 static address balanceTreeDelete(node* n, address addr, table* t) {
 	// if n is a leaf node
 	if (n->isLeaf) { // needs to come before root case since a node that is both a root and a leaf can have one page child
-		node next;
+		node next = {0};
 		loadNext(n, &next, t);
 		node* parent = malloc(sizeof(node));
 		loadParent(n, parent, t);
@@ -647,14 +690,14 @@ static address balanceTreeDelete(node* n, address addr, table* t) {
 	// if n is an internal node
 	} else {
 		address nextAddr = getNextInternal(n, addr, t);
-		node nextNode;
+		node nextNode = {0};
 		if (nextAddr) readNode(nextAddr, &nextNode, t);
 		if (nextAddr && isValidBorrow(n, &nextNode)) {
 			borrowNextThroughParent(n, addr, &nextNode, nextAddr, t);
 			return addr;
 		}
 		address prevAddr = getPrevInternal(n, addr, t);
-		node prevNode;
+		node prevNode = {0};
 		if (prevAddr) readNode(prevAddr, &prevNode, t);
 		if (prevAddr && isValidBorrow(n, &prevNode)) {
 			borrowPrevThroughParent(n, addr, &prevNode, prevAddr, t);
@@ -702,7 +745,7 @@ static bool deletePage(node* n, address nAddr, page_num pageNum, table* t)  {
 // finds a page in a tree by page number and returns its address
 // returns null if page is not in tree
 address findPage(page_num pageNum, table* t) {
-	node cur;
+	node cur = {0};
 	readNode(t->root, &cur, t);
     if (cur.childCount == 0) {
         printf("Attempted to find page in invalid tree\n");
@@ -734,7 +777,7 @@ finds a page in a tree by page number and returns its address
 if the page does not exist, creates a page in the right spot and returns it
 */
 address findAndInsert(page_num pageNum, table* t) {
-	node cur;
+	node cur = {0};
 	address nAddr = t->root;
 	readNode(nAddr, &cur, t);
     if (cur.childCount == 0) {
@@ -783,7 +826,7 @@ Searches for a page by number in the tree and deletes it
 @return false - page deletion was unsuccessful
 */
 bool findAndDelete(page_num pageNum, table* t) {
-	node cur;
+	node cur = {0};
 	address nAddr = t->root;
 	readNode(nAddr, &cur, t);
     if (cur.childCount == 0) {

@@ -249,10 +249,18 @@ bool advanceScanner(scanner* s) {
 	if (!s->started) {
 		// walk down to leftmost leaf
 		address nAddr = t->root;
-		readNode(nAddr, &s->leafNode, t);
+		if (!readNode(nAddr, &s->leafNode, t)) {
+			printf("Error: scanner could not read root node at address %llu; tree may be corrupt\n", nAddr);
+			s->atEnd = true;
+			return false;
+		}
 		while (!s->leafNode.isLeaf) {
 			nAddr = s->leafNode.children[0];
-			readNode(nAddr, &s->leafNode, t);
+			if (!readNode(nAddr, &s->leafNode, t)) {
+				printf("Error: scanner could not read node at address %llu; tree may be corrupt\n", nAddr);
+				s->atEnd = true;
+				return false;
+			}
 		}
 		s->leafAddr = nAddr;
 		s->childIdx = 0;

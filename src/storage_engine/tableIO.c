@@ -913,6 +913,10 @@ page | page | ... | page
 node | node | ... | node
 page | page | ... | page
 ...
+
+header at beginning of file
+a node stripe will always be first
+then M page stripes will follow
 */
 
 // allocate new stripe
@@ -930,19 +934,19 @@ static void newNodeStripe(table* t) {
 }
 
 address allocPage(table* t) {
-	address out = t->pageFree;
-	if (t->pageFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize) {
+	if (t->pageFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize) {
 		newPageStripe(t);
 	}
+	address out = t->pageFree;
 	t->pageFree += t->pageSize;
 	return out;
 }
 
 address allocNode(table* t) {
-	address out = t->nodeFree;
 	if (t->nodeFree == t->metalen + t->pageStripes * t->pageStripeLen * t->pageSize + t->nodeStripes * t->nodeStripeLen * t->nodeSize) {
 		newNodeStripe(t);
 	}
+	address out = t->nodeFree;
 	t->nodeFree += t->nodeSize;
 	return out;
 }

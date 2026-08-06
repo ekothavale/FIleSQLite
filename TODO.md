@@ -14,13 +14,13 @@ TODO:
  - add ability to process multiple queries in one file - DONE
  - fix memory leaks - DONE
  - merge schema and hash table
- - implement primary keys
+ - implement primary keys - DONE
  - implement ability to use column reorderings in queries
- - implement transactions
+ - implement transactions - DONE
 
 CONSIDERATIONS:
- - The storage engine doesn't use any of the schema to customize the table
  - readNode and readPage need to propagate failure
- - Entering a blank line into REPL causes segfault
- - Primary keys are not supported
  - Changing query column order is not supported
+ - Dirty stacks must be reimplemented as hashtables for performance
+ - Stripe allocation is incorrect - 1:1 ratio instead of 1:M ratio
+ - B tree merges require loading all child pages to adjust their parent members. Do child pages need to have parent members? Maybe they can have them in memory but not on disk. Would be a large performance boost if so.

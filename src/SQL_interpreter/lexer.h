@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #include "../common.h"
 #include "../memory.h"
 
-#define INITIAL_TOKEN_COUNT 128
+#define INITIAL_TOKEN_COUNT 128 // initial size of tokenized dynamic array
 
 typedef enum {
 	// Single-character tokens
