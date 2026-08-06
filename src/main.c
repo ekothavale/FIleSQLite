@@ -74,7 +74,15 @@ static void printResult(result_buffer result) {
     printf("(%d row%s)\n", result.count, result.count == 1 ? "" : "s");
 }
 
+static void printTime(struct timespec* start, struct timespec* end) {
+    double time_taken = ((end->tv_sec - start->tv_sec) + 
+                        (end->tv_nsec - start->tv_nsec) / 1e9) * 1e3;
+    printf(" %.3f ms\n", time_taken);
+}
+
 static void repl() {
+    struct timespec start, end; // timer
+
     char line[MAX_REPL_INPUT_LEN];
     for (;;) {
         printf("> ");
@@ -83,13 +91,26 @@ static void repl() {
             printf("\n");
             break;
         }
-        if (strncasecmp(line, "quit\0", 5)) {
-            printf("\n");
+        if (strncasecmp(line, "quit\n", 5) == 0) {
             break;
         }
 
+        // continue if empty line
+        bool blank = true;
+        for (int i = 0; line[i] != '\0'; i++) {
+            if (line[i] != ' ' && line[i] != '\t' && line[i] != '\n' && line[i] != '\r') {
+                blank = false;
+                break;
+            }
+        }
+        if (blank) continue;
+
+        clock_gettime(CLOCK_MONOTONIC, &start); // start timer
         result_buffer result = interpret(line);
+        clock_gettime(CLOCK_MONOTONIC, &end); // end timer
+
         if (result.print) printResult(result);
+        printTime(&start, &end);
     }
 }
 
@@ -200,6 +221,8 @@ static char* readFile(const char* path) {
 }
 
 static void runFile(const char* path) {
+    struct timespec start, end; // timer
+
     char* source = readFile(path);
     int exCode = 0;
     int pos = 0;
@@ -210,6 +233,8 @@ static void runFile(const char* path) {
     }
     char* query;
     while (pos < len) {
+        clock_gettime(CLOCK_MONOTONIC, &start); // start timer
+
         // obtain and interpret query
         query = isolateQuery(&pos, len, source);
         if (query == NULL) {
@@ -233,6 +258,9 @@ static void runFile(const char* path) {
             break;
         }
         if (result.print) printResult(result);
+
+        clock_gettime(CLOCK_MONOTONIC, &end); // end timer
+        printTime(&start, &end);
     }
     // cleanup
     free(source);
@@ -253,8 +281,6 @@ int main(int argc, char** argv) {
     test_generator();
     test_vm();*/
 
-    struct timespec start, end;
-
     if (argc == 1) {
         repl();
     } else if (argc == 2) {
@@ -262,9 +288,7 @@ int main(int argc, char** argv) {
             #define DEBUG_TRACE_EXECUTION
             repl();
         } else {
-            clock_gettime(CLOCK_MONOTONIC, &start);
             runFile(argv[1]);
-            clock_gettime(CLOCK_MONOTONIC, &end);
         }
     } else if (argc == 3) {
         if (strncmp(argv[2], "-d", 2) == 0) {
@@ -273,16 +297,10 @@ int main(int argc, char** argv) {
             printf("Usage: ./main [SQL file] [id]\n");
             return 0;
         }
-        clock_gettime(CLOCK_MONOTONIC, &start);
         runFile(argv[1]);
-        clock_gettime(CLOCK_MONOTONIC, &end);
 
     } else {
         printf("Usage: ./main [SQL file] [-d]\n");
     }
-
-    double time_taken = ((end.tv_sec - start.tv_sec) + 
-                        (end.tv_nsec - start.tv_nsec) / 1e9) * 1e3;
-    printf(" %.3f ms\n", time_taken);
     return 0;
 }

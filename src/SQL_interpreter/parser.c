@@ -822,51 +822,62 @@ consumes the leading statement keyword and dispatches to the appropriate stmt fu
 */
 static ast_node* query() {
 	ast_node* out = makeNode(TYPE_QUERY);
-	token tok = advance();
-	switch(tok.type) {
+	token_type tok = peek();
+	switch(tok) {
 		case TOKEN_SELECT: {
+			advance();
 			out->children[0] = selectStmt();
 			break;
 		}
 		case TOKEN_INSERT: {
+			advance();
 			out->children[0] = insertStmt();
 			break;
 		}
 		case TOKEN_UPDATE: {
+			advance();
 			out->children[0] = updateStmt();
 			break;
 		}
 		case TOKEN_DELETE: {
+			advance();
 			out->children[0] = deleteStmt();
 			break;
 		}
 		case TOKEN_CREATE: {
+			advance();
 			out->children[0] = createStmt();
 			break;
 		}
 		case TOKEN_DROP: {
+			advance();
 			out->children[0] = dropStmt();
 			break;
 		}
 		case TOKEN_ALTER: {
+			advance();
 			out->children[0] = alterStmt();
 			break;
 		}
 		case TOKEN_BEGIN: {
+			advance();
 			out->children[0] = beginTransactionStmt();
 			break;
 		}
 		case TOKEN_COMMIT: {
+			advance();
 			out->children[0] = commitStmt();
 			break;
 		}
 		case TOKEN_DISCARD: {
+			advance();
 			out->children[0] = discardStmt();
 			break;
 		}
 		default: {
 			reportUnexpected();
 			printf("Expected SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, BEGIN, COMMIT, or DISCARD\n");
+			return NULL;
 		}
 	}
 	return out;
