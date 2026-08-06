@@ -703,9 +703,14 @@ static interpret_result run() {
 				ordering_key ik = { .pageNum = s->page.header.pageNum, .offset = s->page.slots[s->slotIdx].ID };
 				freeSPage(&s->page);
 				s->page = (slotted_page){0};
-				deleteRecord(ik, t, &s->page, &s->leafNode);
+				deleteRecord(ik, t, &s->page);
 				if (s->page.header.numRecords == 0) {
 					s->childIdx = (s->childIdx > 0) ? s->childIdx - 1 : (uint32_t)(-1);
+					// deleteRecord()'s rebalancing (borrow/merge) can modify nodes
+					// elsewhere in the tree, including our own current leaf out from
+					// under us. Re-sync from our own address rather than assume our
+					// cached leafNode is still accurate.
+					readNode(s->leafAddr, &s->leafNode, t);
 				} else {
 					s->slotIdx = (s->slotIdx > 0) ? s->slotIdx - 1 : (uint32_t)(-1);
 				}

@@ -319,8 +319,23 @@ static node* splitNode(node* n, address addr, address* newAddrOut, table* t) {
 
 	// copy children — update their parent pointer on disk
 	for (int i = 0; i < middleKid; i++) {
-		new->children[i] = n->children[i + middleKid];
+		address childAddr = n->children[i + middleKid];
+		new->children[i] = childAddr;
 		n->children[i + middleKid] = 0;
+		if (n->isLeaf) {
+			slotted_page cp = {0};
+			if (readPage(childAddr, &cp, t)) {
+				cp.header.parent = newAddr;
+				markPage(childAddr, &cp, t);
+			}
+			freeSPage(&cp);
+		} else {
+			node cn = {0};
+			if (readNode(childAddr, &cn, t)) {
+				cn.parent = newAddr;
+				markNode(childAddr, &cn, t);
+			}
+		}
 	}
 
 	// copy keys: leaf gets middleKid keys; internal promotes middleKid-1 (separator goes to parent)
@@ -448,7 +463,7 @@ static address mergeNode(node* n, address addr, table* t) {
 			survivor->keys[survivor->childCount] = source->keys[i];
 			address childAddr = source->children[i];
 			survivor->children[survivor->childCount++] = childAddr;
-			// the moved page's stored parent must follow it to the survivor
+			// the moved page's parent pointer must follow it to the survivor
 			slotted_page cp = {0};
 			if (readPage(childAddr, &cp, t)) {
 				cp.header.parent = survAddr;
@@ -486,7 +501,7 @@ static address mergeNode(node* n, address addr, table* t) {
 			survivor->keys[survivor->childCount-1] = source->keys[i]; // copies extra garbage key
 			address childAddr = source->children[i];
 			survivor->children[survivor->childCount++] = childAddr;
-			// the moved child's stored parent must follow it to the survivor
+			// the moved child's parent pointer must follow it to the survivor
 			node cn = {0};
 			if (readNode(childAddr, &cn, t)) {
 				cn.parent = survAddr;
@@ -494,16 +509,31 @@ static address mergeNode(node* n, address addr, table* t) {
 			}
 		}
 	}
+	// The abandoned source is only markDelete'd below, which just queues it for
+	// GC at commit time — it does NOT update its readable content. Anything
+	// still holding a stale reference to sourceAddr (e.g. a scanner mid-scan
+	// whose own leafAddr happened to be this node) would otherwise keep reading
+	// a frozen snapshot of its old, now-relocated contents forever. Persisting
+	// it as empty (but with next/prev left intact) lets such a reader see
+	// "nothing here" and correctly continue via the linked list.
+	source->childCount = 0;
+	markNode(sourceAddr, source, t);
 	// update maxKey
 	survivor->maxKey = source->maxKey;
 	markNode(survAddr, survivor, t);
 	// update parents
 	node* parent = calloc(1, sizeof(node));
 	loadParent(n, parent, t);
-	for (int i = 1; i < parent->childCount; i++) {
+	// search from i=0: sourceAddr can legitimately be the parent's first child
+	// (e.g. the leftmost leaf in the whole tree has no prev, so it's always
+	// `survivor`/n, and its absorbed sibling can still be at index 0 under an
+	// internal parent). Missing that case here left a stale reference to the
+	// deleted node in place while still decrementing childCount below.
+	for (int i = 0; i < parent->childCount; i++) {
 		if (parent->children[i] == sourceAddr) {
-			shiftAddressArrayL((parent->children), i, M_GLOBAL);
-			shiftPageNumArrayL(parent->keys, i-1, M_GLOBAL);
+			shiftAddressArrayL(parent->children, i, M_GLOBAL);
+			shiftPageNumArrayL(parent->keys, i == 0 ? 0 : i - 1, M_GLOBAL);
+			break;
 		}
 	}
 	parent->childCount--;
@@ -535,7 +565,7 @@ static void borrowNext(node* n, address nAddr, node* next, address nextAddr, tab
 	next->childCount--;
 	shiftAddressArrayL(next->children, 0, M_GLOBAL);
 	shiftPageNumArrayL(next->keys, 0, M_GLOBAL);
-	// the borrowed page's stored parent must be updated to n
+	// the borrowed page's parent pointer must be updated to n
 	slotted_page bp = {0};
 	if (readPage(borrowedAddr, &bp, t)) {
 		bp.header.parent = nAddr;
@@ -571,7 +601,7 @@ static void borrowPrev(node* n, address nAddr, node* prev, address prevAddr, tab
 	prev->keys[prev->childCount] = (page_num){0};
 	prev->children[prev->childCount] = 0;
 	n->childCount++;
-	// the borrowed page's stored parent must be updated to n
+	// the borrowed page's parent pointer must be updated to n
 	slotted_page bp = {0};
 	if (readPage(borrowedAddr, &bp, t)) {
 		bp.header.parent = nAddr;
@@ -609,7 +639,7 @@ static void borrowNextThroughParent(node* n, address nAddr, node* next, address 
 			node borrowed = {0};
 			readNode(borrowedAddr, &borrowed, t);
 			n->maxKey = borrowed.maxKey;
-			// the borrowed child's stored parent must be updated to n
+			// the borrowed child's parent pointer must be updated to n
 			borrowed.parent = nAddr;
 			markNode(borrowedAddr, &borrowed, t);
 			shiftPageNumArrayL(next->keys, 0, M_GLOBAL-1);
@@ -639,7 +669,7 @@ static void borrowPrevThroughParent(node* n, address nAddr, node* prev, address 
 			parent.keys[i-1] = prev->keys[prev->childCount-1];
 			prev->children[prev->childCount] = 0;
 			prev->keys[prev->childCount-1] = (page_num){0};
-			// the borrowed child's stored parent must be updated to n
+			// the borrowed child's parent pointer must be updated to n
 			node borrowed = {0};
 			if (readNode(borrowedAddr, &borrowed, t)) {
 				borrowed.parent = nAddr;
@@ -901,12 +931,16 @@ bool updateRecord(sp_record* record, ordering_key key, table* t) {
 
 /*
 Deletes a record from the B+ tree.
-page and leafNode are caller-provided buffers; on return they hold the post-deletion state
-of the page and (if the page was emptied) the updated leaf node, which the caller
-(typically a scanner) can use to keep its own view consistent.
-Returns true if the record was deleted or did not exist; false on failure.
+page is a caller-provided buffer; on return it holds the post-deletion state of the page.
+The parent node touched to unlink the emptied page (found via page->header.parent) is purely an
+internal implementation detail of this function — it is NOT necessarily the caller's own
+current node, since deletePage()'s rebalancing (borrow/merge) can reach out and modify
+other nodes in the tree, including ones a scanner may currently be positioned on. Callers
+that track their own cursor (e.g. a scanner) must re-sync it from their own address after
+calling this, rather than assume it was kept consistent as a side effect.
+@return true if the record was deleted or did not exist; false on failure.
 */
-bool deleteRecord(ordering_key key, table* t, slotted_page* page, node* leafNode) {
+bool deleteRecord(ordering_key key, table* t, slotted_page* page) {
 	address addr = findPage(key.pageNum, t);
 	if (!addr) return true;
 	if (!readPage(addr, page, t)) return false;
@@ -914,8 +948,9 @@ bool deleteRecord(ordering_key key, table* t, slotted_page* page, node* leafNode
 	if (!out) return false;
 	if (page->header.numRecords == 0) {
 		address parentAddr = page->header.parent;
-		readNode(parentAddr, leafNode, t);
-		deletePage(leafNode, parentAddr, key.pageNum, t);
+		node parent = {0};
+		readNode(parentAddr, &parent, t);
+		deletePage(&parent, parentAddr, key.pageNum, t);
 	} else {
 		markPage(addr, page, t);
 	}
