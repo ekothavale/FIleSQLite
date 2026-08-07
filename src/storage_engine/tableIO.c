@@ -39,8 +39,11 @@ TODO:
 */
 
 #include "tableIO.h"
+#include "../memory.h"
 #include <stdbool.h>
 #include <sys/stat.h>
+
+#define ADDR_TABLE_MAX_LOAD_FACTOR 0.8
 
 // ##########################################################################################################################################
 // ##########################################################################################################################################
@@ -354,26 +357,105 @@ bool writeMeta(FILE* file, table* t) {
 	return true;
 }
 
+// ##########################################################################################################################################
+// ##########################################################################################################################################
+// Dirty Hash Table Functions
+
 /*
-initializes a table's write stacks
-mallocs new memory (stacks)
+initializes a table's dirty-write hash tables
 */
 static void setStacks(table* t) {
-	t->pageDirty.size = DIRTY_STACK_INTIAL_SIZE;
-	t->pageDirty.count = 0;
-	t->pageDirty.stack = malloc(sizeof(page_write_order) * DIRTY_STACK_INTIAL_SIZE);
-	t->nodeDirty.size = DIRTY_STACK_INTIAL_SIZE;
-	t->nodeDirty.count = 0;
-	t->nodeDirty.stack = malloc(sizeof(node_write_order) * DIRTY_STACK_INTIAL_SIZE);
-	t->delete.size = DIRTY_STACK_INTIAL_SIZE;
-	t->delete.count = 0;
-	t->delete.stack = malloc(sizeof(delete_order) * DIRTY_STACK_INTIAL_SIZE);
+	initAddrTable(&t->pageDirty);
+	initAddrTable(&t->nodeDirty);
+	initAddrTable(&t->delete);
 }
 
 static void freeStacks(table* t) {
-	free(t->pageDirty.stack);
-	free(t->nodeDirty.stack);
-	free(t->delete.stack);
+	freeAddrTable(&t->pageDirty);
+	freeAddrTable(&t->nodeDirty);
+	freeAddrTable(&t->delete);
+}
+
+/*
+FNV-1a hash function over the 8 bytes of an address
+*/
+static uint64_t hashAddress(address key) {
+	uint64_t hash = 14695981039346656037ULL;
+	for (int i = 0; i < 8; i++) {
+		hash ^= (key >> (i * 8)) & 0xFF;
+		hash *= 1099511628211ULL;
+	}
+	return hash;
+}
+
+/*
+finds an entry in the given entries array for the given key
+resolves collisions via quadratic probing
+compares the actual key (not just its hash) so hash collisions can't misidentify a match
+returns the matching entry if key is present, else the first empty slot found
+*/
+static addr_entry* findAddrEntry(address key, addr_entry* entries, int capacity) {
+	uint64_t hash = hashAddress(key);
+	uint64_t velocity = 0;
+	for (;;) {
+		uint64_t index = (hash + velocity * velocity) % capacity;
+		addr_entry* found = &entries[index];
+		if (found->key == key || found->key == 0) return found;
+		velocity++;
+	}
+}
+
+/*
+resize the given hash table by copying the data to a new table by rehashing each entry
+frees the original entries array, callocs a new one
+*/
+static void adjustAddrCapacity(addr_table* at, int capacity) {
+	addr_entry* entries = calloc(capacity, sizeof(addr_entry));
+	for (int i = 0; i < at->capacity; i++) {
+		addr_entry* e = &at->entries[i];
+		if (e->key == 0) continue;
+		addr_entry* dest = findAddrEntry(e->key, entries, capacity);
+		dest->key = e->key;
+		dest->value = e->value;
+	}
+	free(at->entries);
+	at->entries = entries;
+	at->capacity = capacity;
+}
+
+void initAddrTable(addr_table* at) {
+	at->count = 0;
+	at->capacity = 0;
+	at->entries = NULL;
+}
+
+/*
+does not free the values stored in the table — caller must drain/free those first
+*/
+void freeAddrTable(addr_table* at) {
+	free(at->entries);
+	initAddrTable(at);
+}
+
+void* findAddrTable(address key, addr_table* at) {
+	if (at->capacity == 0) return NULL;
+	addr_entry* found = findAddrEntry(key, at->entries, at->capacity);
+	return found->key ? found->value : NULL;
+}
+
+/*
+inserts key/value into the table, or overwrites the value if key is already present
+*/
+void insertAddrTable(address key, void* value, addr_table* at) {
+	if (at->count + 1 > at->capacity * ADDR_TABLE_MAX_LOAD_FACTOR) {
+		int capacity = GROW_CAPACITY(at->capacity);
+		adjustAddrCapacity(at, capacity);
+	}
+	addr_entry* found = findAddrEntry(key, at->entries, at->capacity);
+	bool isNew = found->key == 0;
+	found->key = key;
+	found->value = value;
+	if (isNew) at->count++;
 }
 
 // ##########################################################################################################################################
@@ -501,45 +583,15 @@ bool deleteTable(table* t) {
 }
 
 /*
-As of now, the stacks will be searched linearly. This is obviously inefficient
-After first draft of back end is done the stacks should be changed to hashmaps
-*/
-
-/*
-searches the table's page dirty stack for a page at the given address
-returns the corresponding write order if found else returns NULL
-*/
-page_write_order* searchPageStack(address address, table* t) {
-	for (int i = 1; i <= t->pageDirty.count; i++) {
-		if ((t->pageDirty.stack + t->pageDirty.count - i)->address == address) return t->pageDirty.stack + t->pageDirty.count - i;
-	}
-	return NULL;
-}
-
-node_write_order* searchNodeStack(address address, table* t) {
-	for (int i = 1; i <= t->nodeDirty.count; i++) {
-		if ((t->nodeDirty.stack + t->nodeDirty.count - i)->address == address) return t->nodeDirty.stack + t->nodeDirty.count - i;
-	}
-	return NULL;
-}
-
-delete_order* searchDeleteStack(address address, table* t) {
-	for (int i = 1; i <= t->delete.count; i++) {
-		if ((t->delete.stack + t->delete.count - i)->address == address) return t->delete.stack + t->delete.count - i;
-	}
-	return NULL;
-}
-
-/*
 reads a page from an address into a chunk of memory
 @param: p - a slotted page to load the data from disk into
 mallocs page entries, page slots, and page entry data
 */
 bool readPage(address addr, slotted_page* p, table* t) {
-	// checking write stack
-	page_write_order* search = searchPageStack(addr, t);
-	if (search) {
-		copyPage(search->page, p);
+	// checking dirty table
+	slotted_page* dirty = (slotted_page*)findAddrTable(addr, &t->pageDirty);
+	if (dirty) {
+		copyPage(dirty, p);
 		return true;
 	}
 
@@ -607,10 +659,10 @@ reads a page from an address into a chunk of memory
 @param: p - a slotted page to load the data from disk into
 */
 bool readNode(address addr, node* n, table* t) {
-	// checking write stack
-	node_write_order* search = searchNodeStack(addr, t);
-	if (search) {
-		copyNode(search->node, n);
+	// checking dirty table
+	node* dirty = (node*)findAddrTable(addr, &t->nodeDirty);
+	if (dirty) {
+		copyNode(dirty, n);
 		return true;
 	}
 
@@ -715,16 +767,24 @@ static void writePage(slotted_page* p, address address, table* t) {
 }
 
 /*
-writes a page from the dirty queue to an address
+writes one dirty page to its address and removes it from the dirty table
+which entry gets written is unspecified (the dirty table has no inherent order)
 */
-void writeNextPage(table* t) { // all pages will be looked up in the dirty queue by their address
+void writeNextPage(table* t) {
 	if (t->pageDirty.count <= 0) return;
-	// get next write order off the stack
-	page_write_order order = t->pageDirty.stack[t->pageDirty.count-1];
-	t->pageDirty.count--;
-	writePage(order.page, order.address, t);
-	freeSPage(order.page); // frees page members
-	free(order.page); // frees page pointer itself
+	for (int i = 0; i < t->pageDirty.capacity; i++) {
+		addr_entry* e = &t->pageDirty.entries[i];
+		if (e->key == 0) continue;
+		address addr = e->key;
+		slotted_page* page = (slotted_page*)e->value;
+		e->key = 0;
+		e->value = NULL;
+		t->pageDirty.count--;
+		writePage(page, addr, t);
+		freeSPage(page); // frees page members
+		free(page); // frees page pointer itself
+		return;
+	}
 }
 
 // write node
@@ -764,14 +824,25 @@ static void writeNode(node* n, address address, table* t) {
 	free(buffer);
 }
 
+/*
+writes one dirty node to its address and removes it from the dirty table
+which entry gets written is unspecified (the dirty table has no inherent order)
+*/
 void writeNextNode(table* t) {
 	if (t->nodeDirty.count <= 0) return;
-	// get next write order off the stack
-	node_write_order order = t->nodeDirty.stack[t->nodeDirty.count-1];
-	t->nodeDirty.count--;
-	jump(order.address, t);
-	writeNode(order.node, order.address, t);
-	free(order.node);
+	for (int i = 0; i < t->nodeDirty.capacity; i++) {
+		addr_entry* e = &t->nodeDirty.entries[i];
+		if (e->key == 0) continue;
+		address addr = e->key;
+		node* n = (node*)e->value;
+		e->key = 0;
+		e->value = NULL;
+		t->nodeDirty.count--;
+		jump(addr, t);
+		writeNode(n, addr, t);
+		free(n);
+		return;
+	}
 }
 
 /*
@@ -799,60 +870,32 @@ void loadNext(node* n, node* next, table* t) {
 
 // mark page dirty
 void markPage(address address, slotted_page* p, table* t) {
-    page_write_order* existing = searchPageStack(address, t);
-    if (existing) {
-        copyPage(p, existing->page);
-        return;
-    }
-	if (t->pageDirty.count == t->pageDirty.size) {
-		uint32_t newSize = t->pageDirty.size * DIRTY_STACK_GROWTH_RATE;
-		page_write_order* new = malloc(newSize * sizeof(page_write_order));
-		memmove(new, t->pageDirty.stack, t->pageDirty.size * sizeof(page_write_order));
-		free(t->pageDirty.stack);
-		t->pageDirty.stack = new;
-		t->pageDirty.size = newSize;
+	slotted_page* existing = (slotted_page*)findAddrTable(address, &t->pageDirty);
+	if (existing) {
+		copyPage(p, existing);
+		return;
 	}
-	page_write_order* order = t->pageDirty.stack + t->pageDirty.count++;
-	order->address = address;
-	order->page = malloc(sizeof(slotted_page));
-	copyPage(p, order->page);
+	slotted_page* copy = malloc(sizeof(slotted_page));
+	copyPage(p, copy);
+	insertAddrTable(address, copy, &t->pageDirty);
 }
 
 // mark node dirty
 void markNode(address address, node* n, table* t) {
-    node_write_order* existing = searchNodeStack(address, t);
-    if (existing) {
-        copyNode(n, existing->node);
-        return;
-    }
-	if (t->nodeDirty.count == t->nodeDirty.size) {
-		uint32_t newSize = t->nodeDirty.size * DIRTY_STACK_GROWTH_RATE;
-		node_write_order* new = malloc(newSize * sizeof(node_write_order));
-		memmove(new, t->nodeDirty.stack, t->nodeDirty.size * sizeof(node_write_order));
-		free(t->nodeDirty.stack);
-		t->nodeDirty.stack = new;
-		t->nodeDirty.size = newSize;
+	node* existing = (node*)findAddrTable(address, &t->nodeDirty);
+	if (existing) {
+		copyNode(n, existing);
+		return;
 	}
-	node_write_order* order = t->nodeDirty.stack + t->nodeDirty.count++;
-	order->address = address;
-	order->node = malloc(sizeof(node));
-	copyNode(n, order->node);
+	node* copy = malloc(sizeof(node));
+	copyNode(n, copy);
+	insertAddrTable(address, copy, &t->nodeDirty);
 }
 
-// NEED TO CREATE NEW STACKS FOR DELETING PAGES AND NODES
-// OBJECTS SHOULD INITIALLY BE MARKED FOR DELETION
+// mark object for deletion
 void markDelete(address address, table* t) {
-	if (searchDeleteStack(address, t)) return; // skip if already in stack
-	if (t->delete.count == t->delete.size) {
-		uint32_t newSize = t->delete.size * DIRTY_STACK_GROWTH_RATE;
-		delete_order* new = malloc(newSize * sizeof(delete_order));
-		memmove(new, t->delete.stack, t->delete.size * sizeof(delete_order));
-		free(t->delete.stack);
-		t->delete.stack = new;
-		t->delete.size = newSize;
-	}
-	delete_order* order = t->delete.stack + t->delete.count++;
-	order->address = address;
+	if (findAddrTable(address, &t->delete)) return; // skip if already marked
+	insertAddrTable(address, NULL, &t->delete);
 }
 
 // delete object
@@ -863,40 +906,75 @@ void deleteObject(address address, table* t) {
 }
 
 /*
-Empties a table's write stacks and makes the changes to the file on disk
+Empties a table's write tables and makes the changes to the file on disk
 */
 void commit(table* t) {
-	uint32_t pageCount = t->pageDirty.count;
-	for (int i = 0; i < pageCount; i++) {
-		writeNextPage(t);
+	for (int i = 0; i < t->pageDirty.capacity; i++) {
+		addr_entry* e = &t->pageDirty.entries[i];
+		if (e->key == 0) continue;
+		slotted_page* page = (slotted_page*)e->value;
+		writePage(page, e->key, t);
+		freeSPage(page);
+		free(page);
+		e->key = 0;
+		e->value = NULL;
 	}
-	uint32_t nodeCount = t->nodeDirty.count;
-	for (int i = 0; i < nodeCount; i++) {
-		writeNextNode(t);
+	t->pageDirty.count = 0;
+
+	for (int i = 0; i < t->nodeDirty.capacity; i++) {
+		addr_entry* e = &t->nodeDirty.entries[i];
+		if (e->key == 0) continue;
+		node* n = (node*)e->value;
+		jump(e->key, t);
+		writeNode(n, e->key, t);
+		free(n);
+		e->key = 0;
+		e->value = NULL;
 	}
-	while (t->delete.count > 0) {
-		address addr = t->delete.stack[--t->delete.count].address;
-		deleteObject(addr, t);
+	t->nodeDirty.count = 0;
+
+	for (int i = 0; i < t->delete.capacity; i++) {
+		addr_entry* e = &t->delete.entries[i];
+		if (e->key == 0) continue;
+		deleteObject(e->key, t);
+		e->key = 0;
+		e->value = NULL;
 	}
+	t->delete.count = 0;
+
 	writeMeta(t->source, t);
 }
 
 /*
 Discards a table's pending (uncommitted) changes instead of writing them.
-Frees the dirty-write stacks without touching the file, so the on-disk state
+Empties the dirty-write tables without touching the file, so the on-disk state
 is left exactly as it was before the transaction started. Since nothing is
 written here (not even writeMeta), the caller must not keep using this table
 struct afterward — reload it fresh if further access is needed.
 */
 void discard(table* t) {
-	while (t->pageDirty.count > 0) {
-		page_write_order order = t->pageDirty.stack[--t->pageDirty.count];
-		freeSPage(order.page);
-		free(order.page);
+	for (int i = 0; i < t->pageDirty.capacity; i++) {
+		addr_entry* e = &t->pageDirty.entries[i];
+		if (e->key == 0) continue;
+		freeSPage((slotted_page*)e->value);
+		free(e->value);
+		e->key = 0;
+		e->value = NULL;
 	}
-	while (t->nodeDirty.count > 0) {
-		node_write_order order = t->nodeDirty.stack[--t->nodeDirty.count];
-		free(order.node);
+	t->pageDirty.count = 0;
+
+	for (int i = 0; i < t->nodeDirty.capacity; i++) {
+		addr_entry* e = &t->nodeDirty.entries[i];
+		if (e->key == 0) continue;
+		free(e->value);
+		e->key = 0;
+		e->value = NULL;
+	}
+	t->nodeDirty.count = 0;
+
+	for (int i = 0; i < t->delete.capacity; i++) {
+		t->delete.entries[i].key = 0;
+		t->delete.entries[i].value = NULL;
 	}
 	t->delete.count = 0;
 }

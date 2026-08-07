@@ -29,42 +29,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 #define TABLE_DIRECTORY "tables/" // directory in which table files are placed
 #define TABLE_EXTENSION ".tbl" // file extension for table files
 
-typedef struct page_write_order {
-	slotted_page* page;
-	address address;
-}page_write_order;
+typedef struct addr_entry {
+	address key;   // 0 = empty slot (address 0 is never a valid page/node address)
+	void* value;
+}addr_entry;
 
-typedef struct node_write_order {
-	node* node;
-	address address;
-}node_write_order;
-
-typedef struct delete_order {
-	address address;
-}delete_order;
-
-typedef struct page_stack {
-	uint32_t size;
-	uint32_t count;
-	page_write_order* stack;
-}page_stack;
-
-typedef struct node_stack {
-	uint32_t size;
-	uint32_t count;
-	node_write_order* stack;
-}node_stack;
-
-typedef struct delete_stack {
-	uint32_t size;
-	uint32_t count;
-	delete_order* stack;
-}delete_stack;
+typedef struct addr_table {
+	int count;
+	int capacity;
+	addr_entry* entries;
+}addr_table;
 
 typedef struct table {
-	page_stack pageDirty; // stack of dirty pages
-	node_stack nodeDirty; // stack of dirty nodes
-	delete_stack delete; // stack of objects to be deleted
+	addr_table pageDirty; // address -> slotted_page* of dirty pages
+	addr_table nodeDirty; // address -> node* of dirty nodes
+	addr_table delete; // address -> NULL; presence marks an object for deletion
 	FILE* source; // physical file
 	char* name; // name of table (corresponding file path is tables/[name].tbl)
 	address cursor; // current file position (low-level; callers own their page/node state)
@@ -81,6 +60,12 @@ typedef struct table {
 	int nodeSize; // size of node in bytes
 	int M; // maximum number of children each node can have
 }table;
+
+// generic address-keyed hash table (backs pageDirty / nodeDirty / delete)
+void initAddrTable(addr_table* at);
+void freeAddrTable(addr_table* at); // frees only the entries array; caller owns/frees the values
+void* findAddrTable(address key, addr_table* at);
+void insertAddrTable(address key, void* value, addr_table* at);
 
 // manage table struct
 void freeTable(table* t);

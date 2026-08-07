@@ -295,25 +295,23 @@ static table make_test_table(void) {
     t.nodeFree = (uint64_t)t.metalen + (uint64_t)t.pageStripes * t.pageStripeLen * t.pageSize;
     t.root = 0;
     t.M = M_GLOBAL;
-    // Inline stack initialisation (setStacks is static in tableIO.c)
-    t.pageDirty.size  = DIRTY_STACK_INTIAL_SIZE;
-    t.pageDirty.count = 0;
-    t.pageDirty.stack = malloc(sizeof(page_write_order) * DIRTY_STACK_INTIAL_SIZE);
-    t.nodeDirty.size  = DIRTY_STACK_INTIAL_SIZE;
-    t.nodeDirty.count = 0;
-    t.nodeDirty.stack = malloc(sizeof(node_write_order) * DIRTY_STACK_INTIAL_SIZE);
+    // Inline dirty-table initialisation (setStacks is static in tableIO.c)
+    initAddrTable(&t.pageDirty);
+    initAddrTable(&t.nodeDirty);
+    initAddrTable(&t.delete);
     writeMeta(t.source, &t);
     return t;
 }
 
-/* Free dirty-stack heap copies and close the backing file. */
+/* Free dirty-table heap copies and close the backing file. */
 static void free_test_table(table* t) {
-    for (uint32_t i = 0; i < t->pageDirty.count; i++)
-        if (t->pageDirty.stack[i].page) free(t->pageDirty.stack[i].page);
-    free(t->pageDirty.stack);
-    for (uint32_t i = 0; i < t->nodeDirty.count; i++)
-        if (t->nodeDirty.stack[i].node) free(t->nodeDirty.stack[i].node);
-    free(t->nodeDirty.stack);
+    for (int i = 0; i < t->pageDirty.capacity; i++)
+        if (t->pageDirty.entries[i].key && t->pageDirty.entries[i].value) free(t->pageDirty.entries[i].value);
+    freeAddrTable(&t->pageDirty);
+    for (int i = 0; i < t->nodeDirty.capacity; i++)
+        if (t->nodeDirty.entries[i].key && t->nodeDirty.entries[i].value) free(t->nodeDirty.entries[i].value);
+    freeAddrTable(&t->nodeDirty);
+    freeAddrTable(&t->delete);
     fclose(t->source);
 }
 
@@ -463,8 +461,9 @@ void test_mark_page_snapshot(void) {
     markPage(300, p, &t);
     p->header.pageNum = pn(99);          // mutate original after mark
 
-    // The snapshot in the dirty stack should still have pageNum == 7
-    assert(comparePageNums(t.pageDirty.stack[0].page->header.pageNum, pn(7)) == 0);
+    // The snapshot in the dirty table should still have pageNum == 7
+    slotted_page* snap = (slotted_page*)findAddrTable(300, &t.pageDirty);
+    assert(comparePageNums(snap->header.pageNum, pn(7)) == 0);
 
     free_io_page(p);
     free_test_table(&t);
@@ -472,25 +471,25 @@ void test_mark_page_snapshot(void) {
 }
 
 /*
-Pushing more pages than the initial dirty-stack capacity must cause the
-stack to grow without losing any entries.
+Pushing more pages than the initial dirty-table capacity must cause the
+table to grow without losing any entries.
 */
 void test_mark_page_growth(void) {
     printf("  test_mark_page_growth ... ");
     table t = make_test_table();
 
-    // Shrink the stack to 4 to trigger growth after just a few marks
-    free(t.pageDirty.stack);
-    t.pageDirty.size  = 4;
-    t.pageDirty.count = 0;
-    t.pageDirty.stack = malloc(4 * sizeof(page_write_order));
+    // Shrink the capacity to 4 to trigger growth after just a few marks
+    freeAddrTable(&t.pageDirty);
+    t.pageDirty.capacity = 4;
+    t.pageDirty.count    = 0;
+    t.pageDirty.entries  = calloc(4, sizeof(addr_entry));
 
     slotted_page* p = make_io_page(pn(1));
-    for (int i = 0; i < 6; i++)         // 6 > initial size of 4
+    for (int i = 0; i < 6; i++)         // 6 > initial capacity of 4
         markPage((address)(1000 + i), p, &t);
 
-    assert(t.pageDirty.count == 6);
-    assert(t.pageDirty.size  >  4);     // stack was reallocated
+    assert(t.pageDirty.count    == 6);
+    assert(t.pageDirty.capacity >  4);  // table was reallocated
 
     free_io_page(p);
     free_test_table(&t);
@@ -527,7 +526,8 @@ void test_mark_node_snapshot(void) {
     markNode(700, &n, &t);
     n.childCount = 99;                   // mutate after mark
 
-    assert(t.nodeDirty.stack[0].node->childCount == 3);
+    node* snap = (node*)findAddrTable(700, &t.nodeDirty);
+    assert(snap->childCount == 3);
 
     free_test_table(&t);
     printf("PASS\n");
@@ -537,17 +537,17 @@ void test_mark_node_growth(void) {
     printf("  test_mark_node_growth ... ");
     table t = make_test_table();
 
-    free(t.nodeDirty.stack);
-    t.nodeDirty.size  = 3;
-    t.nodeDirty.count = 0;
-    t.nodeDirty.stack = malloc(3 * sizeof(node_write_order));
+    freeAddrTable(&t.nodeDirty);
+    t.nodeDirty.capacity = 3;
+    t.nodeDirty.count    = 0;
+    t.nodeDirty.entries  = calloc(3, sizeof(addr_entry));
 
     node n = {0};
     for (int i = 0; i < 5; i++)
         markNode((address)(2000 + i), &n, &t);
 
-    assert(t.nodeDirty.count == 5);
-    assert(t.nodeDirty.size  >  3);
+    assert(t.nodeDirty.count    == 5);
+    assert(t.nodeDirty.capacity >  3);
 
     free_test_table(&t);
     printf("PASS\n");
@@ -723,9 +723,9 @@ void test_page_roundtrip(void) {
 }
 
 /*
-Mark 3 pages, then call writeNextPage 3 times. Verify the stack drains in
-LIFO order — the last-marked page is written first — by reading each
-address back and checking its pageNum.
+Mark 3 pages, then call writeNextPage 3 times. The dirty table has no
+inherent order, so which page drains on which call is unspecified — this
+verifies all 3 end up correctly written regardless of drain order.
 */
 void test_page_write_lifo(void) {
     printf("  test_page_write_lifo ... ");
@@ -743,11 +743,11 @@ void test_page_write_lifo(void) {
     markPage(a3, p3, &t);
     assert(t.pageDirty.count == 3);
 
-    writeNextPage(&t);   // should write p3 to a3
+    writeNextPage(&t);
     assert(t.pageDirty.count == 2);
-    writeNextPage(&t);   // should write p2 to a2
+    writeNextPage(&t);
     assert(t.pageDirty.count == 1);
-    writeNextPage(&t);   // should write p1 to a1
+    writeNextPage(&t);
     assert(t.pageDirty.count == 0);
 
     // Each address should now contain its corresponding page
@@ -824,7 +824,8 @@ void test_node_roundtrip(void) {
 }
 
 /*
-Mark 3 nodes LIFO, write them all, and verify each address holds its node.
+Mark 3 nodes, drain them all via writeNextNode, and verify each address
+holds its node regardless of drain order.
 */
 void test_node_write_lifo(void) {
     printf("  test_node_write_lifo ... ");
