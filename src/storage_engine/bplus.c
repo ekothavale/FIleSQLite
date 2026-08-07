@@ -110,8 +110,6 @@ table* createTree(char* tablename, page_num firstKey) {
 	root->isLeaf = true;
 	root->maxKey = firstKey;
 
-	page->header.parent = rootAddr;
-
 	t->root = rootAddr;
 
 	// write structs and flush metadata (root pointer) to disk
@@ -252,7 +250,6 @@ puts a page into a parent node's children and keys arrays
 assumes node is not full
 */
 static void insertPageIntoChildren(node* n, address nodeAddr, slotted_page* p, address pageAddr, table* t) {
-	p->header.parent = nodeAddr;
 	// check if page should be inserted into the middle of the children
 	for (int i = 0; i < n->childCount; i++) {
 		if (comparePageNums(n->keys[i], p->header.pageNum) > 0) {
@@ -317,19 +314,12 @@ static node* splitNode(node* n, address addr, address* newAddrOut, table* t) {
 	// save separator key before modifying keys (internal nodes only)
 	page_num separatorKey = n->keys[middleKid - 1];
 
-	// copy children — update their parent pointer on disk
+	// copy children
 	for (int i = 0; i < middleKid; i++) {
 		address childAddr = n->children[i + middleKid];
 		new->children[i] = childAddr;
 		n->children[i + middleKid] = 0;
-		if (n->isLeaf) {
-			slotted_page cp = {0};
-			if (readPage(childAddr, &cp, t)) {
-				cp.header.parent = newAddr;
-				markPage(childAddr, &cp, t);
-			}
-			freeSPage(&cp);
-		} else {
+		if (!n->isLeaf) {
 			node cn = {0};
 			if (readNode(childAddr, &cn, t)) {
 				cn.parent = newAddr;
@@ -461,19 +451,11 @@ static address mergeNode(node* n, address addr, table* t) {
 		// copy keys and children
 		for (int i = 0; i < source->childCount; i++) {
 			survivor->keys[survivor->childCount] = source->keys[i];
-			address childAddr = source->children[i];
-			survivor->children[survivor->childCount++] = childAddr;
-			// the moved page's parent pointer must follow it to the survivor
-			slotted_page cp = {0};
-			if (readPage(childAddr, &cp, t)) {
-				cp.header.parent = survAddr;
-				markPage(childAddr, &cp, t);
-			}
-			freeSPage(&cp);
+			survivor->children[survivor->childCount++] = source->children[i];
 		}
 
-		// update linked list — must run even when source->next is 0 (source was
-		// the tail), otherwise survivor keeps a stale ->next pointing at the
+		// update linked list — must run even when source->next is 0 
+		// otherwise survivor keeps a stale ->next pointing at the
 		// now-deleted source, and the scanner resurrects it forever
 		survivor->next = source->next;
 		if (source->next) {
@@ -509,26 +491,15 @@ static address mergeNode(node* n, address addr, table* t) {
 			}
 		}
 	}
-	// The abandoned source is only markDelete'd below, which just queues it for
-	// GC at commit time — it does NOT update its readable content. Anything
-	// still holding a stale reference to sourceAddr (e.g. a scanner mid-scan
-	// whose own leafAddr happened to be this node) would otherwise keep reading
-	// a frozen snapshot of its old, now-relocated contents forever. Persisting
-	// it as empty (but with next/prev left intact) lets such a reader see
-	// "nothing here" and correctly continue via the linked list.
+	// update source
 	source->childCount = 0;
 	markNode(sourceAddr, source, t);
 	// update maxKey
 	survivor->maxKey = source->maxKey;
 	markNode(survAddr, survivor, t);
-	// update parents
+	// update parent
 	node* parent = calloc(1, sizeof(node));
 	loadParent(n, parent, t);
-	// search from i=0: sourceAddr can legitimately be the parent's first child
-	// (e.g. the leftmost leaf in the whole tree has no prev, so it's always
-	// `survivor`/n, and its absorbed sibling can still be at index 0 under an
-	// internal parent). Missing that case here left a stale reference to the
-	// deleted node in place while still decrementing childCount below.
 	for (int i = 0; i < parent->childCount; i++) {
 		if (parent->children[i] == sourceAddr) {
 			shiftAddressArrayL(parent->children, i, M_GLOBAL);
@@ -565,13 +536,8 @@ static void borrowNext(node* n, address nAddr, node* next, address nextAddr, tab
 	next->childCount--;
 	shiftAddressArrayL(next->children, 0, M_GLOBAL);
 	shiftPageNumArrayL(next->keys, 0, M_GLOBAL);
-	// the borrowed page's parent pointer must be updated to n
-	slotted_page bp = {0};
-	if (readPage(borrowedAddr, &bp, t)) {
-		bp.header.parent = nAddr;
-		markPage(borrowedAddr, &bp, t);
-	}
-	freeSPage(&bp);
+	// the borrowed page doesn't track its own parent (found via tree traversal
+	// instead), so nothing further to update about it here
 	markNode(nAddr, n, t);
 	markNode(nextAddr, next, t);
 	// update parent
@@ -601,13 +567,8 @@ static void borrowPrev(node* n, address nAddr, node* prev, address prevAddr, tab
 	prev->keys[prev->childCount] = (page_num){0};
 	prev->children[prev->childCount] = 0;
 	n->childCount++;
-	// the borrowed page's parent pointer must be updated to n
-	slotted_page bp = {0};
-	if (readPage(borrowedAddr, &bp, t)) {
-		bp.header.parent = nAddr;
-		markPage(borrowedAddr, &bp, t);
-	}
-	freeSPage(&bp);
+	// the borrowed page doesn't track its own parent (found via tree traversal
+	// instead), so nothing further to update about it here
 	markNode(nAddr, n, t);
 	markNode(prevAddr, prev, t);
 	// update parent
@@ -803,6 +764,43 @@ address findPage(page_num pageNum, table* t) {
 }
 
 /*
+finds a page in a tree by page number and returns its address, along with the
+address of the leaf node whose children array contains it (via leafOut).
+returns 0 (leafOut left untouched) if the page is not in the tree
+*/
+address findPageAndLeaf(page_num pageNum, table* t, address* leafOut) {
+	node cur = {0};
+	address nAddr = t->root;
+	readNode(nAddr, &cur, t);
+    if (cur.childCount == 0) {
+        printf("Attempted to find page in invalid tree\n");
+        return 0;
+    }
+    while (!cur.isLeaf) {
+        int found = 0;
+        for (int i = 0; i < cur.childCount - 1; i++) {
+            if (comparePageNums(pageNum, cur.keys[i]) <= 0) {
+                nAddr = cur.children[i];
+                readNode(nAddr, &cur, t);
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            nAddr = cur.children[cur.childCount - 1];
+            readNode(nAddr, &cur, t);
+        }
+    }
+    for (int i = 0; i < cur.childCount; i++) {
+        if (comparePageNums(cur.keys[i], pageNum) == 0) {
+            *leafOut = nAddr;
+            return cur.children[i];
+        }
+    }
+	return 0;
+}
+
+/*
 finds a page in a tree by page number and returns its address
 if the page does not exist, creates a page in the right spot and returns it
 */
@@ -932,25 +930,19 @@ bool updateRecord(sp_record* record, ordering_key key, table* t) {
 /*
 Deletes a record from the B+ tree.
 page is a caller-provided buffer; on return it holds the post-deletion state of the page.
-The parent node touched to unlink the emptied page (found via page->header.parent) is purely an
-internal implementation detail of this function — it is NOT necessarily the caller's own
-current node, since deletePage()'s rebalancing (borrow/merge) can reach out and modify
-other nodes in the tree, including ones a scanner may currently be positioned on. Callers
-that track their own cursor (e.g. a scanner) must re-sync it from their own address after
-calling this, rather than assume it was kept consistent as a side effect.
 @return true if the record was deleted or did not exist; false on failure.
 */
 bool deleteRecord(ordering_key key, table* t, slotted_page* page) {
-	address addr = findPage(key.pageNum, t);
+	address leafAddr = 0;
+	address addr = findPageAndLeaf(key.pageNum, t, &leafAddr);
 	if (!addr) return true;
 	if (!readPage(addr, page, t)) return false;
 	bool out = SPDelete(page, key.offset);
 	if (!out) return false;
 	if (page->header.numRecords == 0) {
-		address parentAddr = page->header.parent;
-		node parent = {0};
-		readNode(parentAddr, &parent, t);
-		deletePage(&parent, parentAddr, key.pageNum, t);
+		node leaf = {0};
+		readNode(leafAddr, &leaf, t);
+		deletePage(&leaf, leafAddr, key.pageNum, t);
 	} else {
 		markPage(addr, page, t);
 	}

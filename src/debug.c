@@ -117,12 +117,10 @@ void generateTestBPlusTree(table* t) {
 
     // Write pages to disk
     uint32_t pageNums[4] = {1, 51, 101, 151};
-    address pageParents[4] = {leftAddr, leftAddr, rightAddr, rightAddr};
     for (int i = 0; i < 4; i++) {
         slotted_page p;
         memset(&p, 0, sizeof(p));
         p.header.pageNum    = pageNumFromU64(pageNums[i]);
-        p.header.parent     = pageParents[i];
         p.header.numRecords = 0;
         p.header.numEntries = 0;
         markPage(pageAddrs[i], &p, t);
@@ -272,7 +270,9 @@ void printTree(table* t) {
 /*
 Recursively reads nodes and pages from disk, checking that every node's
 parent field matches the address of the node that pointed to it, and that
-every page's parent field matches the address of its leaf node.
+every leaf's children are all readable pages. Pages don't track their own
+parent (found via tree traversal instead), so there's nothing to cross-check
+on the page side beyond readability.
 */
 static bool checkTreePointersHelper(address addr, address expectedParent,
                                     table* t) {
@@ -300,16 +300,6 @@ static bool checkTreePointersHelper(address addr, address expectedParent,
             if (!readPage(n.children[i], &p, t)) {
                 printf("Error: failed to read page @%llu\n",
                        (unsigned long long)n.children[i]);
-                return false;
-            }
-            if (p.header.parent != addr) {
-                printf("Error: page #");
-                printPageNum(p.header.pageNum);
-                printf(" @%llu has parent @%llu, expected @%llu\n",
-                       (unsigned long long)n.children[i],
-                       (unsigned long long)p.header.parent,
-                       (unsigned long long)addr);
-                free(p.slots); free(p.entries);
                 return false;
             }
             free(p.slots);
@@ -381,7 +371,6 @@ void printSlottedPage(slotted_page* p) {
     }
 
     printf("=== Slotted Page #"); printPageNum(p->header.pageNum); printf(" ===\n");
-    printf("  parent    : %llu\n", (unsigned long long)p->header.parent);
     printf("  numRecords: %u\n",   p->header.numRecords);
     printf("  numEntries: %u\n",   p->header.numEntries);
     printf("  usedData  : %u bytes\n\n", p->header.usedData);

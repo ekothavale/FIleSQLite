@@ -40,6 +40,7 @@ void deleteTree(table* t);
 
 
 address findPage(page_num pageNum, table* t);
+address findPageAndLeaf(page_num pageNum, table* t, address* leafOut);
 address findAndInsert(page_num pageNum, table* t);
 bool findAndDelete(page_num pageNum, table* tree);
 

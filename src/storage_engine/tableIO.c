@@ -555,21 +555,20 @@ bool readPage(address addr, slotted_page* p, table* t) {
 		return false;
 	}
 	// header
-	// page header layout: 0(1B) | parent(8B) | pageNum(19B) | usedData(4B) | numRecords(4B) |
-	//                     numEntries(4B) | arrCap(4B) | maxEntries(4B) | maxSlots(4B)  = 52B
-	p->header.parent     = readULong(1,  t);
-	p->header.pageNum    = readPageNum(9, t);
-	p->header.usedData   = readUInt(28, t);
-	p->header.numRecords = readUInt(32, t);
-	p->header.numEntries = readUInt(36, t);
-	p->header.arrCap     = readUInt(40, t);
-	p->header.maxEntries = readUInt(44, t);
-	p->header.maxSlots   = readUInt(48, t);
+	// page header layout: 0(1B) | pageNum(19B) | usedData(4B) | numRecords(4B) |
+	//                     numEntries(4B) | arrCap(4B) | maxEntries(4B) | maxSlots(4B)  = 44B
+	p->header.pageNum    = readPageNum(1, t);
+	p->header.usedData   = readUInt(20, t);
+	p->header.numRecords = readUInt(24, t);
+	p->header.numEntries = readUInt(28, t);
+	p->header.arrCap     = readUInt(32, t);
+	p->header.maxEntries = readUInt(36, t);
+	p->header.maxSlots   = readUInt(40, t);
 	// slots (each slot on disk: ID(9B) | len(4B) | size(4B) | ptr(4B) = 21B)
 	if (!p->slots) {
 		p->slots = calloc(p->header.maxSlots, sizeof(sp_slot));
 	}
-	int offset = 52;
+	int offset = 44;
 	for (int i = 0; i < p->header.numRecords; i++) {
 		p->slots[i].ID   = readPageOffset(offset,    t);
 		p->slots[i].len  = readUInt(offset + 9,  t);
@@ -662,7 +661,7 @@ bool readNode(address addr, node* n, table* t) {
 /*
 writes the given page to the given address
 page layout:
- | 0 | parent | pageNum | usedData | numRecords | numEntries | arrCap |
+ | 0 | pageNum | usedData | numRecords | numEntries | arrCap |
  | maxEntries | maxSlots | slots | ... | records |
 
 the code in page.c -> hasSpace() relies on the number of bytes used to represent entry type and length
@@ -674,19 +673,18 @@ static void writePage(slotted_page* p, address address, table* t) {
 	jump(address, t);
 	char* buffer = calloc(t->pageSize, 1);
 	// write header
-	// page header layout: 0(1B) | parent(8B) | pageNum(19B) | usedData(4B) | numRecords(4B) |
-	//                     numEntries(4B) | arrCap(4B) | maxEntries(4B) | maxSlots(4B)  = 52B
+	// page header layout: 0(1B) | pageNum(19B) | usedData(4B) | numRecords(4B) |
+	//                     numEntries(4B) | arrCap(4B) | maxEntries(4B) | maxSlots(4B)  = 44B
 	header h = p->header;
-	writeULongBytewise(buffer+1,  h.parent);
-	writePageNumBytewise(buffer+9, h.pageNum);
-	writeUIntBytewise(buffer+28, h.usedData);
-	writeUIntBytewise(buffer+32, h.numRecords);
-	writeUIntBytewise(buffer+36, h.numEntries);
-	writeUIntBytewise(buffer+40, h.arrCap);
-	writeUIntBytewise(buffer+44, h.maxEntries);
-	writeUIntBytewise(buffer+48, h.maxSlots);
+	writePageNumBytewise(buffer+1, h.pageNum);
+	writeUIntBytewise(buffer+20, h.usedData);
+	writeUIntBytewise(buffer+24, h.numRecords);
+	writeUIntBytewise(buffer+28, h.numEntries);
+	writeUIntBytewise(buffer+32, h.arrCap);
+	writeUIntBytewise(buffer+36, h.maxEntries);
+	writeUIntBytewise(buffer+40, h.maxSlots);
 	// write slots (each slot on disk: ID(9B) | len(4B) | size(4B) | ptr(4B) = 21B)
-	int offset = 52;
+	int offset = 44;
 	for (int i = 0; i < h.numRecords; i++) {
 		writePageOffsetBytewise(buffer+offset,    p->slots[i].ID);
 		writeUIntBytewise(buffer+offset+9,  p->slots[i].len);

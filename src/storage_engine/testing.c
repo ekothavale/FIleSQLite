@@ -70,7 +70,6 @@ static uint64_t stripe_boundary(table* t) {
 /* Allocate a fresh slotted_page with room for up to 64 slots and 256 entries. */
 static slotted_page* make_test_page(void) {
     slotted_page* p = calloc(1, sizeof(slotted_page));
-    p->header.parent     = 0;
     p->header.pageNum    = pn(1);
     p->header.usedData   = 0;
     p->header.numRecords = 0;
@@ -318,11 +317,10 @@ static void free_test_table(table* t) {
     fclose(t->source);
 }
 
-/* Build a page with the given pageNum and parent, zeroed slot/entry arrays. */
-static slotted_page* make_io_page(page_num pageNum, address parent) {
+/* Build a page with the given pageNum, zeroed slot/entry arrays. */
+static slotted_page* make_io_page(page_num pageNum) {
     slotted_page* p = calloc(1, sizeof(slotted_page));
     p->header.pageNum    = pageNum;
-    p->header.parent     = parent;
     p->header.usedData   = 128;
     p->header.numRecords = 3;
     p->header.numEntries = 0;
@@ -437,7 +435,7 @@ Marking the same address twice must not increase the dirty count.
 void test_mark_page_dedup(void) {
     printf("  test_mark_page_dedup ... ");
     table t = make_test_table();
-    slotted_page* p = make_io_page(pn(1), 0);
+    slotted_page* p = make_io_page(pn(1));
 
     markPage(100, p, &t);
     assert(t.pageDirty.count == 1);
@@ -460,7 +458,7 @@ after marking must not change the copy held in the dirty stack.
 void test_mark_page_snapshot(void) {
     printf("  test_mark_page_snapshot ... ");
     table t = make_test_table();
-    slotted_page* p = make_io_page(pn(7), 0);
+    slotted_page* p = make_io_page(pn(7));
 
     markPage(300, p, &t);
     p->header.pageNum = pn(99);          // mutate original after mark
@@ -487,7 +485,7 @@ void test_mark_page_growth(void) {
     t.pageDirty.count = 0;
     t.pageDirty.stack = malloc(4 * sizeof(page_write_order));
 
-    slotted_page* p = make_io_page(pn(1), 0);
+    slotted_page* p = make_io_page(pn(1));
     for (int i = 0; i < 6; i++)         // 6 > initial size of 4
         markPage((address)(1000 + i), p, &t);
 
@@ -694,7 +692,7 @@ survives the round-trip.
 void test_page_roundtrip(void) {
     printf("  test_page_roundtrip ... ");
     table t = make_test_table();
-    slotted_page* p = make_io_page(pn(42), 999);
+    slotted_page* p = make_io_page(pn(42));
     p->header.usedData   = 128;
     p->header.numRecords = 3;
     p->header.arrCap     = 200;
@@ -711,7 +709,6 @@ void test_page_roundtrip(void) {
     bool ok = readPage(addr, &r, &t);
     assert(ok);
     assert(comparePageNums(r.header.pageNum, pn(42)) == 0);
-    assert(r.header.parent     == 999);
     assert(r.header.usedData   == 128);
     assert(r.header.numRecords == 3);
     assert(r.header.arrCap     == 200);
@@ -734,9 +731,9 @@ void test_page_write_lifo(void) {
     printf("  test_page_write_lifo ... ");
     table t = make_test_table();
 
-    slotted_page* p1 = make_io_page(pn(1), 0);
-    slotted_page* p2 = make_io_page(pn(2), 0);
-    slotted_page* p3 = make_io_page(pn(3), 0);
+    slotted_page* p1 = make_io_page(pn(1));
+    slotted_page* p2 = make_io_page(pn(2));
+    slotted_page* p3 = make_io_page(pn(3));
     address a1 = allocPage(&t);
     address a2 = allocPage(&t);
     address a3 = allocPage(&t);
@@ -1088,7 +1085,7 @@ void test_create_tree_root_node(void) {
 
 /*
 The initial page pointed to by the root must be readable and have the
-pageNum and parent address passed to createTree.
+pageNum passed to createTree.
 */
 void test_create_tree_initial_page(void) {
     printf("  test_create_tree_initial_page ... ");
@@ -1102,7 +1099,6 @@ void test_create_tree_initial_page(void) {
     bool ok = readPage(n.children[0], &p, t);
     assert(ok);
     assert(comparePageNums(p.header.pageNum, pn(99)) == 0);
-    assert(p.header.parent  == t->root);
 
     free(p.slots);
     free(p.entries);
